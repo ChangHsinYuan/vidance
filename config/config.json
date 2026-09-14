@@ -1,4 +1,7 @@
 {
+  "pexels": {
+    "api_key": "***REMOVED***"
+  },
   "llm": {
     "base_url": "https://api.llm.ustc.edu.cn/v1",
     "api_key": "***REMOVED***",
