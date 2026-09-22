@@ -120,6 +120,75 @@
   .slash-item code { color: var(--accent); font-weight: 700; margin-right: 8px; }
   .slash-item .d { font-size: 12px; color: var(--fg-dim); }
 
+  /* 模型设置弹层 */
+  #model-modal {
+    display: none; position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,.6); align-items: center; justify-content: center;
+  }
+  #model-modal.show { display: flex; }
+  #model-modal .modal-box {
+    background: var(--bg2); border: 1px solid #32325a; border-radius: var(--radius);
+    padding: 24px; width: 560px; max-width: 95vw; max-height: 85vh; overflow-y: auto;
+  }
+  #model-modal h3 { font-size: 15px; margin-bottom: 16px; color: var(--fg); }
+  #model-modal h4 { font-size: 13px; color: var(--fg-dim); margin: 16px 0 8px; }
+  #model-modal .section { margin-bottom: 16px; }
+  #model-modal .field { margin-bottom: 10px; }
+  #model-modal .field label { display: block; font-size: 11px; color: var(--fg-dim); margin-bottom: 3px; }
+  #model-modal input, #model-modal select {
+    width: 100%; background: var(--bg); color: var(--fg); border: 1px solid #32325a;
+    border-radius: 6px; padding: 7px 10px; font-size: 13px; outline: none;
+  }
+  #model-modal input:focus, #model-modal select:focus { border-color: var(--accent); }
+  #model-modal .task-assign {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    padding: 8px; background: var(--bg3); border-radius: 8px;
+  }
+  #model-modal .task-assign .tt-label { font-size: 12px; color: var(--fg-dim); min-width: 70px; }
+  #model-modal .task-assign select { flex: 1; padding: 5px 8px; font-size: 12px; }
+  #model-modal .prov-card {
+    padding: 10px; background: var(--bg3); border-radius: 8px; margin-bottom: 8px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  #model-modal .prov-card .prov-info { flex: 1; }
+  #model-modal .prov-card .prov-name { font-size: 13px; color: var(--fg); }
+  #model-modal .prov-card .prov-meta { font-size: 11px; color: var(--fg-dim); margin-top: 2px; }
+  #model-modal .prov-card .prov-models { font-size: 11px; color: var(--accent); margin-top: 2px; }
+  #model-modal .prov-actions { display: flex; gap: 4px; }
+  #model-modal .prov-actions button {
+    background: none; border: 1px solid #32325a; color: var(--fg-dim); border-radius: 6px;
+    padding: 4px 8px; font-size: 11px; cursor: pointer;
+  }
+  #model-modal .prov-actions button:hover { color: var(--fg); border-color: var(--accent); }
+  #model-modal .prov-actions button.danger:hover { color: var(--err); border-color: var(--err); }
+  #model-modal .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+  #model-modal .btn-primary {
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 8px 16px; font-size: 13px; cursor: pointer;
+  }
+  #model-modal .btn-secondary {
+    background: var(--bg3); color: var(--fg); border: 1px solid #32325a; border-radius: 8px;
+    padding: 8px 16px; font-size: 13px; cursor: pointer;
+  }
+  #model-modal .btn-sm {
+    padding: 5px 12px; font-size: 12px; border-radius: 6px; cursor: pointer; border: none;
+  }
+  #model-modal .add-form { display: none; padding: 12px; background: var(--bg); border-radius: 8px; margin-top: 8px; }
+  #model-modal .add-form.show { display: block; }
+  #model-modal .model-list { max-height: 150px; overflow-y: auto; margin-top: 6px; }
+  #model-modal .model-item {
+    display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px;
+  }
+  #model-modal .model-item input[type=checkbox] { width: auto; }
+  #model-modal .model-item .caps { display: flex; gap: 4px; margin-left: auto; }
+  #model-modal .model-item .caps select { width: auto; padding: 2px 6px; font-size: 11px; }
+  #model-modal .discover-status { font-size: 11px; color: var(--fg-dim); margin-top: 4px; }
+  #btn-settings {
+    background: none; border: none; color: var(--fg-dim); font-size: 18px; cursor: pointer;
+    padding: 4px 8px;
+  }
+  #btn-settings:hover { color: var(--fg); }
+
   /* 窄屏响应式 */
   @media (max-width: 768px) {
     #main { grid-template-columns: 1fr; }
@@ -136,6 +205,7 @@
     <button id="btn-menu" onclick="toggleSidebar()">☰</button>
     <span class="brand">Vidance</span>
     <span class="title" id="session-title">新会话</span>
+    <button id="btn-settings" onclick="openModelModal()" title="模型设置">⚙</button>
     <button id="btn-new" onclick="newSession()">＋ 新建</button>
   </div>
   <div id="main">
@@ -162,6 +232,37 @@
           </div>
           <div class="hint">/fast 秒级出片 · /hot 热点一步到位 · /ask 补全概念 · /auto 完整流水线</div>
         </div>
+      </div>
+    </div>
+  </div>
+  <div id="model-modal">
+    <div class="modal-box">
+      <h3>模型提供商</h3>
+      <div class="section">
+        <h4>任务分配</h4>
+        <div id="ta***REMOVED***"></div>
+      </div>
+      <div class="section">
+        <h4>已配置提供商</h4>
+        <div id="provider-list"></div>
+        <button class="btn-secondary" onclick="toggleAddForm()" style="margin-top:8px;width:100%;">＋ 添加提供商</button>
+        <div id="add-form" class="add-form">
+          <div class="field"><label>名称</label><input id="af-name" placeholder="例：我的 Replicate"></div>
+          <div class="field"><label>API 地址</label><input id="af-url" placeholder="https://api.example.com/v1"></div>
+          <div class="field"><label>API Key</label><input id="af-key" type="password" placeholder="sk-..."></div>
+          <div class="btn-row">
+            <button class="btn-secondary btn-sm" onclick="discoverModels()">查询模型</button>
+            <span id="discover-status" class="discover-status"></span>
+          </div>
+          <div id="discovered-models" class="model-list"></div>
+          <div class="btn-row" style="justify-content:flex-end;margin-top:12px;">
+            <button class="btn-secondary btn-sm" onclick="toggleAddForm()">取消</button>
+            <button class="btn-primary btn-sm" onclick="submitAddProvider()">添加</button>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:right;margin-top:16px;">
+        <button class="btn-secondary" onclick="closeModelModal()">关闭</button>
       </div>
     </div>
   </div>
@@ -525,6 +626,248 @@ function pickSlash(i) {
 
 /* ── 其他 ── */
 function toggleSidebar() { $('#sidebar').classList.toggle('open'); }
+
+/* ── 模型设置 ── */
+let modelProviders = [];
+let modelActive = {};
+let taskLabels = {};
+let discoveredModels = [];
+
+async function openModelModal() {
+  try {
+    const r = await fetch('/api/model-providers');
+    const d = await r.json();
+    modelProviders = d.providers || [];
+    modelActive = d.active || {};
+    taskLabels = d.task_labels || {};
+  } catch (e) { modelProviders = []; modelActive = {}; }
+  renderModelModal();
+  $('#model-modal').classList.add('show');
+}
+
+function closeModelModal() { $('#model-modal').classList.remove('show'); }
+
+$('#model-modal').addEventListener('click', (e) => { if (e.target.id === 'model-modal') closeModelModal(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModelModal(); });
+
+function renderModelModal() {
+  renderTaskAssignments();
+  renderProviderList();
+}
+
+function renderTaskAssignments() {
+  const el = $('#ta***REMOVED***');
+  let html = '';
+  for (const [tt, label] of Object.entries(taskLabels)) {
+    const active = modelActive[tt] || {};
+    const activePid = active.id || active;
+    const opts = modelProviders
+      .filter(p => p.capabilities.includes(tt))
+      .map(p => {
+        const sel = p.id === activePid ? 'selected' : '';
+        const models = p.models || [];
+        const suffix = models.length ? ` (${models.length} 模型)` : '';
+        return `<option value="${p.id}" ${sel}>${escapeHtml(p.name)}${suffix}</option>`;
+      })
+      .join('');
+    const activeModel = typeof active === 'object' ? (active.model || '') : '';
+    html += `<div class="task-assign">
+      <span class="tt-label">${label}</span>
+      <select data-task="${tt}" onchange="onTaskSwitch(this)">
+        <option value="">-- 选择提供商 --</option>${opts}
+      </select>`;
+    const prov = modelProviders.find(p => p.id === activePid);
+    if (prov && prov.models && prov.models.length > 0) {
+      const modelOpts = prov.models.map(m => {
+        const mid = typeof m === 'string' ? m : m.id;
+        const sel = mid === activeModel ? 'selected' : '';
+        return `<option value="${escapeHtml(mid)}" ${sel}>${escapeHtml(mid)}</option>`;
+      }).join('');
+      html += `<select data-task-model="${tt}" onchange="onModelSwitch(this)" style="flex:1;padding:5px 8px;font-size:12px;">
+        <option value="">-- 选择模型 --</option>${modelOpts}</select>`;
+    }
+    html += `</div>`;
+  }
+  el.innerHTML = html;
+}
+
+function renderProviderList() {
+  const el = $('#provider-list');
+  let html = '';
+  for (const p of modelProviders) {
+    const isBuiltin = p.builtin !== false;
+    const meta = p.type === 'comfyui'
+      ? `本地 ComfyUI · ${p.instance || ''}`
+      : `${escapeHtml(p.base_url || '未配置 URL')}${p.has_api_key ? '' : ' · 未填 Key'}`;
+    const models = (p.models || []).map(m => typeof m === 'string' ? m : m.id);
+    const modelsStr = models.length ? models.join(', ') : '';
+    html += `<div class="prov-card">
+      <div class="prov-info">
+        <div class="prov-name">${escapeHtml(p.name)} ${isBuiltin ? '<span style="font-size:10px;color:var(--fg-dim);">内置</span>' : ''}</div>
+        <div class="prov-meta">${meta}</div>
+        ${modelsStr ? `<div class="prov-models">模型: ${escapeHtml(modelsStr)}</div>` : ''}
+      </div>
+      <div class="prov-actions">
+        ${isBuiltin ? '' : `<button class="danger" onclick="deleteProvider('${p.id}')">删除</button>`}
+      </div>
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
+async function onTaskSwitch(sel) {
+  const tt = sel.dataset.task;
+  const pid = sel.value;
+  if (!pid) return;
+  try {
+    await fetch('/api/model-providers/switch', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_type: tt, provider_id: pid }),
+    });
+    await refreshModalData();
+  } catch (e) {}
+}
+
+async function onModelSwitch(sel) {
+  const tt = sel.dataset.taskModel;
+  const model = sel.value;
+  const active = modelActive[tt] || {};
+  const pid = typeof active === 'object' ? active.id : active;
+  if (!pid || !model) return;
+  try {
+    await fetch('/api/model-providers/switch', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_type: tt, provider_id: pid, model }),
+    });
+    await refreshModalData();
+  } catch (e) {}
+}
+
+async function refreshModalData() {
+  try {
+    const r = await fetch('/api/model-providers');
+    const d = await r.json();
+    modelProviders = d.providers || [];
+    modelActive = d.active || {};
+    taskLabels = d.task_labels || {};
+  } catch (e) {}
+  renderModelModal();
+}
+
+function toggleAddForm() {
+  const form = $('#add-form');
+  form.classList.toggle('show');
+  if (form.classList.contains('show')) {
+    $('#af-name').value = '';
+    $('#af-url').value = '';
+    $('#af-key').value = '';
+    $('#discovered-models').innerHTML = '';
+    $('#discover-status').textContent = '';
+    discoveredModels = [];
+  }
+}
+
+async function discoverModels() {
+  const url = $('#af-url').value.trim();
+  const key = $('#af-key').value.trim();
+  const status = $('#discover-status');
+  const modelsEl = $('#discovered-models');
+  if (!url) { status.textContent = '请先填写 API 地址'; return; }
+  status.textContent = '查询中…';
+  status.style.color = 'var(--fg-dim)';
+  try {
+    const r = await fetch('/api/model-providers/discover', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base_url: url, api_key: key }),
+    });
+    const d = await r.json();
+    discoveredModels = d.models || [];
+    if (discoveredModels.length > 0) {
+      status.textContent = `发现 ${discoveredModels.length} 个模型`;
+      status.style.color = 'var(--ok)';
+      let html = '';
+      for (const m of discoveredModels) {
+        const mid = typeof m === 'string' ? m : m.id;
+        html += `<div class="model-item">
+          <input type="checkbox" value="${escapeHtml(mid)}" checked>
+          <span>${escapeHtml(mid)}</span>
+          <div class="caps">
+            <select data-cap="${escapeHtml(mid)}">
+              <option value="">能力</option>
+              <option value="t2i">文生图</option>
+              <option value="i2v">图生视频</option>
+              <option value="t2v">文生视频</option>
+            </select>
+          </div>
+        </div>`;
+      }
+      modelsEl.innerHTML = html;
+    } else {
+      status.textContent = '未发现模型，可手动输入模型名称';
+      status.style.color = 'var(--warn)';
+      modelsEl.innerHTML = `<div class="field" style="margin-top:8px;">
+        <label>手动输入模型名称（每行一个）</label>
+        <textarea id="manual-models" rows="3" style="width:100%;background:var(--bg);color:var(--fg);border:1px solid #32325a;border-radius:6px;padding:6px;font-size:12px;resize:vertical;" placeholder="model-name-1&#10;model-name-2"></textarea>
+      </div>`;
+    }
+  } catch (e) {
+    status.textContent = '查询失败: ' + e;
+    status.style.color = 'var(--err)';
+  }
+}
+
+async function submitAddProvider() {
+  const name = $('#af-name').value.trim();
+  const baseUrl = $('#af-url').value.trim();
+  const apiKey = $('#af-key').value.trim();
+  if (!name || !baseUrl) { alert('请填写名称和 API 地址'); return; }
+
+  const models = [];
+  const checkboxes = $('#discovered-models').querySelectorAll('input[type=checkbox]:checked');
+  if (checkboxes.length > 0) {
+    for (const cb of checkboxes) {
+      const mid = cb.value;
+      const capSel = document.querySelector(`[data-cap="${CSS.escape(mid)}"]`);
+      const cap = capSel ? capSel.value : '';
+      const entry = { id: mid, capabilities: cap ? [cap] : [] };
+      models.push(entry);
+    }
+  } else {
+    const manual = document.getElementById('manual-models');
+    if (manual) {
+      const lines = manual.value.split('\n').map(s => s.trim()).filter(Boolean);
+      for (const line of lines) {
+        models.push({ id: line, capabilities: [] });
+      }
+    }
+  }
+
+  const id = 'custom-' + Date.now().toString(36);
+  try {
+    const r = await fetch('/api/model-providers', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, name, base_url: baseUrl, api_key: apiKey, models }),
+    });
+    if (!r.ok) {
+      const d = await r.json();
+      alert(d.detail || '添加失败');
+      return;
+    }
+    toggleAddForm();
+    await refreshModalData();
+  } catch (e) {
+    alert('添加失败: ' + e);
+  }
+}
+
+async function deleteProvider(pid) {
+  if (!confirm('确定删除此提供商？')) return;
+  try {
+    await fetch(`/api/model-providers/${pid}`, { method: 'DELETE' });
+    await refreshModalData();
+  } catch (e) {}
+}
+
 function newSession() {
   activeDialog = null;
   messages.innerHTML = `<div class="empty-hint" id="empty-hint">

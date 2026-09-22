@@ -128,5 +128,445 @@
     "language": "zh",
     "device": "cuda",
     "compute_type": "int8_float16"
+  },
+  "model_providers": {
+    "active": {
+      "t2i": "local-flux",
+      "i2v": "local-wan",
+      "t2v": "local-wan"
+    },
+    "providers": {
+      "local-flux": {
+        "name": "FLUX (本地 ComfyUI)",
+        "type": "comfyui",
+        "instance": "flux",
+        "capabilities": [
+          "t2i"
+        ],
+        "status": "local"
+      },
+      "local-wan": {
+        "name": "Wan I2V/T2V (本地 ComfyUI)",
+        "type": "comfyui",
+        "instance": "wan",
+        "capabilities": [
+          "i2v",
+          "t2v"
+        ],
+        "status": "local"
+      },
+      "local-hunyuan3d": {
+        "name": "Hunyuan3D (本地 ComfyUI)",
+        "type": "comfyui",
+        "instance": "hunyuan3d",
+        "capabilities": [
+          "text-to-3d",
+          "image-to-3d"
+        ],
+        "status": "local"
+      }
+    },
+    "custom_providers": [
+      {
+        "id": "custom-muchvp3h",
+        "name": "硅基流动",
+        "base_url": "https://api.siliconflow.cn/v1",
+        "api_key": "***REMOVED***",
+        "models": [
+          {
+            "id": "tencent/Hy4-preview",
+            "capabilities": []
+          },
+          {
+            "id": "zai-org/GLM-5.3",
+            "capabilities": []
+          },
+          {
+            "id": "deepseek-ai/DeepSeek-V4-Flash",
+            "capabilities": []
+          },
+          {
+            "id": "meituan-longcat/LongCat-2.0",
+            "capabilities": []
+          },
+          {
+            "id": "zai-org/GLM-5.2",
+            "capabilities": []
+          },
+          {
+            "id": "moonshotai/Kimi-K2.7-Code",
+            "capabilities": []
+          },
+          {
+            "id": "deepseek-ai/DeepSeek-V4-Pro",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3.8-27B",
+            "capabilities": []
+          },
+          {
+            "id": "Pro/moonshotai/Kimi-K2.6",
+            "capabilities": []
+          },
+          {
+            "id": "Pro/zai-org/GLM-5.1",
+            "capabilities": []
+          },
+          {
+            "id": "XingChenAGI/Xing4.0-29B",
+            "capabilities": []
+          },
+          {
+            "id": "Tongyi-MAI/Z-Image-Turbo",
+            "capabilities": []
+          },
+          {
+            "id": "Tongyi-MAI/Z-Image",
+            "capabilities": []
+          },
+          {
+            "id": "baidu/ERNIE-Image-Turbo",
+            "capabilities": []
+          },
+          {
+            "id": "deepseek-ai/DeepSeek-V3.2",
+            "capabilities": []
+          },
+          {
+            "id": "Pro/deepseek-ai/DeepSeek-V3.2",
+            "capabilities": []
+          },
+          {
+            "id": "deepseek-ai/DeepSeek-V3.1-Terminus",
+            "capabilities": []
+          },
+          {
+            "id": "Pro/deepseek-ai/DeepSeek-V3.1-Terminus",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3.6-35B-A3B",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3.6-27B",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3.5-122B-A10B",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3.5-35B-A3B",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3.5-27B",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3.5-9B",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3.5-4B",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-VL-Embedding-8B",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-VL-Reranker-8B",
+            "capabilities": []
+          },
+          {
+            "id": "PaddlePaddle/PaddleOCR-VL-1.5",
+            "capabilities": []
+          },
+          {
+            "id": "deepseek-ai/DeepSeek-R1",
+            "capabilities": []
+          },
+          {
+            "id": "Pro/deepseek-ai/DeepSeek-R1",
+            "capabilities": []
+          },
+          {
+            "id": "deepseek-ai/DeepSeek-V3",
+            "capabilities": []
+          },
+          {
+            "id": "Pro/deepseek-ai/DeepSeek-V3",
+            "capabilities": []
+          },
+          {
+            "id": "stepfun-ai/Step-3.5-Flash",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-VL-32B-Instruct",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-VL-32B-Thinking",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-VL-8B-Instruct",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-VL-8B-Thinking",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-VL-30B-A3B-Thinking",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-Omni-30B-A3B-Instruct",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-Omni-30B-A3B-Thinking",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-Omni-30B-A3B-Captioner",
+            "capabilities": []
+          },
+          {
+            "id": "deepseek-ai/DeepSeek-OCR",
+            "capabilities": []
+          },
+          {
+            "id": "inclusionAI/Ling-flash-2.0",
+            "capabilities": []
+          },
+          {
+            "id": "inclusionAI/Ling-mini-2.0",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen-Image-Edit-2509",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen-Image-Edit",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen-Image",
+            "capabilities": []
+          },
+          {
+            "id": "XingChenAGI/XingChenASR-V3.2-Ultra",
+            "capabilities": []
+          },
+          {
+            "id": "XingChenAGI/XingChenGSR-V1.0",
+            "capabilities": []
+          },
+          {
+            "id": "XingChenAGI/XingChenASR-Diarize-V3.0",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-ASR-1.7B",
+            "capabilities": []
+          },
+          {
+            "id": "tencent/Hunyuan-MT-7B",
+            "capabilities": []
+          },
+          {
+            "id": "ByteDance-Seed/Seed-OSS-36B-Instruct",
+            "capabilities": []
+          },
+          {
+            "id": "Wan-AI/Wan2.2-I2V-A14B",
+            "capabilities": []
+          },
+          {
+            "id": "Wan-AI/Wan2.2-T2V-A14B",
+            "capabilities": []
+          },
+          {
+            "id": "zai-org/GLM-4.5V",
+            "capabilities": []
+          },
+          {
+            "id": "zai-org/GLM-4.5-Air",
+            "capabilities": []
+          },
+          {
+            "id": "XingChenAGI/XingChenASR-V3.2",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-30B-A3B-Instruct-2507",
+            "capabilities": []
+          },
+          {
+            "id": "tencent/Hunyuan-A13B-Instruct",
+            "capabilities": []
+          },
+          {
+            "id": "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-32B",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-14B",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-8B",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-Reranker-8B",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-Embedding-8B",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-Reranker-4B",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-Embedding-4B",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-Reranker-0.6B",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen3-Embedding-0.6B",
+            "capabilities": []
+          },
+          {
+            "id": "THUDM/GLM-4-32B-0414",
+            "capabilities": []
+          },
+          {
+            "id": "THUDM/GLM-Z1-9B-0414",
+            "capabilities": []
+          },
+          {
+            "id": "THUDM/GLM-4-9B-0414",
+            "capabilities": []
+          },
+          {
+            "id": "fnlp/MOSS-TTSD-v0.5",
+            "capabilities": []
+          },
+          {
+            "id": "FunAudioLLM/CosyVoice2-0.5B",
+            "capabilities": []
+          },
+          {
+            "id": "FunAudioLLM/SenseVoiceSmall",
+            "capabilities": []
+          },
+          {
+            "id": "BAAI/bge-m3",
+            "capabilities": []
+          },
+          {
+            "id": "BAAI/bge-reranker-v2-m3",
+            "capabilities": []
+          },
+          {
+            "id": "Kwai-Kolors/Kolors",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen2.5-72B-Instruct-128K",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen2.5-72B-Instruct",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen2.5-32B-Instruct",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen2.5-14B-Instruct",
+            "capabilities": []
+          },
+          {
+            "id": "Qwen/Qwen2.5-7B-Instruct",
+            "capabilities": []
+          },
+          {
+            "id": "BAAI/bge-large-en-v1.5",
+            "capabilities": []
+          },
+          {
+            "id": "BAAI/bge-large-zh-v1.5",
+            "capabilities": []
+          },
+          {
+            "id": "Pro/BAAI/bge-m3",
+            "capabilities": []
+          },
+          {
+            "id": "Pro/Qwen/Qwen2.5-7B-Instruct",
+            "capabilities": []
+          },
+          {
+            "id": "Pro/BAAI/bge-reranker-v2-m3",
+            "capabilities": []
+          },
+          {
+            "id": "LoRA/Qwen/Qwen2.5-32B-Instruct",
+            "capabilities": []
+          },
+          {
+            "id": "LoRA/Qwen/Qwen2.5-14B-Instruct",
+            "capabilities": []
+          },
+          {
+            "id": "LoRA/Qwen/Qwen2.5-72B-Instruct",
+            "capabilities": []
+          },
+          {
+            "id": "LoRA/Qwen/Qwen2.5-7B-Instruct",
+            "capabilities": []
+          },
+          {
+            "id": "Kev-4B",
+            "capabilities": []
+          },
+          {
+            "id": "SemIf",
+            "capabilities": []
+          },
+          {
+            "id": "diffusiongemma",
+            "capabilities": []
+          }
+        ]
+      }
+    ]
   }
 }

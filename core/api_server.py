@@ -648,6 +648,97 @@ def tool_dispatch(name: str, req: ToolRequest):
     raise HTTPException(status_code=400, detail=f'Tool {name} not dispatchable')
 
 
+# ══ 模型提供商管理 ══
+
+class SwitchProvider(BaseModel):
+    task_type: str
+    provider_id: str
+    model: Optional[str] = None
+
+
+class AddProvider(BaseModel):
+    id: str
+    name: str
+    base_url: str
+    api_key: str = ''
+    models: list = []
+
+
+class UpdateProvider(BaseModel):
+    name: Optional[str] = None
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    models: Optional[list] = None
+
+
+class DiscoverModels(BaseModel):
+    base_url: str
+    api_key: str = ''
+
+
+@app.get('/api/model-providers')
+def model_providers():
+    from utils.model_router import ModelRouter
+    router = ModelRouter()
+    return {
+        'providers': router.list_providers(),
+        'active': {tt: router.get_active(tt) for tt in ModelRouter.TASK_TYPES},
+        'task_labels': ModelRouter.TASK_LABELS,
+    }
+
+
+@app.put('/api/model-providers/switch')
+def switch_provider(req: SwitchProvider):
+    from utils.model_router import ModelRouter
+    router = ModelRouter()
+    try:
+        result = router.set_active(req.task_type, req.provider_id, req.model)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {'message': f'{req.task_type} → {req.provider_id}', **result}
+
+
+@app.post('/api/model-providers')
+def add_provider(req: AddProvider):
+    from utils.model_router import ModelRouter
+    router = ModelRouter()
+    try:
+        result = router.add_provider(req.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {'message': f'已添加: {req.name}', 'provider': result}
+
+
+@app.put('/api/model-providers/{provider_id}')
+def update_provider(provider_id: str, req: UpdateProvider):
+    from utils.model_router import ModelRouter
+    router = ModelRouter()
+    updates = {k: v for k, v in req.model_dump().items() if v is not None}
+    try:
+        result = router.update_provider(provider_id, updates)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {'message': f'{provider_id} updated', 'provider': result}
+
+
+@app.delete('/api/model-providers/{provider_id}')
+def remove_provider(provider_id: str):
+    from utils.model_router import ModelRouter
+    router = ModelRouter()
+    try:
+        router.remove_provider(provider_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {'message': f'已删除: {provider_id}'}
+
+
+@app.post('/api/model-providers/discover')
+def discover_models(req: DiscoverModels):
+    from utils.model_router import ModelRouter
+    result = ModelRouter.discover_models(req.base_url, req.api_key)
+    return result
+
+
 # ── 静态前端 /ui ──
 _UI_DIR = os.path.join(os.path.dirname(__file__), '..', 'ui')
 
