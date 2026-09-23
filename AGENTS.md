@@ -205,10 +205,46 @@ python core/vidance.py concat clip1.mp4 clip2.mp4 -o merged.mp4 --transition cro
 
 > 旧入口 `python core/pipeline.py ...` 和 `python core/custom_gen.py ...` 仍可用（向后兼容），但推荐使用 `vidance.py`。
 
-### 启动 TTS 服务
+### 启动模型服务（推荐：一键脚本）
+
+```bash
+cd /mnt/disk_sdb/zxy/vidance && ./start_services.sh          # 启动默认集（h3/wan/flux/tts/api）
+./start_services.sh start h3d        # 额外启动 Hunyuan3Dv2（v3 mesh 用）
+./start_services.sh stop             # 停止全部
+./start_services.sh restart          # 重启
+./start_services.sh status           # 端口/进程/显存
+./start_services.sh test             # 逐服务连通 + LLM + TTS 合成自检
+./start_services.sh logs tts         # 跟踪日志
+```
+> 脚本头部有完整注释（服务↔端口↔GPU 对应、ComfyUI 禁 `--cuda-device`、edge-tts 外网问题等）。
+> 端口：h3 8188(GPU0) / wan 8189(GPU2) / flux 8192(GPU3) / hunyuan 8190(GPU3，与 flux 互斥) / h3d 8193(GPU1) / tts 9880(GPU2) / api 8894(CPU)。
+> 模型按需加载，ComfyUI 启动只占几百 M；TTS 启动即加载 CosyVoice（约 28s）。
+
+### 启动 TTS 服务（手动，脚本等价）
 ```bash
 conda activate cosyvoice
 CUDA_VISIBLE_DEVICES=2 TTS_FP16=1 python utils/tts_server.py &
+```
+
+### 单条测试命令（验证服务是否正常）
+```bash
+# ComfyUI 实例（返回 200/JSON 即可达）
+curl -s -o /dev/null -w "8189 wan: %{http_code}\n" http://127.0.0.1:8189/
+curl -s -o /dev/null -w "8192 flux: %{http_code}\n" http://127.0.0.1:8192/
+curl -s -o /dev/null -w "8188 h3: %{http_code}\n" http://127.0.0.1:8188/
+
+# TTS 健康 + 合成（返回 {"audio":"<base64 wav>"} 即成功）
+curl -s http://127.0.0.1:9880/health
+curl -s -X POST http://127.0.0.1:9880/tts -H 'Content-Type: application/json' \
+  -d '{"text":"测试一下声音是否正常","voice":"cosy-default"}' | head -c 120
+# edge-* 需外网；连不上（Connection timeout to speech.platform.bing.com）就改用 cosy-* 本地音色
+
+# Vidance API + UI
+curl -s http://127.0.0.1:8894/api/health
+curl -s -o /dev/null -w "ui: %{http_code}\n" http://127.0.0.1:8894/ui
+
+# 端到端快速出片（本地音色，绕开 edge 外网问题；-n ≤5；全服务在线才出真声真图）
+python core/vidance.py fast "深夜灯塔的故事" -n 2 --voice cosy-jieshuo1
 ```
 
 ### 单步操作
