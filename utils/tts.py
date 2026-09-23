@@ -23,8 +23,8 @@ CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.js
 
 
 def load_config():
-    with open(CONFIG_PATH, 'r') as f:
-        return json.load(f)
+    from utils.config_loader import load_config as _load
+    return _load()
 
 
 class TTSClient:

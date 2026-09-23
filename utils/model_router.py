@@ -18,13 +18,21 @@ CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 
 
 def load_config():
-    with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-        return json.load(f)
+    from utils.config_loader import load_config as _load
+    return _load()
 
 
 def save_config(config):
+    """只把 model_providers 段写回 config.json（基础配置）。
+
+    不自定义保存整份 merged 配置，避免 config.local.json 的本地覆盖值
+    （如 output_dir）被固化进仓库里的 config.json。
+    """
+    from utils.config_loader import load_base_config
+    base = load_base_config()
+    base['model_providers'] = config.get('model_providers', {})
     with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-        json.dump(config, f, ensure_ascii=False, indent=2)
+        json.dump(base, f, ensure_ascii=False, indent=2)
 
 
 class ModelRouter:
@@ -159,6 +167,16 @@ class ModelRouter:
             return None
         from utils.comfy_api import ComfyClient
         return ComfyClient(config=self.config, instance=provider.get('instance', 'wan'))
+
+    def get_adapter(self, task_type):
+        """返回对应 task_type 的 VendorAdapter（统一 t2i/i2v/t2v 接口）"""
+        from utils.vendor import ComfyUIVendor, APIVendor
+        provider = self.get_provider(task_type)
+        if not provider:
+            raise ValueError(f'No active provider for task type: {task_type}')
+        if provider.get('type') == 'comfyui':
+            return ComfyUIVendor(config=self.config, instance=provider.get('instance', 'wan'))
+        return APIVendor(provider)
 
     def is_local(self, task_type):
         provider = self.get_provider(task_type)

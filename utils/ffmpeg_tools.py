@@ -200,12 +200,16 @@ def compose(clips: list, audio_paths: list, srt_path: str = None,
         ac.close()
 
     # 后处理：调色 + 烧录字幕
+    def _ffpath(p):
+        # Windows 反斜杠会被 ffmpeg filter 语法吞掉，统一转正斜杠
+        return p.replace('\\', '/')
+
     filters = []
     if lut_path and os.path.isfile(lut_path):
-        filters.append(f"lut3d='{lut_path}'")
+        filters.append(f"lut3d='{_ffpath(lut_path)}'")
     if srt_path and os.path.isfile(srt_path):
         filters.append(
-            f"subtitles='{srt_path}':force_style='FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Alignment=2'"
+            f"subtitles='{_ffpath(srt_path)}':force_style='FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Alignment=2'"
         )
 
     if filters:
@@ -232,9 +236,10 @@ def compose(clips: list, audio_paths: list, srt_path: str = None,
         cmd = [
             FFMPEG, '-y', '-i', temp_bgm, '-i', bgm_path,
             '-filter_complex',
-            f'[1:a]volume={bgm_volume}[bgm];'
-            f'[bgm][0:a]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=300[ducked];'
-            f'[0:a][ducked]amix=inputs=2:duration=first:weights=1 0.8[a]',
+            f'[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,volume={bgm_volume}[bgm];'
+            f'[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,asplit=2[av][avsc];'
+            f'[bgm][avsc]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=300[ducked];'
+            f'[av][ducked]amix=inputs=2:duration=first:weights=1 0.8[a]',
             '-map', '0:v', '-map', '[a]',
             '-c:v', 'copy',
             '-c:a', 'aac',

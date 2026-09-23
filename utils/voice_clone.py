@@ -48,8 +48,8 @@ TEST_TEXT = '大家好，欢迎收看今天的节目。Vidance 是一个自动�
 
 
 def load_config():
-    with open(CONFIG_PATH, 'r') as f:
-        return json.load(f)
+    from utils.config_loader import load_config as _load
+    return _load()
 
 
 def _parse_duration(s) -> float:

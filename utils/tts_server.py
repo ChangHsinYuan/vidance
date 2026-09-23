@@ -27,20 +27,25 @@ import asyncio
 import logging
 import subprocess
 
-# ── CosyVoice 路径 ──
-COSYVOICE_REPO = '/mnt/disk_sdb/zxy/CosyVoice'
-sys.path.insert(0, COSYVOICE_REPO)
-sys.path.insert(0, os.path.join(COSYVOICE_REPO, 'third_party/Matcha-TTS'))
-os.chdir(COSYVOICE_REPO)
+# ── CosyVoice 路径（本地无 GPU 时设 TTS_EDGE_ONLY=1 跳过，只用 edge-tts） ──
+EDGE_ONLY = os.environ.get('TTS_EDGE_ONLY', '0') == '1'
 
-import torch
-import torchaudio
-import soundfile as sf
+if not EDGE_ONLY:
+    COSYVOICE_REPO = '/mnt/disk_sdb/zxy/CosyVoice'
+    sys.path.insert(0, COSYVOICE_REPO)
+    sys.path.insert(0, os.path.join(COSYVOICE_REPO, 'third_party/Matcha-TTS'))
+    os.chdir(COSYVOICE_REPO)
+
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from cosyvoice.cli.cosyvoice import AutoModel
+
+if not EDGE_ONLY:
+    import torch
+    import torchaudio
+    import soundfile as sf
+    from cosyvoice.cli.cosyvoice import AutoModel
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
@@ -268,12 +273,19 @@ class TTSRequest(BaseModel):
 @app.on_event('startup')
 def startup():
     global CUSTOM_VOICES
-    load_model()
+    if not EDGE_ONLY:
+        load_model()
     CUSTOM_VOICES = scan_custom_voices()
 
 
 @app.get('/health')
 def health():
+    if EDGE_ONLY:
+        return {
+            'status': 'ok',
+            'engines': ['edge-tts'],
+            'voice_count': len(EDGE_VOICE_PRESETS),
+        }
     return {
         'status': 'ok' if cosyvoice is not None else 'loading',
         'engines': ['cosyvoice', 'edge-tts'],
@@ -310,6 +322,8 @@ async def tts(req: TTSRequest):
         voice = req.voice
         if voice.startswith('edge-'):
             result = await synthesize_edge(req.text, voice, req.speed)
+        elif EDGE_ONLY:
+            result = await synthesize_edge(req.text, 'edge-xiaoxiao', req.speed)
         else:
             # CosyVoice 是同步阻塞的，放到线程池
             result = await asyncio.to_thread(

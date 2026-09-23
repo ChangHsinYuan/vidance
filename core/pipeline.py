@@ -20,8 +20,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.llm import LLMClient
 from utils.tts import TTSClient
 from utils.comfy_api import ComfyClient
-from utils.splat_renderer import render_splat_at_angle, render_splat_angles
-from utils.mesh_render import render_mesh_at_angle, render_mesh_angles
+from utils.vendor import get_vendor
+try:
+    from utils.splat_renderer import render_splat_at_angle, render_splat_angles
+    from utils.mesh_render import render_mesh_at_angle, render_mesh_angles
+except ImportError:
+    # 3D 渲染依赖（comfy/trimesh/pyrender）仅在 GPU 服务器上可用
+    render_splat_at_angle = render_splat_angles = None
+    render_mesh_at_angle = render_mesh_angles = None
 from utils.hunyuan3d import Hunyuan3DClient
 from utils.asset_registry import AssetRegistry
 from utils.ffmpeg_tools import extract_frames, generate_srt, compose
@@ -32,8 +38,8 @@ CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.js
 
 
 def load_config():
-    with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-        return json.load(f)
+    from utils.config_loader import load_config as _load
+    return _load()
 
 
 class Pipeline:
@@ -43,6 +49,9 @@ class Pipeline:
         self.tts = TTSClient(self.config)
         self.wan = ComfyClient(config=self.config, instance='wan')
         self.flux = ComfyClient(config=self.config, instance='flux')
+        self.t2i_vendor = get_vendor(self.config, 't2i')
+        self.i2v_vendor = get_vendor(self.config, 'i2v')
+        self.t2v_vendor = get_vendor(self.config, 't2v')
         self.hunyuan3d = Hunyuan3DClient(config=self.config)
         self.assets = AssetRegistry(self.config)
         self.output_dir = self.config['output_dir']
@@ -352,12 +361,11 @@ class Pipeline:
         print('  [3a] FLUX 生成角色参考图...')
         ref_path = os.path.join(char_dir, 'character_ref.png')
         char_size = self.flux_defaults.get('character_size', 1024)
-        self.flux.generate_flux_t2i(
+        self.t2i_vendor.t2i(
             prompt=character_prompt,
             width=char_size, height=char_size,
             steps=self.flux_defaults.get('steps', 20),
             guidance=self.flux_defaults.get('guidance', 3.5),
-            filename_prefix=f'{task_id}/character_ref',
             output_path=ref_path,
         )
         print(f'  ref_image: {ref_path}')
@@ -376,12 +384,11 @@ class Pipeline:
             view_paths = {}
             for view_name in ('front', 'left', 'back'):
                 vp = os.path.join(char_dir, f'character_{view_name}.png')
-                self.flux.generate_flux_t2i(
+                self.t2i_vendor.t2i(
                     prompt=view_prompts[view_name],
                     width=char_size, height=char_size,
                     steps=self.flux_defaults.get('steps', 20),
                     guidance=self.flux_defaults.get('guidance', 3.5),
-                    filename_prefix=f'{task_id}/character_{view_name}',
                     output_path=vp,
                 )
                 view_paths[view_name] = vp
@@ -496,26 +503,24 @@ class Pipeline:
                 character['desc'], shot['scene_desc'], shot.get('style', '')
             )
             composite_ref = os.path.join(clips_dir, f'composite_ref_{sid}.png')
-            self.flux.generate_flux_t2i(
+            self.t2i_vendor.t2i(
                 prompt=scene_prompt,
                 seed=random.randint(0, 2**31 - 1),
                 width=i2v_w, height=i2v_h,
                 steps=self.flux_defaults.get('steps', 20),
                 guidance=self.flux_defaults.get('guidance', 3.5),
-                filename_prefix=f'{task_id}/sceneref_{sid}',
                 output_path=composite_ref,
             )
             print(f'  [prefetch] scene_ref (flux, yaw={yaw}): {sid}')
             return composite_ref
         else:
             bg_path = os.path.join(clips_dir, f'background_{sid}.png')
-            self.flux.generate_flux_t2i(
+            self.t2i_vendor.t2i(
                 prompt=shot['background_prompt'],
                 seed=random.randint(0, 2**31 - 1),
                 width=bg_w, height=bg_h,
                 steps=self.flux_defaults.get('steps', 20),
                 guidance=self.flux_defaults.get('guidance', 3.5),
-                filename_prefix=f'{task_id}/bg_{sid}',
                 output_path=bg_path,
             )
             composite_ref = os.path.join(clips_dir, f'composite_ref_{sid}.png')
@@ -605,7 +610,7 @@ class Pipeline:
 
             # [8] Wan I2V (或 T2V fallback)
             if composite_ref:
-                t2v_result = self.wan.generate_i2v(
+                t2v_result = self.i2v_vendor.i2v(
                     prompt=shot['video_prompt'],
                     image_path=composite_ref,
                     seed=seed,
@@ -614,11 +619,10 @@ class Pipeline:
                     steps=self.i2v_defaults.get('steps', 20),
                     cfg=self.i2v_defaults.get('cfg', 5.0),
                     fps=fps,
-                    filename_prefix=video_prefix,
                     output_path=video_path,
                 )
             else:
-                t2v_result = self.wan.generate_t2v(
+                t2v_result = self.t2v_vendor.t2v(
                     prompt=shot['video_prompt'],
                     seed=seed,
                     width=self.wan_defaults.get('width', 1280),
@@ -627,7 +631,6 @@ class Pipeline:
                     steps=self.wan_defaults.get('steps', 20),
                     cfg=self.wan_defaults.get('cfg', 5.0),
                     fps=fps,
-                    filename_prefix=video_prefix,
                     output_path=video_path,
                 )
             print(f'  video: {video_path}')

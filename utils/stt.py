@@ -28,8 +28,8 @@ def _get_model(model_path: str, device: str = 'cuda', compute_type: str = 'int8_
 def _resolve_model_path(config: dict = None) -> str:
     """从配置或默认路径解析模型路径"""
     if config is None:
-        with open(CONFIG_PATH, 'r') as f:
-            config = json.load(f)
+        from utils.config_loader import load_config as _load
+        config = _load()
 
     stt_config = config.get('stt', {})
     model_path = stt_config.get('model_path')

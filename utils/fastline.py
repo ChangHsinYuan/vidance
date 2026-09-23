@@ -37,8 +37,8 @@ FFMPEG = 'ffmpeg'
 
 
 def load_config():
-    with open(CONFIG_PATH) as f:
-        return json.load(f)
+    from utils.config_loader import load_config as _load
+    return _load()
 
 
 class FastLine:
@@ -116,15 +116,33 @@ class FastLine:
 
         imgs = []
         if images_source == 'crawl':
-            # Pexels 图源（首选，精准对题且已 md5 去重）——直接取 n 张，无需逐张慢速多模态校验，
-            # 总数严格 ≤ n，速度快。
+            # Pexels 图源（首选，精准对题且已 md5 去重）。
+            # 先 LLM 把概念拆成 n 个"视觉名词式"搜索词（避免整句问句被搜索引擎
+            # 返回字典/笔画图等无关结果），逐词各取一图，让每张图贴合一段旁白。
             print(f'  [crawl] 为概念取参考图（目标 {n} 张，Pexels 图源）...')
             try:
-                items = self.crawler.download_images(concept, save_dir, top=n)
-                imgs = [it['path'] for it in items]
-            except Exception as e:
-                print(f'  ⚠ [图源缺省] 爬图服务不可用（{e}），转 FLUX/纯色兜底')
-                imgs = []
+                keywords = self.crawler.extract_keywords(concept, llm=self.llm, n=n)
+            except Exception:
+                keywords = [concept]
+            print(f'  [crawl] 搜索词: {keywords}')
+            for kw in keywords:
+                if len(imgs) >= n:
+                    break
+                try:
+                    items = self.crawler.download_images(kw, save_dir, top=1)
+                    imgs.extend(it['path'] for it in items)
+                except Exception as e:
+                    print(f'  ⚠ [图源缺省] 爬图 "{kw}" 失败（{e}）')
+            # 仍不足则用原概念兜底
+            if len(imgs) < n:
+                try:
+                    for it in self.crawler.download_images(concept, save_dir, top=n):
+                        if it['path'] not in imgs:
+                            imgs.append(it['path'])
+                        if len(imgs) >= n:
+                            break
+                except Exception:
+                    pass
             print(f'  [crawl] 取到 {len(imgs)} 张')
             if len(imgs) < n:
                 lack = n - len(imgs)
@@ -176,8 +194,8 @@ class FastLine:
         - 生成后用多模态 LLM（assess_image_relevance）校验该图是否贴合该段旁白主体，
           不通过则换 seed 重生成（≤max_retry 次）
         """
-        from utils.comfy_api import ComfyClient
-        flux = ComfyClient(config=self.config, instance='flux')
+        from utils.vendor import get_vendor
+        t2i = get_vendor(self.config, 't2i')
         out = []
         prompts = [s['text'] for s in (segments or [])]
         while len(prompts) < n:
@@ -189,9 +207,7 @@ class FastLine:
             ok = False
             for attempt in range(max_retry + 1):
                 try:
-                    flux.generate_flux_t2i(
-                        en, width=1024, height=768, steps=20,
-                        filename_prefix='vidance/fastline', output_path=path)
+                    t2i.t2i(en, width=1024, height=768, steps=20, output_path=path)
                 except Exception as e:
                     print(f'    ⚠ FLUX 生成失败: {e}')
                     break

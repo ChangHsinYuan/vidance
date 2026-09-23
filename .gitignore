@@ -2,6 +2,9 @@
 output/
 output/output
 
+# Local-only config overrides (never commit)
+config/config.local.json
+
 # Voice samples & custom voices (keep directory structure, ignore audio)
 voice_samples/
 voices/*

@@ -36,8 +36,8 @@ _CFG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 
 def _pexels_key():
     try:
-        with open(_CFG_PATH) as f:
-            return json.load(f).get('pexels', {}).get('api_key', '')
+        from utils.config_loader import load_config
+        return load_config().get('pexels', {}).get('api_key', '')
     except Exception:
         return ''
 

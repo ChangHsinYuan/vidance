@@ -159,8 +159,8 @@ def cmd_concat(args):
     if transition == 'cut':
         _concat_cut(clips, output_path)
     elif transition == 'rife':
-        with open(os.path.join(os.path.dirname(__file__), '..', 'config', 'config.json')) as f:
-            config = json.load(f)
+        from utils.config_loader import load_config as _load
+        config = _load()
         post = PostProcessor(config)
         tmpdir = tempfile.mkdtemp(prefix='vidance_concat_')
         try:

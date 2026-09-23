@@ -30,8 +30,8 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket
+from fastapi.responses import HTMLResponse, FileResponse, Response
 from pydantic import BaseModel
 from typing import Optional
 
@@ -737,6 +737,136 @@ def discover_models(req: DiscoverModels):
     from utils.model_router import ModelRouter
     result = ModelRouter.discover_models(req.base_url, req.api_key)
     return result
+
+
+# ══ ComfyUI 节点画布反向代理 (/ui_comfyui) ══
+
+try:
+    import httpx
+    import websockets
+    _COMFYUI_PROXY_AVAILABLE = True
+except ImportError:
+    _COMFYUI_PROXY_AVAILABLE = False
+
+
+def _get_comfyui_target(request):
+    cfg = load_config()
+    instance = request.query_params.get('instance', 'wan')
+    inst_cfg = cfg.get('comfyui', {}).get(instance, {})
+    host = inst_cfg.get('host', '127.0.0.1')
+    port = inst_cfg.get('port', 8189)
+    return f'http://{host}:{port}', f'ws://{host}:{port}'
+
+
+_WS_INJECT = b'''<script>
+(function(){
+  var _WS = window.WebSocket;
+  window.WebSocket = function(url, protocols) {
+    if (typeof url === 'string' && url.indexOf('/ws') !== -1) {
+      url = url.replace(/\\/ws/, '/ui_comfyui/ws');
+    }
+    return protocols !== undefined ? new _WS(url, protocols) : new _WS(url);
+  };
+  window.WebSocket.prototype = _WS.prototype;
+  window.WebSocket.CONNECTING = _WS.CONNECTING;
+  window.WebSocket.OPEN = _WS.OPEN;
+  window.WebSocket.CLOSING = _WS.CLOSING;
+  window.WebSocket.CLOSED = _WS.CLOSED;
+})();
+</script>'''
+
+
+if _COMFYUI_PROXY_AVAILABLE:
+
+    @app.websocket('/ui_comfyui/ws')
+    async def comfyui_ws_proxy(websocket: WebSocket):
+        from starlette.websockets import WebSocketDisconnect
+        await websocket.accept()
+        instance = websocket.query_params.get('instance', 'wan')
+        cfg = load_config()
+        inst_cfg = cfg.get('comfyui', {}).get(instance, {})
+        host = inst_cfg.get('host', '127.0.0.1')
+        port = inst_cfg.get('port', 8189)
+        try:
+            upstream_url = f'ws://{host}:{port}/ws'
+            async with websockets.connect(upstream_url) as upstream:
+                async def forward_client():
+                    try:
+                        while True:
+                            data = await websocket.receive()
+                            if data['type'] == 'websocket.disconnect':
+                                return
+                            msg = data.get('text') or data.get('bytes')
+                            if msg is not None:
+                                await upstream.send(msg)
+                    except (WebSocketDisconnect, Exception):
+                        pass
+
+                async def forward_upstream():
+                    try:
+                        async for msg in upstream:
+                            if isinstance(msg, str):
+                                await websocket.send_text(msg)
+                            else:
+                                await websocket.send_bytes(msg)
+                    except Exception:
+                        await websocket.close()
+
+                import asyncio
+                done, pending = await asyncio.wait(
+                    [asyncio.create_task(forward_client()),
+                     asyncio.create_task(forward_upstream())],
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for t in pending:
+                    t.cancel()
+        except Exception as e:
+            await websocket.close(code=1011)
+
+    @app.api_route('/ui_comfyui/{path:path}', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'])
+    async def comfyui_proxy(request: Request, path: str = ''):
+        http_target, _ = _get_comfyui_target(request)
+        target_url = f'{http_target}/{path}'
+        if request.query_params:
+            target_url += f'?{request.query_params}'
+
+        body = await request.body()
+        headers = dict(request.headers)
+        for h in ('host', 'connection', 'transfer-encoding'):
+            headers.pop(h, None)
+
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
+                resp = await client.request(
+                    method=request.method,
+                    url=target_url,
+                    headers=headers,
+                    content=body,
+                )
+            content = resp.content
+            ct = resp.headers.get('content-type', '')
+            if 'text/html' in ct:
+                idx = content.lower().find(b'<head>')
+                if idx >= 0:
+                    insert_at = idx + 6
+                    content = content[:insert_at] + _WS_INJECT + content[insert_at:]
+
+            excluded = {'transfer-encoding', 'connection', 'content-encoding', 'content-length'}
+            resp_headers = {k: v for k, v in resp.headers.items() if k.lower() not in excluded}
+            return Response(content=content, status_code=resp.status_code, headers=resp_headers)
+        except Exception as e:
+            return HTMLResponse(
+                f'<html><body style="background:#0f0f1a;color:#e8e8f0;display:flex;'
+                f'align-items:center;justify-content:center;height:100vh;'
+                f'font-family:sans-serif;text-align:center">'
+                f'<div><h2>ComfyUI 连接失败</h2>'
+                f'<p style="color:#8a8a9e;margin:12px 0">无法连接到 {target_url.split("/")[2]}</p>'
+                f'<p style="color:#8a8a9e;font-size:13px">{e}</p>'
+                f'<p style="color:#8a8a9e;font-size:12px;margin-top:16px">'
+                f'请确认 ComfyUI 已启动: <code>CUDA_VISIBLE_DEVICES=N python main.py --listen 127.0.0.1 --port 8189</code></p>'
+                f'</div></body></html>',
+                status_code=502,
+            )
 
 
 # ── 静态前端 /ui ──

@@ -19,6 +19,19 @@ from utils.ffmpeg_tools import generate_srt
 FFMPEG = shutil.which('ffmpeg') or 'ffmpeg'
 
 
+def _ffpath(p: str) -> str:
+    """Windows 反斜杠会被 ffmpeg filter 语法吞掉，统一转正斜杠"""
+    return p.replace('\\', '/')
+
+
+def _valid_video(path: str) -> bool:
+    """校验 ffmpeg 输出文件存在且非空（0 字节视为失败）"""
+    try:
+        return os.path.isfile(path) and os.path.getsize(path) > 1024
+    except OSError:
+        return False
+
+
 class PostProcessor:
     """共享后处理器：RIFE 过渡、LUT 调色、BGM ducking、STT 字幕。"""
 
@@ -157,7 +170,7 @@ class PostProcessor:
         shutil.move(video_path, temp)
         cmd = [
             FFMPEG, '-y', '-i', temp,
-            '-vf', f"lut3d='{lut_path}'",
+            '-vf', f"lut3d='{_ffpath(lut_path)}'",
             '-c:a', 'copy',
             '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
             '-pix_fmt', 'yuv420p',
@@ -165,11 +178,15 @@ class PostProcessor:
         ]
         try:
             subprocess.run(cmd, capture_output=True, timeout=600)
+            if not _valid_video(video_path):
+                raise RuntimeError('LUT apply produced empty/invalid output')
             os.remove(temp)
-            return os.path.isfile(video_path)
+            return True
         except Exception as e:
             print(f'  ⚠ apply_lut failed: {e}')
             if os.path.isfile(temp):
+                if os.path.isfile(video_path):
+                    os.remove(video_path)
                 shutil.move(temp, video_path)
             return False
 
@@ -243,9 +260,10 @@ class PostProcessor:
         cmd = [
             FFMPEG, '-y', '-i', temp, '-i', bgm_path,
             '-filter_complex',
-            f'[1:a]volume={volume}[bgm];'
-            f'[bgm][0:a]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=300[ducked];'
-            f'[0:a][ducked]amix=inputs=2:duration=first:weights=1 0.8[a]',
+            f'[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,volume={volume}[bgm];'
+            f'[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,asplit=2[av][avsc];'
+            f'[bgm][avsc]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=300[ducked];'
+            f'[av][ducked]amix=inputs=2:duration=first:weights=1 0.8[a]',
             '-map', '0:v', '-map', '[a]',
             '-c:v', 'copy',
             '-c:a', 'aac', '-b:a', '192k',
@@ -253,11 +271,15 @@ class PostProcessor:
         ]
         try:
             subprocess.run(cmd, capture_output=True, timeout=600)
+            if not _valid_video(video_path):
+                raise RuntimeError('BGM mix produced empty/invalid output')
             os.remove(temp)
-            return os.path.isfile(video_path)
+            return True
         except Exception as e:
             print(f'  ⚠ add_bgm failed: {e}')
             if os.path.isfile(temp):
+                if os.path.isfile(video_path):
+                    os.remove(video_path)
                 shutil.move(temp, video_path)
             return False
 
@@ -271,7 +293,7 @@ class PostProcessor:
         temp = video_path.replace('.mp4', '_resub.mp4')
         shutil.move(video_path, temp)
         subtitle_filter = (
-            f"subtitles='{srt_path}':force_style='FontSize=24,"
+            f"subtitles='{_ffpath(srt_path)}':force_style='FontSize=24,"
             f"PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
             f"BorderStyle=1,Outline=2,Alignment=2'"
         )
@@ -283,11 +305,15 @@ class PostProcessor:
                  video_path],
                 capture_output=True, timeout=600,
             )
+            if not _valid_video(video_path):
+                raise RuntimeError('subtitle burn produced empty/invalid output')
             os.remove(temp)
-            return os.path.isfile(video_path)
+            return True
         except Exception as e:
             print(f'  ⚠ burn_subtitles failed: {e}')
             if os.path.isfile(temp):
+                if os.path.isfile(video_path):
+                    os.remove(video_path)
                 shutil.move(temp, video_path)
             return False
 

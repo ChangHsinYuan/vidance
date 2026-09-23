@@ -47,8 +47,8 @@ VALID_STAGES = ('queued', 'generating', 'post_processing', 'completed', 'failed'
 
 
 def load_config():
-    with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-        return json.load(f)
+    from utils.config_loader import load_config as _load
+    return _load()
 
 
 class TaskQueue:

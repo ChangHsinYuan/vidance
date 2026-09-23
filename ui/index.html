@@ -188,6 +188,7 @@
     padding: 4px 8px;
   }
   #btn-settings:hover { color: var(--fg); }
+  #btn-comfyui:hover { color: var(--fg); }
 
   /* 窄屏响应式 */
   @media (max-width: 768px) {
@@ -205,6 +206,7 @@
     <button id="btn-menu" onclick="toggleSidebar()">☰</button>
     <span class="brand">Vidance</span>
     <span class="title" id="session-title">新会话</span>
+    <button id="btn-comfyui" onclick="window.open('/ui_comfyui?instance=wan','_blank')" title="ComfyUI 节点画布" style="background:none;border:none;color:var(--fg-dim);font-size:14px;cursor:pointer;padding:4px 8px;">🎨</button>
     <button id="btn-settings" onclick="openModelModal()" title="模型设置">⚙</button>
     <button id="btn-new" onclick="newSession()">＋ 新建</button>
   </div>
