@@ -119,6 +119,9 @@ class FastLine:
             # Pexels 图源（首选，精准对题且已 md5 去重）。
             # 先 LLM 把概念拆成 n 个"视觉名词式"搜索词（避免整句问句被搜索引擎
             # 返回字典/笔画图等无关结果），逐词各取一图，让每张图贴合一段旁白。
+            # 2026-09-23 修复：爬的每张图过多模态 LLM 相关性审核（assess_image_relevance），
+            #   不达标删除，不足再由 FLUX 补足——与 FLUX 路径同口径（之前 crawl 裸爬不审，
+            #   导致"爬的图完全不对"）。
             print(f'  [crawl] 为概念取参考图（目标 {n} 张，Pexels 图源）...')
             try:
                 keywords = self.crawler.extract_keywords(concept, llm=self.llm, n=n)
@@ -130,9 +133,23 @@ class FastLine:
                     break
                 try:
                     items = self.crawler.download_images(kw, save_dir, top=1)
-                    imgs.extend(it['path'] for it in items)
                 except Exception as e:
                     print(f'  ⚠ [图源缺省] 爬图 "{kw}" 失败（{e}）')
+                    continue
+                for it in items:
+                    path = it['path']
+                    rel = self.llm.assess_image_relevance(path, kw)
+                    if rel.get('pass'):
+                        imgs.append(path)
+                        print(f'  [审核 ✓] score={rel.get("score")} "{kw}": '
+                              f'{os.path.basename(path)}')
+                    else:
+                        print(f'  [审核 ✗] score={rel.get("score")} "{kw}": '
+                              f'{os.path.basename(path)} — {rel.get("reason", "")}')
+                        try:
+                            os.remove(path)
+                        except OSError:
+                            pass
             # 仍不足则用原概念兜底
             if len(imgs) < n:
                 try:

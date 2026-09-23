@@ -239,7 +239,7 @@
     <button id="btn-menu" onclick="toggleSidebar()">☰</button>
     <span class="brand">Vidance</span>
     <span class="title" id="session-title">新会话</span>
-    <button id="btn-comfyui" onclick="window.open('/ui_comfyui?instance=wan','_blank')" title="ComfyUI 节点画布" style="background:none;border:none;color:var(--fg-dim);font-size:14px;cursor:pointer;padding:4px 8px;">🎨</button>
+    <button id="btn-comfyui" onclick="openComfyUI()" title="ComfyUI 节点画布" style="background:none;border:none;color:var(--fg-dim);font-size:14px;cursor:pointer;padding:4px 8px;">🎨</button>
     <button id="btn-log" onclick="toggleLog()" title="详细日志">📋</button>
     <button id="btn-settings" onclick="openModelModal()" title="模型设置">⚙</button>
     <button id="btn-new" onclick="newSession()">＋ 新建</button>
@@ -954,6 +954,13 @@ function newSession() {
     <p>输入 <code>/</code> 查看全部命令</p></div>`;
   $('#session-title').textContent = '新会话';
   input.focus();
+}
+
+/* ── 打开 ComfyUI 自带前端（直连，不走代理）── */
+function openComfyUI() {
+  // 用当前访问的主机名 + 默认实例端口 8189（Wan），远程访问也能正确跳转
+  const host = window.location.hostname || '127.0.0.1';
+  window.open(`http://${host}:8189/`, '_blank');
 }
 
 /* ── 可折叠日志面板 ── */
