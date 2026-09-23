@@ -12,21 +12,36 @@
 
 - v0：初步简陋的流程：
 [v0](./assets/v0.mp4)
-- v1：3dgs/f;ux加入
+- v1：一致性初步：生图/3D锚点：3dgs/flux加入
 [v1](./assets/v13dgs.mp4)
 [v1](./assets/v1flux.mp4)
-- v2：
+- v2：长视频测试
 [v2](./assets/v2.mp4)
-- v3：
+- v3：一致性增强：生图/3D锚点增强
 [v3](./assets/v3.mp4)
-- v4：
+- v4：营销号初步
 [v4](./assets/v4.mp4)
-- v5：
+- v5：营销号修复
 [v5](./assets/v5.mp4)
-- v6：
+- v6：多轮对话核实
 <img src="./assets/v6_demo.jpg">
-- v7：
+- v7：前端初步
 <img src="./assets/v7_demo.png">
+- v8：前端增强
+<img src="./assets/v8_ui.png">
+<img src="./assets/v8_log.png">
+<img src="./assets/v8_comfyui.png">
+- v9：API配置
+<img src="./assets/v9_api1.png">
+<img src="./assets/v9_api2.png">
+- v10：
+- v11：
+- v12：
+- v13：
+- v14：
+- v15：
+
+
 
 更多demo参看PPT
 
