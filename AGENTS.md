@@ -8,9 +8,9 @@ Vidance 是一个基于 opencode agent 编排的本地视频生成系统。核�
 
 **统一入口**：`python core/vidance.py {auto|custom|quick}` — auto 模式走 LLM 编剧+Wan/FLUX 生成，custom 模式走参考图+预写脚本+H3 ref2va 生成，quick 模式纯 T2V 无后处理。后处理（RIFE/LUT/BGM/STT）由 `core/postprocess.py` 共享模块提供。
 
-**当前状态：v2 长视频完成 + v2.1 backlog 接线完成 + v3 完成（M0-M7，M8 跳过）+ v4 M1-M6 完成 + v5 剪辑特效完成（M1-M4）+ v6 prompt 多轮核实完成（M1-M4）+ v7 前端 M1-M4 代码完成（端到端待 GPU）+ v8/v9 文档已就绪**（2026-09-15）。
+**当前状态：v0-v7 全部实现**（v2 长视频 + v2.1 backlog + v3 M0-M7 + v4 M1-M6 + v5 M1-M4 + v6 M1-M4 + v7 前端 M1-M4），**v8-v15 规划就绪**（2026-09-23 重排）。
 
-**版本路线**：v4 营销号流水线（fast/hot 爬图出片）→ v5 剪辑特效 → v6 prompt 多轮核实（ask 交互 + dialog API）→ v7 前端 agent WebUI（仿豆包，左栏+画布+发框+`/`命令调 tool，访问 :8894/ui）→ v8 一镜到底 → v9 机器人网关（企微/飞书/钉钉…）。
+**版本路线**：v4 营销号流水线（fast/hot 爬图出片）→ v5 剪辑特效 → v6 prompt 多轮核实（ask + dialog API）→ v7 前端 agent WebUI（:8894/ui）→ **v8 前端增强**（资产库/分镜预览/进度可视化/时间线展示）→ **v9 API 标准化**（多 Vendor 适配/能力发现/用量限流/OpenAPI）→ **v10 拼接与特效**（OpenCut 时间线思路，后端 CLI 可被 LLM 调用）→ **v11 接入社交媒体**（发布渠道 + IM 机器人网关）→ **v12 整合开源仓库**（断点续跑/JSON 容错/RAG/五维提示词）→ **v13 多智能体**（三层 Agent 解耦）→ **v14 长视频质量**（关键帧驱动/一镜到底/层级一致性）→ **v15 轻量化**（纯 API 模式/无 GPU）。详见 docs/roadmap.md。
 
 v1 角色锚流程：FLUX 生角色图 → TripoSplat 重建 3DGS → 每镜 RenderSplat 按角度渲染参考帧 → Wan I2V 生成。
 
@@ -108,8 +108,9 @@ vidance/
 │   ├── fastline.py            # v4 M6 快速营销号链路（图片+zoompan 运镜+RIFE，跳过视频模型，M6 已封装）
 │   ├── effects.py             # v5 剪辑特效（8 种镜头内特效 + xfade 链式转场，M1-M4 已实现）
 │   ├── dialog.py              # v6 prompt 多轮核实状态机（DialogManager，SQLite，M1-M4 已实现）
-│   ├── oneshot.py             # v8 一镜到底（链式 I2V 末帧回灌 + 运镜脚本 + 漂移控制；🎯 待实现）
-│   ├── notify/                # v9 机器人网关（base/wecom/feishu/dingtalk/factory；🎯 待实现）
+│   ├── compose.py             # v10 时间线拼接与特效（OpenCut 思路，后端 CLI；🎯 待实现）
+│   ├── oneshot.py             # v14 一镜到底（链式 I2V 末帧回灌 + 运镜脚本 + 漂移控制；🎯 待实现）
+│   ├── notify/                # v11 社交媒体/IM 网关（base/wecom/feishu/dingtalk/factory；🎯 待实现）
 │   ├── luts/                  # v2 LUT 文件目录（cinematic/warm/cool/vintage/vivid/soft .cube）
 │   └── workflows/
 │       ├── wan_t2v.json       # Wan T2V workflow 模板
@@ -474,6 +475,10 @@ curl http://127.0.0.1:8894/api/options                   # 音色/LUT/BGM/特效
 curl -X POST http://127.0.0.1:8894/api/tool/fast -H 'Content-Type: application/json' -d '{"args":"概念 -n 3 --effects auto"}'
 curl http://127.0.0.1:8894/api/video/{task_id} -o final.mp4   # 成片视频流
 
-# ── 已规划（🎯 待实现，见 docs/v7-design.md ~ v8-design.md）──
-# v8 一镜到底（链式 I2V 拼缝隐形，30s+）
+# ── 已规划（🎯 待实现，见 docs/roadmap.md §4）──
+# v8 前端增强 / v9 API 标准化 / v10 拼接特效（后端 CLI）/ v11 社交媒体
+# v12 整合开源 / v13 多智能体 / v14 长视频质量（含一镜到底）/ v15 轻量化
+# v10 拼接命令示例（规划）：
+# python core/vidance.py compose timeline.json -o final.mp4
+# v14 一镜到底（规划）：
 # python core/vidance.py auto "穿越隧道的光" --oneshot --duration 30
