@@ -21,6 +21,7 @@ API:
   GET    /api/clip/{id}      查询裁剪任务
 """
 import argparse
+import glob
 import json
 import os
 import sys
@@ -364,6 +365,40 @@ def video_stream(task_id: str):
     if not output or not os.path.exists(output):
         raise HTTPException(status_code=404, detail='Video not found (task may still be running)')
     return FileResponse(output, media_type='video/mp4', filename=os.path.basename(output))
+
+
+# ── /api/tasks/{task_id}/log：任务详细日志（v7 折叠日志面板用）──
+@app.get('/api/tasks/{task_id}/log')
+def task_log(task_id: str, tail: int = Query(400, ge=1, le=5000)):
+    """返回任务目录下日志文件的内容（默认末尾 400 行）。
+
+    日志来源优先级：scheduler.log → 任意 *.log → 无。任务运行中会实时增长，
+    前端轮询此端点即可看到实时日志。
+    """
+    out_root = load_config().get('output_dir', 'output')
+    task_dir = os.path.join(out_root, task_id)
+    if not os.path.isdir(task_dir):
+        raise HTTPException(status_code=404, detail='Task dir not found')
+    log_files = sorted(glob.glob(os.path.join(task_dir, '*.log')))
+    # scheduler.log 优先放最前
+    log_files.sort(key=lambda p: (os.path.basename(p) != 'scheduler.log', p))
+    if not log_files:
+        return {'task_id': task_id, 'log': '', 'files': []}
+    chunks = []
+    for lf in log_files:
+        try:
+            with open(lf, 'r', errors='replace') as f:
+                lines = f.readlines()
+            body = ''.join(lines[-tail:])
+            if len(log_files) > 1:
+                chunks.append(f'===== {os.path.basename(lf)} =====\n{body}')
+            else:
+                chunks.append(body)
+        except Exception as e:
+            chunks.append(f'[读取 {os.path.basename(lf)} 失败: {e}]')
+    return {'task_id': task_id, 'log': '\n'.join(chunks),
+            'files': [os.path.basename(p) for p in log_files],
+            'mtime': max(os.path.getmtime(p) for p in log_files)}
 
 
 # ── /api/options：枚举（音色/LUT/BGM/特效/运镜），供前端下拉 ──

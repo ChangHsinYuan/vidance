@@ -77,6 +77,8 @@
   .card video { width: 100%; border-radius: 8px; margin-top: 10px; max-height: 320px; background: #000; }
   .card .cand, .msg.bot .cand { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; font-size: 13px; }
   .card .score, .msg.bot .score { color: var(--ok); font-weight: 700; min-width: 24px; }
+  .kv { display: flex; gap: 8px; padding: 2px 0; font-size: 13px; }
+  .kv .k { color: var(--fg-dim); min-width: 44px; }
   .pill { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 11px; margin-right: 6px; }
   .pill.running { background: #2a2a55; color: var(--accent); }
   .pill.completed { background: #1a3a2e; color: var(--ok); }
@@ -189,6 +191,37 @@
   }
   #btn-settings:hover { color: var(--fg); }
   #btn-comfyui:hover { color: var(--fg); }
+  #btn-log {
+    background: none; border: none; color: var(--fg-dim); font-size: 16px; cursor: pointer;
+    padding: 4px 8px;
+  }
+  #btn-log:hover, #btn-log.on { color: var(--accent); }
+
+  /* 可折叠日志面板（底部抽屉） */
+  #log-panel {
+    position: fixed; left: 0; right: 0; bottom: 0; height: 40vh; max-height: 420px;
+    background: #0d0d1a; border-top: 1px solid #2a2a4a; z-index: 80;
+    display: flex; flex-direction: column;
+    transform: translateY(100%); transition: transform .22s ease;
+    box-shadow: 0 -8px 24px rgba(0,0,0,.5);
+  }
+  #log-panel.open { transform: translateY(0); }
+  #log-head {
+    display: flex; align-items: center; gap: 12px; padding: 8px 14px;
+    border-bottom: 1px solid #232342; font-size: 13px; color: var(--fg-dim);
+  }
+  #log-head .log-task { color: var(--accent); font-family: monospace; }
+  #log-head .log-auto { margin-left: auto; display: flex; align-items: center; gap: 4px; font-size: 12px; }
+  #log-head .log-auto input { width: auto; }
+  #log-head .log-x {
+    background: none; border: none; color: var(--fg-dim); cursor: pointer; font-size: 14px;
+  }
+  #log-head .log-x:hover { color: var(--err); }
+  #log-body {
+    flex: 1; overflow-y: auto; margin: 0; padding: 10px 14px;
+    font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; line-height: 1.5;
+    color: #b8c1d9; white-space: pre-wrap; word-break: break-all;
+  }
 
   /* 窄屏响应式 */
   @media (max-width: 768px) {
@@ -207,6 +240,7 @@
     <span class="brand">Vidance</span>
     <span class="title" id="session-title">新会话</span>
     <button id="btn-comfyui" onclick="window.open('/ui_comfyui?instance=wan','_blank')" title="ComfyUI 节点画布" style="background:none;border:none;color:var(--fg-dim);font-size:14px;cursor:pointer;padding:4px 8px;">🎨</button>
+    <button id="btn-log" onclick="toggleLog()" title="详细日志">📋</button>
     <button id="btn-settings" onclick="openModelModal()" title="模型设置">⚙</button>
     <button id="btn-new" onclick="newSession()">＋ 新建</button>
   </div>
@@ -236,6 +270,15 @@
         </div>
       </div>
     </div>
+  </div>
+  <div id="log-panel">
+    <div id="log-head">
+      <span>📋 详细日志</span>
+      <span id="log-task" class="log-task">—</span>
+      <label class="log-auto"><input type="checkbox" id="log-follow" checked> 自动滚动</label>
+      <button class="log-x" onclick="toggleLog()">✕</button>
+    </div>
+    <pre id="log-body">（运行任务后，这里显示实时日志）</pre>
   </div>
   <div id="model-modal">
     <div class="modal-box">
@@ -279,6 +322,8 @@ let TOOLS = [];               // /api/tools
 let TOOLS_LOADED = false;
 let activeDialog = null;      // v6 dialog {dialog_id, status, ...}（自然语言对话中）
 let pollers = {};             // task_id → interval
+let logTaskId = null;         // 日志面板当前跟踪的任务
+let logTimer = null;          // 日志轮询 interval
 const pollInterval = 2000;
 
 /* ── 初始化 ── */
@@ -319,8 +364,20 @@ function showTask(taskId) {
       addTaskCard(t);
       startPolling(t.task_id);
     }
+    setLogTask(taskId);
     $('#sidebar').classList.remove('open');
     scrollBottom();
+  });
+}
+
+function playTask(taskId) {
+  fetch(`/api/tasks/${taskId}`).then(r => r.json()).then(t => {
+    addVideoCard(t); scrollBottom();
+  });
+}
+function watchTask(taskId) {
+  fetch(`/api/tasks/${taskId}`).then(r => r.json()).then(t => {
+    addTaskCard(t); startPolling(taskId); scrollBottom();
   });
 }
 
@@ -454,6 +511,7 @@ async function dispatchSlash(text) {
     const t = await (await fetch(`/api/tasks/${d.task_id}`)).json();
     addTaskCard(t);
     startPolling(d.task_id);
+    setLogTask(d.task_id);   // 日志面板自动跟踪新任务
     return;
   }
   // v6 dialog
@@ -474,6 +532,24 @@ async function dispatchSlash(text) {
   if (d.voices) {
     addBot(`<b>${escapeHtml(d.message)}</b>\n` + d.voices.map(v =>
       `• ${escapeHtml(v.name || v)} ${v.desc ? '— ' + escapeHtml(v.desc) : ''}`).join('\n'));
+    return;
+  }
+  // status：单个任务详情（文字展示，不做卡片/轮询）
+  if (name === 'status' && d.task) {
+    const t = d.task;
+    const rows = [
+      ['概念', t.concept],
+      ['状态', t.status],
+      ['阶段', t.stage],
+      ['进度', Math.round((t.progress || 0) * 100) + '%'],
+      ['创建', t.created_at],
+      ['完成', t.completed_at || '-'],
+      ['输出', t.output || '-'],
+      ['错误', t.error || '-'],
+    ].map(([k, v]) => `<div class="kv"><span class="k">${k}</span><span>${escapeHtml(String(v))}</span></div>`).join('');
+    addBot(`<b>任务 ${escapeHtml(t.task_id)}</b>${rows}`
+      + (t.status === 'completed' ? `<br><button class="chip-btn" onclick="playTask('${t.task_id}')">→ 播放成片</button>` : '')
+      + (t.status === 'running' || t.status === 'queued' ? `<br><button class="chip-btn" onclick="watchTask('${t.task_id}')">→ 跟踪进度</button>` : ''));
     return;
   }
   // video tool
@@ -879,6 +955,60 @@ function newSession() {
   $('#session-title').textContent = '新会话';
   input.focus();
 }
+
+/* ── 可折叠日志面板 ── */
+function toggleLog() {
+  const panel = $('#log-panel');
+  const btn = $('#btn-log');
+  const open = panel.classList.toggle('open');
+  btn.classList.toggle('on', open);
+  if (open) {
+    if (logTaskId) startLogPoll();
+    else if (TOOLS && refreshTasks) {
+      // 未指定任务时，自动跟踪最近一个任务
+      fetch('/api/tasks?limit=1').then(r => r.json()).then(d => {
+        if (d.tasks && d.tasks.length) { setLogTask(d.tasks[0].task_id); }
+        else { $('#log-body').textContent = '（暂无任务）'; }
+      }).catch(() => {});
+    }
+  } else {
+    stopLogPoll();
+  }
+}
+
+function setLogTask(taskId) {
+  logTaskId = taskId;
+  $('#log-task').textContent = taskId;
+  const body = $('#log-body');
+  if (body.textContent.startsWith('（')) body.textContent = '';
+  // 若面板已打开，立即跟踪该任务；未打开则只记录，等用户点 📋 再看
+  if ($('#log-panel').classList.contains('open')) startLogPoll();
+}
+
+async function fetchLog() {
+  if (!logTaskId) return;
+  try {
+    const r = await fetch(`/api/tasks/${logTaskId}/log?tail=500`);
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      $('#log-body').textContent = '日志不可用：' + (d.detail || r.status);
+      return;
+    }
+    const d = await r.json();
+    const body = $('#log-body');
+    body.textContent = d.log || '（暂无日志内容）';
+    if ($('#log-follow').checked) body.scrollTop = body.scrollHeight;
+  } catch (e) {
+    $('#log-body').textContent = '日志请求失败：' + e;
+  }
+}
+
+function startLogPoll() {
+  stopLogPoll();
+  fetchLog();
+  logTimer = setInterval(fetchLog, 2000);
+}
+function stopLogPoll() { if (logTimer) { clearInterval(logTimer); logTimer = null; } }
 
 init();
 </script>

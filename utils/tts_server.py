@@ -213,18 +213,33 @@ async def synthesize_edge(text, voice, speed):
     timestamps = []
     current = 0.0
     for idx, sent in enumerate(sentences):
-        communicate = edge_tts.Communicate(
-            sent, edge_vid, rate=edge_rate, pitch=pitch, boundary='WordBoundary'
-        )
         mp3_data = b''
         word_cues = []
-        async for chunk in communicate.stream():
-            if chunk['type'] == 'audio':
-                mp3_data += chunk['data']
-            elif chunk['type'] == 'WordBoundary':
-                word_cues.append(chunk)
-        if not mp3_data:
-            raise RuntimeError(f'edge-tts no audio for sentence {idx+1}')
+        # edge-tts 走微软在线服务，偶发 Connection timeout；重试 3 次抗抖
+        last_err = None
+        for attempt in range(1, 4):
+            try:
+                communicate = edge_tts.Communicate(
+                    sent, edge_vid, rate=edge_rate, pitch=pitch, boundary='WordBoundary'
+                )
+                mp3_data = b''
+                word_cues = []
+                async for chunk in communicate.stream():
+                    if chunk['type'] == 'audio':
+                        mp3_data += chunk['data']
+                    elif chunk['type'] == 'WordBoundary':
+                        word_cues.append(chunk)
+                if mp3_data:
+                    last_err = None
+                    break
+                last_err = RuntimeError('empty audio')
+            except Exception as e:
+                last_err = e
+            if attempt < 3:
+                logger.warning(f'edge-tts attempt {attempt}/3 failed for sentence {idx+1}: {last_err}')
+                await asyncio.sleep(1.0 * attempt)
+        if last_err is not None or not mp3_data:
+            raise RuntimeError(f'edge-tts failed after retries (sentence {idx+1}): {last_err}')
         # MP3 → WAV (24kHz mono)
         wav_bytes = mp3_to_wav(mp3_data, target_sr=24000)
         dur = len(wav_bytes) / (24000 * 2)  # 16bit mono = 2 bytes/sample

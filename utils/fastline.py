@@ -266,16 +266,45 @@ class FastLine:
             raise RuntimeError(f'Ken Burns 生成失败: {img_path}')
 
     # ══ 4. 每段 TTS 旁白 ══
-    def _tts_segment(self, text, out_path, voice, speed, fallback_seconds=3.0):
-        """TTS 合成。服务不可用时生成静音音频兜底（流程不崩，打印缺省警告）。"""
-        try:
-            r = self.tts.synthesize(text, output_path=out_path, voice=voice, speed=speed)
-            return r.get('audio_path', out_path)
-        except Exception as e:
-            print(f'  ⚠ [TTS 缺省] TTS 服务不可用（{e}），段音频用静音 {fallback_seconds}s 兜底')
-            print(f'    （启动 TTS: CUDA_VISIBLE_DEVICES=2 TTS_FP16=1 python utils/tts_server.py）')
-            self._gen_silence(out_path, fallback_seconds)
-            return out_path
+    def _tts_segment(self, text, out_path, voice, speed, fallback_seconds=3.0,
+                     retries=3):
+        """TTS 合成，带重试与降级兜底。
+
+        降级链：目标音色（重试 retries 次，抗 edge-tts 偶发网络超时）
+                 → 本地 CosyVoice 音色 cosy-default（离线可跑，真声）
+                 → 静音音频（最后兜底，流程不崩，打印缺省警告）。
+        """
+        import time as _time
+        # 1) 目标音色，重试抗网络抖动
+        last_err = None
+        for attempt in range(1, retries + 1):
+            try:
+                r = self.tts.synthesize(text, output_path=out_path, voice=voice, speed=speed)
+                if attempt > 1:
+                    print(f'    [TTS 重试成功] 第 {attempt} 次（{voice}）')
+                return r.get('audio_path', out_path)
+            except Exception as e:
+                last_err = e
+                if attempt < retries:
+                    print(f'    ⚠ TTS 第 {attempt}/{retries} 次失败（{voice}）: {e}，重试…')
+                    _time.sleep(1.5 * attempt)
+
+        # 2) edge-* 失败 → 降级到本地 CosyVoice（真声，避免"有字幕没语音"）
+        if voice and voice.startswith('edge-') and voice != 'cosy-default':
+            try:
+                print(f'  ⚠ [TTS 降级] {voice} 不可用（{last_err}），改用本地 cosy-default')
+                r = self.tts.synthesize(text, output_path=out_path,
+                                        voice='cosy-default', speed=speed)
+                return r.get('audio_path', out_path)
+            except Exception as e2:
+                last_err = e2
+                print(f'  ⚠ [TTS 降级] cosy-default 也不可用（{e2}）')
+
+        # 3) 最后兜底：静音
+        print(f'  ⚠ [TTS 缺省] TTS 服务不可用（{last_err}），段音频用静音 {fallback_seconds}s 兜底')
+        print(f'    （启动 TTS: CUDA_VISIBLE_DEVICES=2 TTS_FP16=1 python utils/tts_server.py）')
+        self._gen_silence(out_path, fallback_seconds)
+        return out_path
 
     @staticmethod
     def _gen_silence(out_path, seconds):
