@@ -27,3 +27,6 @@ __pycache__/
 # Temp
 compaction.md
 *.tmp
+
+
+*.tar.gz
