@@ -338,7 +338,12 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 **范围**：
 - 纯 API 模式：所有生成任务可切云端 API（SiliconFlow 等），完全不依赖本地 GPU（对接 v9 模型提供商）
-- Pipeline 轻量化：去除 GPU 依赖的预处理/后处理，或替换 CPU 版本
+- Pipeline 轻量化：去除 GPU 依赖的处理。**无 GPU 出片两条线**（均已具备或已规划）：
+  1. **营销号流水线（已有）**：v4/v5 的生图/爬图 → zoompan 运镜 → TTS → 剪辑，零视频模型，已可用
+  2. **LLM 生成 SVG → 渲染成片（规划）**：LLM 产出带 CSS/SMIL 动画的自包含 SVG → 无头浏览器逐帧渲染 → ffmpeg 拼帧 → mp4。**纯 CPU、秒级、矢量清晰**，适合信息图/文字动画/数据可视化/科普短片。拟落 `utils/svg_pipeline.py`（见下）
+     - 关键设计：**确定性逐帧**（用 Web Animations API 把动画 `currentTime=t` 后 pause 再截图，而非 wall-clock `wait_for_timeout`），保证帧率精确无抖动
+     - 渲染后端：Playwright/Chromium（需装）或 `resvg`/`cairosvg`（仅静态帧）；`node` 已就绪可走 puppeteer
+     - 可选：LLM 直接给 SVG 代码 + 时长/分辨率 → 一条命令出片；后续可接 v9 模型提供商
 - 模型层面轻量化：小模型做预览/草稿，大模型做最终渲染
 - 按需加载：各步骤按需初始化，不预加载所有模型
 - Docker 轻量化部署：分离 CPU 服务（API/前端/调度）与 GPU 服务（生成）
@@ -347,6 +352,23 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 **里程碑**：M1 纯 API 模式 → M2 按需加载+CPU 后处理 → M3 草稿/成片双档 → M4 Docker 分离部署
 
 **参考**：BigBanana Docker Compose、Toonflow ONNX、v9 模型提供商系统。
+
+---
+
+### v16 — 营销号 Plus：视频链接二创（🎯 待开发，backlog）
+
+**目标**：用户给一个**视频链接**（B站/抖音/YouTube 等），流水线自动二创出一条新视频，**保留原有全部功能**。
+
+**范围**：
+- **素材获取**：yt-dlp 下载原视频（复用 v4 voice_clone 的 yt-dlp 能力）→ 抽帧/切片
+- **内容理解**：帧 → 多模态 LLM 描述 + STT（`utils/stt.py`）转写旁白 → 分镜/要点
+- **二创剪辑**：画面二创（可选重排、变速、局部放大、v5 特效/转场）＋ **重新 TTS 配音**（改写解说词，`utils/tts.py`）＋ 字幕（STT）＋ LUT/BGM
+- **去重/合规**：画面改写强度可调（翻转/裁剪/调色/插帧），避免直接搬运；保留人工审核出口
+- **一条命令**：`python core/vidance.py rework "<视频链接>" --style 解说 --voice cosy-jieshuo1`
+
+**依赖**：v4 下载/STT/TTS + v5 剪辑特效 + v10 时间线 compose（把二创素材编排成时间线）。
+
+**里程碑**：M1 下载+抽帧+转写 → M2 改写解说词+重配音 → M3 画面二创（特效/转场）→ M4 一条命令端到端。
 
 ---
 
@@ -436,6 +458,8 @@ vidance/
 │   ├── rife.py / gen_luts.py / music.py / stt.py
 │   ├── compose.py             # v10 时间线拼接（M1-M4 已实现）
 │   ├── t2c_server.py          # t2c 自然语言→命令（translate，进程内/可选 HTTP）
+│   ├── h3_prompt_video.py     # 整段式 prompt + 参考图 → H3 ref2va 单镜（原生音频直出）
+│   ├── svg_pipeline.py        # v15 SVG/HTML 动画 → mp4（无头浏览器逐帧渲染，🎯 待完善）
 │   ├── oneshot.py             # v14 一镜到底（🎯 待实现）
 │   ├── notify/                # v11 机器人网关（🎯 待实现）
 │   ├── luts/  bgm/  workflows/  voices/

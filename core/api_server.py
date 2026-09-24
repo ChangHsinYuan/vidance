@@ -306,6 +306,146 @@ def get_clip(job_id: str):
     return job
 
 
+# ══ 整段式 prompt → H3 ref2va 单镜（异步，长耗时 15-20min/镜）══
+
+class H3ShotRequest(BaseModel):
+    prompt: str
+    refs: list = []            # 参考图路径列表（顺序对应 <Picture i>）
+    names: list = []           # 角色名（与 refs 对齐，可空）
+    output: Optional[str] = None
+    seconds: Optional[float] = None
+    width: int = 1344
+    height: int = 768
+    steps: int = 20
+    ref_image_size: str = 'match'
+    no_describe: bool = False
+
+
+_h3_jobs = {}
+_h3_jobs_lock = threading.Lock()
+
+
+def _run_h3shot(job_id: str, req: H3ShotRequest):
+    try:
+        from utils.h3_prompt_video import (
+            load_prompt_text, prepare_refs, build_h3_prompt, parse_seconds,
+        )
+        from utils.comfy_api import ComfyClient
+        from utils.llm import LLMClient
+
+        config = load_config()
+        output_dir = config['output_dir']
+        if req.output:
+            output_path = req.output if os.path.isabs(req.output) \
+                else os.path.join(output_dir, req.output)
+        else:
+            output_path = os.path.join(output_dir, f'h3_{job_id}', 'clip.mp4')
+        task_dir = os.path.dirname(os.path.abspath(output_path))
+        clips_dir = os.path.join(task_dir, 'clips')
+        os.makedirs(clips_dir, exist_ok=True)
+
+        prompt_text = load_prompt_text(req.prompt)
+        seconds = req.seconds if req.seconds is not None else parse_seconds(prompt_text)
+        length = int(round(seconds * 24))
+        refs = prepare_refs(req.refs, req.names, clips_dir)
+
+        descs = [''] * len(refs)
+        if not req.no_describe:
+            try:
+                llm = LLMClient(config)
+                descs = []
+                for tmp_path, name, _cn in refs:
+                    try:
+                        descs.append(llm.describe_character(tmp_path, name=name))
+                    except Exception:
+                        descs.append('')
+            except Exception:
+                descs = [''] * len(refs)
+
+        h3_prompt = build_h3_prompt(prompt_text, refs, descs)
+        h3 = ComfyClient(config=config, instance='h3')
+        result = h3.generate_h3_ref2v(
+            prompt=h3_prompt, ref_image_paths=[r[0] for r in refs],
+            seed=None, width=req.width, height=req.height, length=length,
+            steps=req.steps, ref_image_size=req.ref_image_size,
+            filename_prefix=f'vidance/h3_{job_id}', output_path=output_path,
+        )
+        out_rel = os.path.relpath(output_path, output_dir)
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'completed', 'output': output_path,
+                'video_url': '/api/file?path=' + output_path,
+                'seed': result.get('seed'), 'seconds': seconds,
+                'completed_at': datetime.now().isoformat(),
+            })
+    except Exception as e:
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'failed', 'error': str(e),
+                'completed_at': datetime.now().isoformat(),
+            })
+
+
+def _run_custom_job(job_id: str, rr: dict):
+    """参考图 + 多镜分镜脚本 → H3 ref2va 逐镜生成（异步，复用 core/custom_gen.run_custom）"""
+    try:
+        from core.custom_gen import run_custom
+        flags = rr.get('flags', {})
+        refs = rr['rep'].get('ref', [])
+        post_kwargs = {
+            'no_rife': bool(flags.get('no_rife')),
+            'lut_override': flags.get('lut'),
+            'no_color': False,
+            'bgm_override': flags.get('bgm'),
+            'no_bgm': False,
+            'use_stt': bool(flags.get('stt')),
+        }
+        meta = run_custom(
+            ref_images=refs,
+            script_path=flags.get('script'),
+            output_path=flags.get('o') or flags.get('output'),
+            ref_image_size=flags.get('ref_image_size', 'match'),
+            post_kwargs=post_kwargs,
+        )
+        out = meta.get('output')
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'completed', 'output': out,
+                'video_url': ('/api/file?path=' + out) if out else '',
+                'task_id': meta.get('task_id'),
+                'completed_at': datetime.now().isoformat(),
+            })
+    except Exception as e:
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'failed', 'error': str(e),
+                'completed_at': datetime.now().isoformat(),
+            })
+
+
+@app.post('/api/h3shot')
+def h3shot(req: H3ShotRequest):
+    if not req.prompt or not req.refs:
+        raise HTTPException(status_code=400, detail='需要 prompt 与至少一个 refs')
+    job_id = f'h3_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+    with _h3_jobs_lock:
+        _h3_jobs[job_id] = {
+            'job_id': job_id, 'prompt': req.prompt, 'refs': req.refs,
+            'status': 'running', 'created_at': datetime.now().isoformat(),
+        }
+    threading.Thread(target=_run_h3shot, args=(job_id, req), daemon=True).start()
+    return {'job_id': job_id, 'status': 'running', 'poll': f'/api/h3shot/{job_id}'}
+
+
+@app.get('/api/h3shot/{job_id}')
+def get_h3shot(job_id: str):
+    with _h3_jobs_lock:
+        job = _h3_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail='Job not found')
+    return job
+
+
 # ══ v6 prompt 多轮核实 dialog 端点 ══
 
 class DialogStart(BaseModel):
@@ -540,6 +680,25 @@ TOOLS = [
          {'key': 'timeline', 'type': 'text', 'required': True, 'desc': '时间线 JSON 路径'},
          {'key': '--output', 'type': 'text', 'desc': '输出路径（覆盖 JSON 内）'},
      ]},
+    {'name': 'h3shot', 'help': '整段式 prompt + 参考图 → H3 单镜（原生音频，异步）',
+     'params': [
+         {'key': '--prompt', 'type': 'text', 'required': True, 'desc': '整段式 prompt 文件（如 input/prompt1.txt）'},
+         {'key': '--ref', 'type': 'text', 'required': True, 'desc': '参考图（--ref 路径 --name 角色名，可重复）'},
+         {'key': '--name', 'type': 'text', 'desc': '角色名（与 --ref 对齐）'},
+         {'key': '-o', 'type': 'text', 'desc': '输出路径（相对→output_dir，如 prompt01/01.mp4）'},
+         {'key': '--seconds', 'type': 'number', 'desc': '时长（秒）；缺省从 prompt「约N秒」解析'},
+         {'key': '--ref-image-size', 'type': 'choice', 'choices': ['match', 'max'], 'desc': '参考图尺寸'},
+         {'key': '--no-describe', 'type': 'flag', 'desc': '跳过 LLM 看图描述'},
+     ]},
+    {'name': 'custom', 'help': '参考图 + 多镜分镜脚本 → H3 ref2va 逐镜生成（旧脚本格式）',
+     'params': [
+         {'key': '--ref', 'type': 'text', 'required': True, 'desc': '角色参考图（可重复）'},
+         {'key': '--script', 'type': 'text', 'required': True, 'desc': '分镜脚本路径（旧多镜格式）'},
+         {'key': '--ref-image-size', 'type': 'choice', 'choices': ['match', 'max'], 'desc': '参考图尺寸'},
+         {'key': '--lut', 'type': 'choice', 'choices': ['cinematic', 'warm', 'cool', 'vintage', 'vivid', 'soft'], 'desc': '调色'},
+         {'key': '--bgm', 'type': 'choice', 'choices': ['calm', 'uplifting', 'mysterious', 'dramatic', 'playful', 'epic'], 'desc': 'BGM'},
+         {'key': '--stt', 'type': 'flag', 'desc': 'STT 字幕'},
+     ]},
     {'name': 'clip', 'help': 'FunClip：长素材 ASR 转写+语义裁剪',
      'params': [
          {'key': 'input', 'type': 'text', 'required': True, 'desc': '音频/视频路径'},
@@ -637,6 +796,43 @@ def _parse_tool_args(argstr: str) -> dict:
 
 def _task_id_from_response(resp: dict) -> Optional[str]:
     return resp.get('task_id') if isinstance(resp, dict) else None
+
+
+def _parse_repeated(argstr: str, repeat_keys: set) -> dict:
+    """解析参数串，支持重复 flag（如 --ref a --ref b）。
+
+    返回 {pos: [...], rep: {key: [values...]}, flags: {key: value}}；
+    repeat_keys 命中的 flag 收集为列表，其余与 _parse_tool_args 一致。
+    """
+    import shlex
+    try:
+        tokens = shlex.split(argstr)
+    except ValueError:
+        tokens = argstr.split()
+    pos, flags, rep = [], {}, {}
+    i = 0
+    while i < len(tokens):
+        t = tokens[i]
+        if t.startswith('--'):
+            key = t[2:].replace('-', '_')
+            val = tokens[i + 1] if (i + 1 < len(tokens) and not tokens[i + 1].startswith('--')) else True
+            if key in repeat_keys:
+                rep.setdefault(key, []).append(val)
+            else:
+                flags[key] = val
+            i += 2 if val is not True else 1
+        elif t.startswith('-') and len(t) == 2:
+            key = t[1:]
+            val = tokens[i + 1] if (i + 1 < len(tokens) and not tokens[i + 1].startswith('-')) else True
+            if key in repeat_keys:
+                rep.setdefault(key, []).append(val)
+            else:
+                flags[key] = val
+            i += 2 if val is not True else 1
+        else:
+            pos.append(t)
+            i += 1
+    return {'pos': pos, 'rep': rep, 'flags': flags}
 
 
 @app.post('/api/tool/{name}')
@@ -783,6 +979,50 @@ def tool_dispatch(name: str, req: ToolRequest):
         return {'message': '成片已生成', 'output': out,
                 'compose_output': out,
                 'video_url': ('/api/file?path=' + out) if out else ''}
+
+    # ── h3shot（整段式 prompt + 参考图 → H3 单镜，异步）──
+    if name == 'h3shot':
+        rr = _parse_repeated(req.args or '', {'ref', 'name'})
+        refs = rr['rep'].get('ref', [])
+        names = rr['rep'].get('name', [])
+        prompt_file = rr['flags'].get('prompt') or (rr['pos'][0] if rr['pos'] else None)
+        if not prompt_file or not refs:
+            raise HTTPException(status_code=400,
+                                detail='用法: /h3shot --prompt <prompt.txt> --ref <图> [--name 名] ... [-o out]')
+        try:
+            req2 = H3ShotRequest(
+                prompt=prompt_file, refs=refs, names=names,
+                output=rr['flags'].get('o') or rr['flags'].get('output'),
+                seconds=float(rr['flags']['seconds']) if rr['flags'].get('seconds') not in (None, True) else None,
+                ref_image_size=rr['flags'].get('ref_image_size', 'match'),
+                no_describe=bool(rr['flags'].get('no_describe')),
+            )
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f'参数错误: {e}')
+        job_id = f'h3_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        with _h3_jobs_lock:
+            _h3_jobs[job_id] = {'job_id': job_id, 'prompt': prompt_file, 'refs': refs,
+                                'status': 'running', 'created_at': datetime.now().isoformat()}
+        threading.Thread(target=_run_h3shot, args=(job_id, req2), daemon=True).start()
+        return {'message': 'H3 单镜任务已提交（异步，约 15-20 分钟）',
+                'job_id': job_id, 'poll': f'/api/h3shot/{job_id}',
+                'h3_job_id': job_id}
+
+    # ── custom（参考图 + 多镜分镜脚本 → H3，异步）──
+    if name == 'custom':
+        rr = _parse_repeated(req.args or '', {'ref'})
+        refs = rr['rep'].get('ref', [])
+        script = rr['flags'].get('script')
+        if not refs or not script:
+            raise HTTPException(status_code=400,
+                                detail='用法: /custom --ref <图> --script <脚本> [...]')
+        job_id = f'custom_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        with _h3_jobs_lock:
+            _h3_jobs[job_id] = {'job_id': job_id, 'script': script, 'refs': refs,
+                                'status': 'running', 'created_at': datetime.now().isoformat()}
+        threading.Thread(target=_run_custom_job, args=(job_id, rr), daemon=True).start()
+        return {'message': 'custom 生成任务已提交（异步）',
+                'job_id': job_id, 'poll': f'/api/h3shot/{job_id}'}
 
     # ── scout ──
     if name == 'scout':
