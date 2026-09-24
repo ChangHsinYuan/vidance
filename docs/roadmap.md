@@ -214,7 +214,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v10 — 拼接与特效（OpenCut 思路，后端 CLI）（🎯 待开发）
+### v10 — 拼接与特效（OpenCut 思路，后端 CLI）（✅ M1-M4 完成 2026-09-24）
 
 **目标**：把"拼接/剪辑/特效"做成**后端可调用命令**（不做前端），方便 LLM 直接编排。
 
@@ -230,6 +230,8 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 - 导出：统一 yuv420p h264
 
 **里程碑**：M1 时间线 JSON 模型 + 拼接 → M2 裁剪/分割/变速 → M3 转场+特效集成 → M4 CLI/API 暴露 + LLM 自然语言→时间线 JSON
+
+**状态**：M1-M4 全部完成。`utils/compose.py`（时间线 JSON 模型 + 主轨 xfade 拼接 + trim/rate + 8 特效链 + 画中画/文字叠加 + 多音轨 amix/ducking）；`vidance.py compose` CLI + `/api/tool/compose`；实测 `output/compose_fx_demo.mp4`（4 段特效主轨 + 3 转场 + 3 文字 + 画中画 + BGM ducking）。未做：关键帧 animations、掩码 masks、sticker/graphic 轨、分割 split。LLM 自然语言→时间线 JSON（`llm.timeline_from_text`）待补。用法见 [usage-v10.md](./usage-v10.md)。
 
 **参考**：OpenCut（时间线模型）、BigBanana CutOS（粗剪）、v5 effects.py、v2 `concat` 子命令。
 

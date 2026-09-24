@@ -1,0 +1,135 @@
+{
+  "output": "output/output/20260924_compose_demo/compose_fx_demo.mp4",
+  "width": 1280,
+  "height": 704,
+  "main": [
+    {
+      "id": "c1",
+      "type": "video",
+      "source": "/mnt/disk_sdb/zxy/vidance/output/custom/clips/01A.mp4",
+      "trim_start": 0,
+      "duration": 2.5,
+      "effects": [
+        {
+          "name": "flash"
+        },
+        {
+          "name": "punch_in",
+          "strength": 1.3
+        }
+      ]
+    },
+    {
+      "id": "c2",
+      "type": "video",
+      "source": "/mnt/disk_sdb/zxy/vidance/output/custom/clips/01B.mp4",
+      "trim_start": 0.5,
+      "duration": 2.5,
+      "transition_in": {
+        "kind": "slideleft",
+        "duration": 0.5
+      },
+      "effects": [
+        {
+          "name": "glitch"
+        }
+      ]
+    },
+    {
+      "id": "c3",
+      "type": "video",
+      "source": "/mnt/disk_sdb/zxy/vidance/output/custom/final.mp4",
+      "trim_start": 1.0,
+      "duration": 2.5,
+      "transition_in": {
+        "kind": "circleopen",
+        "duration": 0.5
+      },
+      "effects": [
+        {
+          "name": "grain_vignette"
+        },
+        {
+          "name": "zoom",
+          "direction": "in"
+        }
+      ]
+    },
+    {
+      "id": "c4",
+      "type": "video",
+      "source": "/mnt/disk_sdb/zxy/vidance/output/custom/clips/01B.mp4",
+      "trim_start": 1.5,
+      "duration": 2.0,
+      "transition_in": {
+        "kind": "wipeleft",
+        "duration": 0.5
+      },
+      "rate": 1.5,
+      "effects": [
+        {
+          "name": "wipe"
+        }
+      ]
+    }
+  ],
+  "overlay": [
+    {
+      "id": "t1",
+      "type": "text",
+      "text": "EFFECTS DEMO",
+      "start": 0.3,
+      "duration": 2.5,
+      "fontsize": 56,
+      "fontcolor": "yellow"
+    },
+    {
+      "id": "t2",
+      "type": "text",
+      "text": "GLITCH",
+      "start": 3.2,
+      "duration": 2.0,
+      "fontsize": 40,
+      "fontcolor": "red",
+      "pos": {
+        "x": "40",
+        "y": "70"
+      }
+    },
+    {
+      "id": "t3",
+      "type": "text",
+      "text": "FILM GRAIN + ZOOM",
+      "start": 6.0,
+      "duration": 2.5,
+      "fontsize": 32,
+      "fontcolor": "white",
+      "pos": {
+        "x": "(W-tw)/2",
+        "y": "H-th-60"
+      }
+    },
+    {
+      "id": "pip1",
+      "type": "video",
+      "source": "/mnt/disk_sdb/zxy/vidance/output/custom/final.mp4",
+      "start": 6.5,
+      "duration": 2.0,
+      "scale": 0.28,
+      "pos": {
+        "x": "W-w-30",
+        "y": "30"
+      },
+      "opacity": 0.9
+    }
+  ],
+  "audio": [
+    {
+      "id": "a1",
+      "source": "/mnt/disk_sdb/zxy/vidance/output/custom/final.mp4",
+      "start": 0,
+      "volume": 0.35,
+      "ducking": true
+    }
+  ]
+}

@@ -286,6 +286,20 @@ def cmd_ask(args):
 
 
 
+def _compose_default_out():
+    """compose 默认输出：<config.output_dir>/<timestamp>/final.mp4"""
+    import time, os
+    root = '/mnt/dataset/zxy/vidance/output'
+    try:
+        from core.pipeline import load_config
+        root = load_config().get('output_dir') or root
+    except Exception:
+        pass
+    d = os.path.join(root, time.strftime('%Y%m%d_%H%M%S'))
+    os.makedirs(d, exist_ok=True)
+    return os.path.join(d, 'final.mp4')
+
+
 def cmd_compose(args):
     # v10 timeline compose
     import sys, os
@@ -313,8 +327,8 @@ def cmd_compose(args):
             els.append({'id': 'c%d' % i, 'type': _media_kind(c), 'source': c,
                         'transition_in': None if i == 0 else
                         {'kind': args.transition, 'duration': args.transition_duration}})
-        tl = {'output': args.output or 'merged.mp4', 'main': els}
-        out = run_timeline(tl)
+        tl = {'output': _compose_default_out(), 'main': els}
+        out = run_timeline(tl, args.output)
     elif args.timeline:
         out = run_timeline(args.timeline, args.output)
     else:

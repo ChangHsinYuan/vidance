@@ -2,7 +2,7 @@
 
 > 统一入口 `python core/vidance.py <子命令> [参数]`
 >
-> 分版本文档：[usage-v0.md](./usage-v0.md)（有声短片 MVP/T2V/TTS）· [usage-v1.md](./usage-v1.md)（角色锚/3DGS）· [usage-v2.md](./usage-v2.md)（RIFE/LUT/BGM/ffmpeg/STT）· [usage-v3.md](./usage-v3.md)（mesh/资产库）· [usage-v4.md](./usage-v4.md)（爬虫/队列/声音克隆）
+> 分版本文档：[usage-v0.md](./usage-v0.md)（有声短片 MVP/T2V/TTS）· [usage-v1.md](./usage-v1.md)（角色锚/3DGS）· [usage-v2.md](./usage-v2.md)（RIFE/LUT/BGM/ffmpeg/STT）· [usage-v3.md](./usage-v3.md)（mesh/资产库）· [usage-v4.md](./usage-v4.md)（爬虫/队列/声音克隆） · [usage-v6.md](./usage-v6.md)（prompt 多轮核实）· [usage-v7.md](./usage-v7.md)（前端 WebUI）· [usage-v10.md](./usage-v10.md)（时间线拼接与特效）
 
 ## 四种子命令
 

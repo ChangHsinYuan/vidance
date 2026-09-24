@@ -8,7 +8,7 @@ Vidance 是一个基于 opencode agent 编排的本地视频生成系统。核�
 
 **统一入口**：`python core/vidance.py {auto|custom|quick}` — auto 模式走 LLM 编剧+Wan/FLUX 生成，custom 模式走参考图+预写脚本+H3 ref2va 生成，quick 模式纯 T2V 无后处理。后处理（RIFE/LUT/BGM/STT）由 `core/postprocess.py` 共享模块提供。
 
-**当前状态：v0-v7 全部实现**（v2 长视频 + v2.1 backlog + v3 M0-M7 + v4 M1-M6 + v5 M1-M4 + v6 M1-M4 + v7 前端 M1-M4），**v8-v15 规划就绪**（2026-09-23 重排）。
+**当前状态：v0-v7 全部实现 + v10 时间线拼接（M1-M4）完成**（v2 长视频 + v2.1 backlog + v3 M0-M7 + v4 M1-M6 + v5 M1-M4 + v6 M1-M4 + v7 前端 M1-M4），**v8-v15 规划就绪**（2026-09-23 重排）。
 
 **版本路线**：v4 营销号流水线（fast/hot 爬图出片）→ v5 剪辑特效 → v6 prompt 多轮核实（ask + dialog API）→ v7 前端 agent WebUI（:8894/ui）→ **v8 前端增强**（资产库/分镜预览/进度可视化/时间线展示）→ **v9 API 标准化**（多 Vendor 适配/能力发现/用量限流/OpenAPI）→ **v10 拼接与特效**（OpenCut 时间线思路，后端 CLI 可被 LLM 调用）→ **v11 接入社交媒体**（发布渠道 + IM 机器人网关）→ **v12 整合开源仓库**（断点续跑/JSON 容错/RAG/五维提示词）→ **v13 多智能体**（三层 Agent 解耦）→ **v14 长视频质量**（关键帧驱动/一镜到底/层级一致性）→ **v15 轻量化**（纯 API 模式/无 GPU）。详见 docs/roadmap.md。
 
@@ -127,7 +127,7 @@ vidance/
 │   ├── agents/{director,reviewer,asset,scout}.md
 │   └── skills/{scriptwriting,review,topic_scouting}/SKILL.md
 ├── docs/                      # 设计文档（roadmap + v0-v9 design + deployed-models）
-│   └── usage*.md              # 使用指南（usage.md 主入口 + usage-v1/v2/v3/v4/v6/v7.md 分版本小工具）
+│   └── usage*.md              # 使用指南（usage.md 主入口 + usage-v1/v2/v3/v4/v6/v7/v10.md 分版本小工具）
 ├── voice_samples/ → /mnt/dataset/...  # 音色试听样本（软链）
 └── output/ → /mnt/dataset/... # 成片 + 元数据（软链到机械盘）
 ```
