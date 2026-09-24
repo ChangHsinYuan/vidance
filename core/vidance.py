@@ -8,6 +8,7 @@
   concat  多视频拼接（硬切 / RIFE 过渡 / 交叉淡化）
   compose v10 时间线拼接（JSON 时间线：特效/转场/画中画/文字/混音）
   svg     v15 SVG 流水线（概念→LLM 生成 SVG→逐帧渲染→mp4，纯 CPU）
+  make    v17 统一入口：--director llm|manual|scout × --generator wan|fast|svg|h3 排列组合
 
 用法:
   python core/vidance.py auto "雪山日出：小狐狸的冒险" --character "红色小狐狸" --character-mode flux --stt
@@ -383,6 +384,112 @@ def cmd_svg(args):
         print('usage: svg --concept "鹈鹕骑自行车" | svg --svg scene.svg [--still|--frames]')
 
 
+def cmd_make(args):
+    """v17 M2 统一入口：--director × --generator 排列组合路由到现有实现（子命令变别名）"""
+    gen = args.generator or 'wan'
+    director = args.director or ('manual' if (args.say or args.prompt or args.script) else 'llm')
+    concept = args.concept or ''
+
+    # D3 导演：爬热点 → scout 选题 → 得 concept 继续（等效 hot 的选概念半段）
+    if director == 'scout':
+        from utils.crawler import Crawler
+        from core.pipeline import load_config
+        from utils.llm import LLMClient
+        topics = Crawler().fetch_hot_topics(top_per_source=15)
+        cands = LLMClient(load_config()).scout_topics(
+            topics, account_type=args.account or '影视解说', n_candidates=3)
+        if cands:
+            concept = cands[0]['concept']
+            print(f'[D3 scout] 选题：{concept}（{cands[0].get("predicted_score")}分）')
+    if director == 'manual' and not concept:
+        if args.prompt:
+            concept = open(args.prompt, encoding='utf-8').read().strip()[:40]
+        elif args.say:
+            concept = args.say[0][:40]
+    if not concept and gen != 'h3':
+        print('usage: make 概念 [--director llm|manual|scout] [--generator wan|fast|svg|h3]')
+        return
+
+    # G4 svg：D1(--say)/D2 → 有声(S5)/无声
+    if gen == 'svg':
+        from utils import svg_pipeline as sp
+        voiced = bool(args.voice) or bool(args.say)
+        out = _resolve_out(args.output, 'svg')
+        if voiced:
+            res = sp.narrate_to_mp4(concept, n=args.n or 3, say=args.say, out_path=out,
+                                    voice=args.voice, lut=args.lut, bgm=args.bgm)
+            print(res['output'])
+        else:
+            print(sp.concept_to_mp4(concept, out_path=out,
+                                    duration=args.duration or 3.0)['mp4'])
+        return
+
+    # G3 fast：营销号爬图/生图 + Ken Burns（scout 已在上面选好概念 = hot）
+    if gen == 'fast':
+        cmd_fast(_ns(args, concept=concept))
+        return
+
+    # G1 h3：手动导演（整段式 prompt + 参考图，异步慢通道；多镜 --script 走 custom 子命令）
+    if gen == 'h3':
+        import subprocess as _sp2
+        if args.script and not args.prompt:
+            ns = _ns(args, ref=args.ref or [])
+            ns.script, ns.ref_image_size = args.script, 'match'
+            cmd_custom(ns)
+            return
+        if not args.prompt:
+            print('make --generator h3 需要 --prompt <整段式.txt> 或 --script <多镜脚本>')
+            return
+        cmd = [sys.executable,
+               os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            'utils', 'h3_prompt_video.py'),
+               '--prompt', args.prompt]
+        for r in (args.ref or []):
+            cmd += ['--ref', r]
+        if args.output:
+            cmd += ['-o', args.output]
+        if args.fast:
+            cmd.append('--fast')
+        _sp2.run(cmd)
+        return
+
+    # G2 wan：D2 自动（有角色→auto 全管线；无→quick 裸 T2V）
+    if args.character:
+        cmd_auto(_ns(args, concept=concept))
+    else:
+        cmd_quick(_ns(args, concept=concept))
+
+
+def _resolve_out(out, tag):
+    from core.pipeline import load_config
+    from datetime import datetime as _dt
+    if not out:
+        out = f'make_{tag}_{_dt.now().strftime("%H%M%S")}.mp4'
+    if not os.path.isabs(out):
+        out = os.path.join(load_config()['output_dir'], out)
+    return out
+
+
+def _ns(args, **over):
+    """把 make 命名空间补齐为 fast/auto/quick/custom 所需字段（缺失给默认）。"""
+    import argparse
+    d = dict(vars(args))
+    d.update(over)
+    d.update(n=d.get('n') or 1, images=d.get('images'),
+             images_count=d.get('n') or 3, effects='off', motion=None, seconds=None,
+             speed=1.0, slowmo=None, task_id=None,
+             character=d.get('character'), character_mode='auto',
+             no_asset_reuse=False, ref_image_size='match',
+             images_source=d.get('images_source') or 'crawl',
+             source_topic=None, trend_date=None, no_source=True,
+             duration=d.get('duration'))
+    d.setdefault('stt', False)
+    d.setdefault('task_id', None)
+    for k in ('script', 'ref'):
+        d.setdefault(k, None)
+    return argparse.Namespace(**d)
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         prog='vidance',
@@ -576,6 +683,28 @@ def build_parser():
     p_svg.add_argument('--lut', default=None, help='S5：调色风格')
     p_svg.add_argument('--bgm', default=None, help='S5：BGM mood')
     p_svg.set_defaults(func=cmd_svg)
+
+    # ── make 子命令（v17 M2 三排正交统一入口） ──
+    p_make = sub.add_parser('make', parents=[output_parent, post_parent],
+                            help='统一入口：--director llm|manual|scout × --generator wan|fast|svg|h3')
+    p_make.add_argument('concept', nargs='?', default=None, help='概念（manual/scout 可省）')
+    p_make.add_argument('--director', default=None, choices=['llm', 'manual', 'scout'],
+                        help='导演层（默认：有 --say/--prompt 即 manual，否则 llm）')
+    p_make.add_argument('--generator', default=None, choices=['wan', 'fast', 'svg', 'h3'],
+                        help='生成层（默认 wan：带 --character 走 auto，不然 quick）')
+    p_make.add_argument('--voice', default=None, help='配音音色')
+    p_make.add_argument('--say', action='append', default=None, help='手动旁白段（可重复，D1）')
+    p_make.add_argument('-n', dest='n', type=int, default=None, help='段数')
+    p_make.add_argument('--duration', type=float, default=None, help='时长（svg 无声段渲染秒数）')
+    p_make.add_argument('--prompt', default=None, help='D1 整段式 prompt 文件（h3）')
+    p_make.add_argument('--script', default=None, help='D1 多镜脚本（h3→custom）')
+    p_make.add_argument('--ref', action='append', default=None, help='参考图（可重复）')
+    p_make.add_argument('--fast', action='store_true', help='h3 快速档')
+    p_make.add_argument('--character', default=None, help='角色描述（wan→auto）')
+    p_make.add_argument('--images-source', dest='images_source', default=None,
+                        choices=['crawl', 'flux'], help='fast 图源')
+    p_make.add_argument('--account', default=None, help='scout 账号定位')
+    p_make.set_defaults(func=cmd_make)
 
     return parser
 

@@ -751,6 +751,20 @@ TOOLS = [
          {'key': '--transition', 'type': 'choice', 'choices': ['cut', 'crossfade', 'rife'], 'desc': '转场方式'},
          {'key': '--crossfade-duration', 'type': 'number', 'desc': '交叉淡化时长（秒，默认 0.5）'},
      ]},
+    {'name': 'make', 'help': 'v17 统一入口：--director llm|manual|scout × --generator wan|fast|svg|h3 排列组合',
+     'params': [
+         {'key': 'concept', 'type': 'text', 'required': True, 'desc': '概念（--director scout 时可省，自动选题）'},
+         {'key': '--director', 'type': 'text', 'desc': '导演层：llm 自动 / manual 人肉 / scout 爬热点',
+          'choices': ['llm', 'manual', 'scout']},
+         {'key': '--generator', 'type': 'text', 'desc': '生成层：wan 视频模型 / fast 爬图生图 / svg 矢量 / h3 参考图直出',
+          'choices': ['wan', 'fast', 'svg', 'h3']},
+         {'key': '--say', 'type': 'text', 'desc': 'manual 导演：手给旁白段（可重复）'},
+         {'key': '--character', 'type': 'text', 'desc': 'generator=wan：角色描述，给了走 auto 全管线'},
+         {'key': '--voice', 'type': 'text', 'desc': '配音音色'},
+         {'key': '--n', 'type': 'number', 'desc': '段数'},
+         {'key': '--lut', 'type': 'text', 'desc': '调色风格'},
+         {'key': '--bgm', 'type': 'text', 'desc': 'BGM mood'},
+     ]},
     {'name': 'svg', 'help': 'SVG 流水线：概念→LLM 生成 SVG→逐帧渲染→mp4（纯 CPU，秒级）',
      'params': [
          {'key': '--concept', 'type': 'text', 'desc': '概念（一键：LLM 生成 SVG→mp4）'},
@@ -1178,6 +1192,71 @@ def tool_dispatch(name: str, req: ToolRequest):
                                   'status': 'running', 'created_at': datetime.now().isoformat()}
         threading.Thread(target=_run_clip, args=(job_id, req2), daemon=True).start()
         return {'message': '裁剪任务已提交（异步）', 'job_id': job_id, 'poll': f'/api/clip/{job_id}'}
+
+    # ── make（v17 M2：三排正交统一入口，归一后递归复用现有分发）──
+    if name == 'make':
+        import shlex as _shq
+        rr = _parse_repeated(req.args or '', {'say', 'ref'})
+        fl, pos2 = rr['flags'], rr['pos']
+        say = rr['rep'].get('say') or []
+        refs = rr['rep'].get('ref') or []
+        gen = fl.get('generator') or 'wan'
+        concept = ' '.join(pos2) or fl.get('concept') or ''
+        director = fl.get('director') or ('manual' if (say or fl.get('prompt') or fl.get('script')) else 'llm')
+        if director == 'scout' and not concept:
+            from utils.crawler import Crawler
+            from utils.llm import LLMClient as _LLM
+            topics = Crawler().fetch_hot_topics(top_per_source=15)
+            cands = _LLM(load_config()).scout_topics(
+                topics, account_type=fl.get('account') or '影视解说', n_candidates=3)
+            if not cands:
+                raise HTTPException(status_code=500, detail='scout 未选出概念')
+            concept = cands[0]['concept']
+        q = _shq.quote
+        a2 = []
+        if gen == 'svg':
+            a2 = ['--concept', q(concept or (say[0] if say else ''))]
+            for s_ in say:
+                a2 += ['--say', q(s_)]
+            for k in ('voice', '-o', 'n', 'lut', 'bgm'):
+                if fl.get(k) not in (None, True):
+                    a2 += ['--' + k.lstrip('-'), q(str(fl[k]))]
+            return tool_dispatch('svg', ToolRequest(args=' '.join(a2)))
+        if gen == 'h3':
+            if fl.get('script'):
+                a2 = ['--script', q(fl['script'])]
+                for r_ in refs:
+                    a2 += ['--ref', q(r_)]
+                return tool_dispatch('custom', ToolRequest(args=' '.join(a2)))
+            if not fl.get('prompt'):
+                raise HTTPException(status_code=400,
+                                    detail='/make 生成器 h3 需 --prompt 文件 或 --script 脚本（配 --ref）')
+            a2 = [q(fl['prompt'])] + sum((['--ref', q(r_)] for r_ in refs), [])
+            for k in ('-o', 'seconds'):
+                if fl.get(k) not in (None, True):
+                    a2 += ['--' + k.lstrip('-'), q(str(fl[k]))]
+            if fl.get('fast'):
+                a2.append('--fast')
+            return tool_dispatch('h3shot', ToolRequest(args=' '.join(a2)))
+        if gen == 'fast':
+            a2 = [q(concept), '--n', str(min(int(fl.get('n') or 5), 5))]
+            for k in ('voice', 'images-source', 'effects', 'lut', 'bgm'):
+                kk = 'images_source' if k == 'images-source' else k
+                if fl.get(k) not in (None, True):
+                    a2 += ['--' + k, q(str(fl[k]))]
+            return tool_dispatch('fast', ToolRequest(args=' '.join(a2)))
+        # wan：有角色 → auto 全管线；无 → quick
+        a2 = [q(concept)]
+        tgt = 'quick'
+        if fl.get('character'):
+            tgt = 'auto'
+            a2 += ['--character', q(fl['character'])]
+            for k in ('voice', 'lut', 'bgm', 'duration'):
+                if fl.get(k) not in (None, True):
+                    a2 += ['--' + k, q(str(fl[k]))]
+        elif fl.get('voice') not in (None, True):
+            a2 += ['--voice', q(str(fl['voice']))]
+        return tool_dispatch(tgt, ToolRequest(args=' '.join(a2)))
 
     # ── 任务型：auto / fast / hot / quick（提交任务队列，前端轮询）──
     if name in ('auto', 'fast', 'hot', 'quick'):

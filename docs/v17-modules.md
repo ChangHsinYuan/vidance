@@ -14,7 +14,12 @@
    ▼ P 后期层 ──消费 clips(+segments)──> final.mp4 + meta.json
 ```
 
-统一 CLI 形态：`vidance.py make --director X --generator Y 概念 [后期参数]`（分步收口，暂不动现有子命令）。
+统一入口（M2 已实现）：
+```bash
+python core/vidance.py make 概念 [--director llm|manual|scout] [--generator wan|fast|svg|h3] [后期参数]
+# /make 前端同义：api 归一参数后递归分发到 svg/custom/h3shot/fast/auto/quick 现有通道
+```
+现有子命令（auto/fast/hot/quick/custom/svg/h3shot/compose）全部保留不动。
 
 ## D 导演层
 
@@ -58,7 +63,7 @@
 ## 里程碑
 
 - **M1 ✅**：`core/narration.py`（Narrator: say/silence/srt）；fastline/svg_pipeline 重复实现改薄壳；SVG S5 回归通过
-- M2：`vidance.py make` 统一入口（D1/D2 × G1-G4 × P 开关），现有子命令变别名
+- **M2 ✅ 2026-09-26**：`vidance.py make` + `/api make`（递归复用现有分发；scout 导演先选题再续；manual 由 --say/--prompt/--script 自动判定）。实测 `make "月夜散步" --generator svg --say ×2` → `output/make_test/m1.mp4` 5.4s 音视双流
 - M3：`utils/director.py` 合并编剧/旁白 prompt（schema 统一 + 质量回归对比）
 - M4：生成器契约统一后，G5(v16)/G1 多参考图作为新 generator 即插即用
 

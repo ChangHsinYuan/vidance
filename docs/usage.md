@@ -14,6 +14,7 @@
 | `custom` | 参考图 + 预写脚本 | H3 ref2va | 三视图直接注入 | 可选 | 精确控制分镜、多角色 |
 | `quick` | 一句中文概念 | Wan T2V | 无 | 无 | 最快出片、无角色 |
 | `concat` | 多个视频文件 | — | — | — | 拼接已有素材 |
+| `make` (v17) | 概念 + 导演/生成器选择 | 任意组合 | 按导演层 | 通用后期 | **统一入口**：--director llm/manual/scout × --generator wan/fast/svg/h3，见 v17-modules.md |
 
 ---
 

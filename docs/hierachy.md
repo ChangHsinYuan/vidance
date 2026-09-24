@@ -1,7 +1,7 @@
 # Vidance 方法脉络图（Production Method Map）
 
-> 2026-09-26。全文梳理系统的全部出片方法：**是否用视频模型** × **谁当导演**。
-> 相关：指令库 `instructions/commands.json`、路线 `roadmap.md`、t2c `v-t2c.md`、SVG `v-svg-pipeline.md`。
+> 2026-09-26。全文梳理系统的全部出片方法：**是否用视频模型** × **谁当导演**；下半部为 v17 流水线图（模块串行、模块内并行）与游离审计层。
+> 相关：指令库 `instructions/commands.json`、路线 `roadmap.md`、t2c `v-t2c.md`、SVG `v-svg-pipeline.md`、三排正交 `v17-modules.md`。
 
 ## 总览
 
@@ -75,3 +75,62 @@
 - 一句话到成片、多镜叙事 → **B2 auto**
 - 单镜试水 → **quick**；网页里说人话 → **B3 t2c**
 - 已有一堆成片要合并/加字幕特效 → **compose/concat**（不占生成资源）
+
+## v17 流水线图：模块串行 · 模块内并行 · 审计游离
+
+> `make` = 每一排各取其一（或开关）串成一条链。审计层 V 不占总线，挂在需要它的模块出口。
+
+```
+概念/热点
+   │
+   ▼
+┌─ D 导演层（选一，串行第一站）────────────┐
+│ D1 llm   LLM 编剧分镜（auto/quick）      │   产出契约：
+│ D2 manual 人给 --say/--prompt/--script   │   segments[] =
+│ D3 scout 爬虫+LLM 选题得概念             │   {text, visual, motion}
+│ D4 = D2 特例：人写多镜脚本（custom/h3）   │
+└──────────────┬───────────────────────┘
+               ▼
+┌─ G 生成层（选一，串行第二站）────────────┐     ┌─ V 审计层（游离，多模态 LLM，可插拔）──────┐
+│ G1 wan  T2V/I2V ≤5s镜+RIFE（吃segments） │ ◀── │ V1 审片 review_shot：逐镜抽帧5维评分        │
+│ G2 fast 爬图/FLUX+KenBurns（营销号）      │ ◀── │    → <7 分回写 prompt 重试 ≤2（pipeline）  │
+│ G3 svg  LLM写SVG+无头Chromium逐帧        │ ◀── │ V2 审角色 review_character：预览vs参考图   │
+│ G4 h3   参考图+整段prompt→原生音频单镜    │ ◀── │    → 不过降级 flux / 重重建（pipeline v1/v3）│
+│    （G4 原生带声 → P0/P1 自动跳过）       │     │ V3 图相关性 assess_image_relevance：        │
+└──────────────┬───────────────────────┘     │    爬图/FLUX 逐张校验 → 删图重生（fastline）  │
+               ▼                             │ V4 角色描述 describe_character：图→锚文本      │
+┌─ P 后期层（每项独立开关，串行第三站）─────┐     │    （custom_gen/api 角色锚）                │
+│ P0 配音 Narrator.say：voice重试→cosy→静音│     │  ensemble 并行玩法（规划）：V1/V2/V3 可多   │
+│ P1 字幕 Narrator.srt：TTS时间戳→SRT烧录  │     │  模型同时投票取均值/多数决，见下表模型池     │
+│ P2 BGM  select_bgm + sidechain ducking   │     └─────────────────────────────────────────┘
+│ P3 调色 LUT×6（LLM 自选或手给）           │
+│ P4 STT  whisper 重转写对齐字幕（--stt）    │
+│ P5 拼接 compose/concat：crossfade/时间线  │
+│ P6 特效 effects×8 + xfade 转场（--effects）│
+└──────────────┬───────────────────────┘
+               ▼
+          final.mp4 + meta.json
+```
+
+- **串行**：D→G→P 数据流不回环（重试闭环发生在模块内部：V1 打分不过 → G 内重生成同镜 ≤2 次）。
+- **并行**：D3 的爬取多源（B站/微博/知乎/百度/RSS）并行同批；P0 逐段 TTS、G1 的 M2 并行预取（FLUX 参考帧+TTS 与 Wan 串行不冲突）属模块内并行。
+- **V 游离在流水线之外**：任何 D×G 组合都能挂或不挂审计；全部走 USTC 网关多模态。
+
+## V 审计层可用的 USTC 多模态模型池（2026-09-26 实测）
+
+用 16×16 纯红 PNG 问颜色、max_tokens=2000 逐个探测 `/v1/chat/completions`：**20 个模型全部接受 image_url 输入**（此前部分"空响应"仅是 max_tokens 太小被 reasoning_content 吃光，非不支持视觉）。
+
+| 模型 | 视觉 | 审计定位建议 |
+|------|:---:|------|
+| `qwen3.8-chat` | ✅ | **V1/V2 现役主力**（AGENTS 约定，~30-120s/镜） |
+| `deepseek-v4-flash-ascend` | ✅ | 现役默认编剧模型，顺带可审（省切换） |
+| `deepseek-flash` / `deepseek-flash-2` | ✅ | V3 快审候选（flash 系延迟低） |
+| `claude-haiku-4-5(-20251001)` | ✅ | V1 异构投票成员（曾为 v3 前审查模型） |
+| `qwen3.5` / `qwen3.5-thinking` / `qwen3.5-non-thinking` | ✅ | thinking 系须 max_tokens≥2000 |
+| `qwen3.8-flash-next` / `-2` / `qwen-chat` | ✅ | 便宜快审档 |
+| `qwen3.8-reasoner` / `qwen-reasoner` / `smart/reasoning` | ✅ | 深审档（慢，值得用于终版复审） |
+| `glm-5.3-flash` | ✅ | 异构第三票 |
+| `unlimited-ocr` | ⚠️ OCR 专用 | 不收"看图问答"，走 OCR 管线——可用作 V5 字幕/角标 OCR 校验（v17 backlog：P4 烧字幕后 OCR 回读比对 SRT） |
+| `smart/default` | — | 网关自动路由，未单测 |
+
+> ensemble 审计（多模型并行投票）是 V 层的"模块内并行"玩法：`review_shot_v2` 计划用 `qwen3.8-chat + deepseek-flash-2 + claude-haiku-4-5` 三路并发、多数决，压单模型抖动与 auto-pass 假通过。

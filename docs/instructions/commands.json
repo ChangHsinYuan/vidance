@@ -76,6 +76,68 @@
       ]
     },
     {
+      "name": "make",
+      "version": "v17",
+      "brief": "统一入口：导演(llm/manual/scout) × 生成器(wan/fast/svg/h3) 排列组合",
+      "detail": "v17 三排正交统一入口。导演层：--director llm(LLM编脚本,默认)/manual(--say/--prompt)/scout(爬热点自动选题)；生成层：--generator wan(带--character走auto全管线,否则quick)/fast(爬图+生图营销号)/svg(矢量动画,--voice出有声)/h3(--prompt整段式+--ref,或--script走custom)。后期参数 --voice/--lut/--bgm/--stt 通用。见 docs/v17-modules.md。",
+      "params": [
+        {
+          "key": "concept",
+          "desc": "概念（--director scout 时可省）",
+          "required": true
+        },
+        {
+          "key": "--director",
+          "desc": "llm/manual/scout",
+          "choices": [
+            "llm",
+            "manual",
+            "scout"
+          ]
+        },
+        {
+          "key": "--generator",
+          "desc": "wan/fast/svg/h3",
+          "choices": [
+            "wan",
+            "fast",
+            "svg",
+            "h3"
+          ]
+        },
+        {
+          "key": "--say",
+          "desc": "manual 旁白段（可重复）"
+        },
+        {
+          "key": "--character",
+          "desc": "wan 角色描述（给→auto）"
+        },
+        {
+          "key": "--voice",
+          "desc": "配音音色"
+        },
+        {
+          "key": "--n",
+          "desc": "段数"
+        },
+        {
+          "key": "--lut",
+          "desc": "调色"
+        },
+        {
+          "key": "--bgm",
+          "desc": "BGM mood"
+        }
+      ],
+      "examples": [
+        "make 月夜散步 --generator svg --say \"为什么月亮总跟着人走\" --say \"远处没有参照物\" --voice cosy-default",
+        "make --director scout --generator fast --account 影视解说",
+        "make 雪山小狐狸 --character 红色小狐狸 --generator wan --lut warm --bgm uplifting",
+        "make --generator h3 --prompt input/prompt1.txt --ref input/豆包.jpg --fast"
+      ]
+    },
+    {
       "name": "fast",
       "version": "v4",
       "brief": "快速营销号链路：爬图/FLUX 出图 + Ken Burns 运镜 + TTS（分钟级出片）",
