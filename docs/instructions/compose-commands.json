@@ -1,0 +1,160 @@
+{
+  "version": "v10",
+  "title": "Vidance 剪辑指令模式库",
+  "media": {
+    "A": "output/custom/clips/01A.mp4",
+    "B": "output/custom/clips/01B.mp4",
+    "F": "output/custom/final.mp4"
+  },
+  "categories": [
+    {
+      "id": "concat",
+      "name": "拼接与转场",
+      "items": [
+        {
+          "id": "fx-001",
+          "nl": ["把 A 和 B 首尾接起来，不要转场", "A 接 B，硬切"],
+          "slash": "/compose A.mp4 B.mp4",
+          "cli": "python core/vidance.py compose A.mp4 B.mp4 -o out.mp4",
+          "tl": {"main": [{"source": "A"}, {"source": "B"}]}
+        },
+        {
+          "id": "fx-002",
+          "nl": ["A 和 B 拼一起，中间淡入淡出，过渡 0.5 秒", "两段之间用 fade 过渡"],
+          "slash": "/compose A.mp4 B.mp4 --transition fade --transition-duration 0.5",
+          "cli": "python core/vidance.py compose A.mp4 B.mp4 --transition fade --transition-duration 0.5 -o out.mp4",
+          "tl": {"main": [{"source": "A"}, {"source": "B", "transition_in": {"kind": "fade", "duration": 0.5}}]}
+        },
+        {
+          "id": "fx-003",
+          "nl": ["A 和 B 用向左滑动的方式切换", "slideleft 转场"],
+          "cli": "python core/vidance.py compose A.mp4 B.mp4 --transition slideleft --transition-duration 0.4 -o out.mp4",
+          "tl": {"main": [{"source": "A"}, {"source": "B", "transition_in": {"kind": "slideleft", "duration": 0.4}}]}
+        },
+        {
+          "id": "fx-004",
+          "nl": ["第二段用圆圈展开的方式出现", "circleopen 过渡"],
+          "tl": {"main": [{"source": "A"}, {"source": "B", "transition_in": {"kind": "circleopen", "duration": 0.5}}]}
+        },
+        {
+          "id": "fx-005",
+          "nl": ["A 到 B 用左擦除切换", "wipeleft"],
+          "tl": {"main": [{"source": "A"}, {"source": "B", "transition_in": {"kind": "wipeleft", "duration": 0.5}}]}
+        },
+        {
+          "id": "fx-006",
+          "nl": ["A、B、F 三段串起来，第一段切第二段用滑动，第二段切第三段圆圈展开"],
+          "tl": {"main": [
+            {"id": "c1", "source": "A"},
+            {"id": "c2", "source": "B", "transition_in": {"kind": "slideleft", "duration": 0.5}},
+            {"id": "c3", "source": "F", "transition_in": {"kind": "circleopen", "duration": 0.5}}
+          ]}
+        }
+      ]
+    },
+    {
+      "id": "trim",
+      "name": "裁剪",
+      "items": [
+        {"id": "fx-010", "nl": ["只要 A 从第 2 秒到第 5 秒", "裁剪 A 的 2-5 秒"],
+         "tl": {"source": "A", "trim_start": 2.0, "trim_end": 5.0}},
+        {"id": "fx-011", "nl": ["A 只放 3 秒"],
+         "tl": {"source": "A", "trim_start": 0, "duration": 3.0}},
+        {"id": "fx-012", "nl": ["从 A 的第 1.5 秒开始，放 2.5 秒"],
+         "tl": {"source": "A", "trim_start": 1.5, "duration": 2.5}}
+      ]
+    },
+    {
+      "id": "rate",
+      "name": "变速与静音",
+      "items": [
+        {"id": "fx-020", "nl": ["这段放快 1.5 倍", "加速 1.5x"], "tl": {"source": "B", "rate": 1.5}},
+        {"id": "fx-021", "nl": ["慢放一半", "0.5 倍速"], "tl": {"source": "B", "rate": 0.5}},
+        {"id": "fx-022", "nl": ["去掉这段的原声"], "tl": {"source": "B", "volume": 0}},
+        {"id": "fx-023", "nl": ["原声调小一点，留 30%"], "tl": {"source": "B", "volume": 0.3}}
+      ]
+    },
+    {
+      "id": "effect",
+      "name": "镜头内特效",
+      "items": [
+        {"id": "fx-030", "nl": ["开头来个闪白", "片头闪一下白光"], "effect": "flash",
+         "tl": {"effects": [{"name": "flash"}]}},
+        {"id": "fx-031", "nl": ["快速推近强调一下", "punch in 效果"], "effect": "punch_in",
+         "tl": {"effects": [{"name": "punch_in", "strength": 1.3}]}},
+        {"id": "fx-032", "nl": ["加点 glitch 故障感", "赛博故障噪点"], "effect": "glitch",
+         "tl": {"effects": [{"name": "glitch"}]}},
+        {"id": "fx-033", "nl": ["加胶片颗粒和暗角", "电影质感做旧"], "effect": "grain_vignette",
+         "tl": {"effects": [{"name": "grain_vignette", "grain": 0.02}]}},
+        {"id": "fx-034", "nl": ["来个甩镜", "镜头快速横移"], "effect": "wipe",
+         "tl": {"effects": [{"name": "wipe", "sweep": 0.3}]}},
+        {"id": "fx-035", "nl": ["缓缓推近", "zoom in"], "effect": "zoom",
+         "tl": {"effects": [{"name": "zoom", "direction": "in"}]}},
+        {"id": "fx-036", "nl": ["前面正常，后面突然加速", "速度斜坡"], "effect": "speed_ramp",
+         "tl": {"effects": [{"name": "speed_ramp", "factor": 1.5, "cut": 0.7}]}},
+        {"id": "fx-037", "nl": ["结尾定格放大", "末帧停住并放大"], "effect": "freeze_zoom",
+         "tl": {"effects": [{"name": "freeze_zoom", "hold": 0.5, "strength": 1.3}]}},
+        {"id": "fx-038", "nl": ["先闪白再推近", "胶片颗粒加推拉"],
+         "tl": {"effects": [{"name": "flash"}, {"name": "punch_in", "strength": 1.3}]}}
+      ]
+    },
+    {
+      "id": "overlay",
+      "name": "叠加（画中画/文字）",
+      "items": [
+        {"id": "fx-040", "nl": ["右下角放个小窗口播放 F", "画中画，右下角，占 30% 宽"],
+         "tl": {"overlay": [{"type": "video", "source": "F", "start": 2.0, "duration": 3.0,
+           "scale": 0.28, "pos": {"x": "W-w-30", "y": "H-h-30"}, "opacity": 0.9}]}},
+        {"id": "fx-041", "nl": ["左上角叠个小视频"],
+         "tl": {"overlay": [{"type": "video", "source": "F", "start": 0, "duration": 3,
+           "scale": 0.3, "pos": {"x": "30", "y": "30"}}]}},
+        {"id": "fx-042", "nl": ["中间加个大标题「我的视频」", "居中打标题"],
+         "tl": {"overlay": [{"type": "text", "text": "我的视频", "start": 0.5, "duration": 3,
+           "fontsize": 56, "fontcolor": "white", "pos": {"x": "(W-tw)/2", "y": "80"}}]}},
+        {"id": "fx-043", "nl": ["左下角写一行字「拍摄于2026」"],
+         "tl": {"overlay": [{"type": "text", "text": "拍摄于2026", "start": 0, "duration": 5,
+           "fontsize": 32, "fontcolor": "white", "pos": {"x": "40", "y": "H-th-60"}}]}},
+        {"id": "fx-044", "nl": ["全程右上角水印 @我的账号"],
+         "tl": {"overlay": [{"type": "text", "text": "@我的账号", "start": 0, "duration": 9999,
+           "fontsize": 28, "fontcolor": "white", "pos": {"x": "W-tw-30", "y": "30"}}]}},
+        {"id": "fx-045", "nl": ["开头黄字标题，3秒后左边红字 GLITCH，6秒后底部白字说明"],
+         "tl": {"overlay": [
+           {"type": "text", "text": "标题", "start": 0.3, "duration": 2.5, "fontsize": 56, "fontcolor": "yellow"},
+           {"type": "text", "text": "GLITCH", "start": 3.2, "duration": 2.0, "fontsize": 40, "fontcolor": "red", "pos": {"x": "40", "y": "70"}},
+           {"type": "text", "text": "说明", "start": 6.0, "duration": 2.5, "fontsize": 32, "fontcolor": "white", "pos": {"x": "(W-tw)/2", "y": "H-th-60"}}
+         ]}}
+      ]
+    },
+    {
+      "id": "audio",
+      "name": "音频",
+      "items": [
+        {"id": "fx-050", "nl": ["配上背景音乐", "加个轻柔的配乐"],
+         "tl": {"audio": [{"source": "bgm/calm.wav", "start": 0, "volume": 0.3}]}},
+        {"id": "fx-051", "nl": ["配乐在有旁白时自动压低", "BGM 闪避人声"],
+         "tl": {"audio": [{"source": "bgm/calm.wav", "start": 0, "volume": 0.3, "ducking": true}]}},
+        {"id": "fx-052", "nl": ["3秒后再进音乐"],
+         "tl": {"audio": [{"source": "bgm/calm.wav", "start": 3.0, "volume": 0.3, "ducking": true}]}},
+        {"id": "fx-053", "nl": ["一路旁白一路配乐混一起"],
+         "tl": {"audio": [{"source": "voice.wav", "volume": 1.0}, {"source": "bgm/calm.wav", "volume": 0.25, "ducking": true}]}}
+      ]
+    },
+    {
+      "id": "combo",
+      "name": "组合",
+      "items": [
+        {"id": "fx-060", "nl": ["开头闪白，接标题文字，配乐小声，画面推近"],
+         "tl": {"main": [{"id": "c1", "source": "A", "trim_start": 0, "duration": 3,
+             "effects": [{"name": "flash"}, {"name": "zoom", "direction": "in"}]}],
+           "overlay": [{"type": "text", "text": "标题", "start": 0.3, "duration": 2.5, "fontsize": 56, "fontcolor": "yellow"}],
+           "audio": [{"source": "bgm/uplifting.wav", "start": 0, "volume": 0.3, "ducking": true}]}},
+        {"id": "fx-061", "nl": ["A 闪白推近、B 故障感、F 胶片颗粒加推拉，段间用不同转场，右下角画中画，配乐闪避"],
+         "example": "docs/example/compose_demo.json"},
+        {"id": "fx-062", "nl": ["给 F 全程加右下角水印，配轻音乐"],
+         "example": "docs/example/compose_demo.json"},
+        {"id": "fx-063", "nl": ["A 正常、B 加速 2 倍、F 慢放 0.5 倍，硬切"],
+         "tl": {"main": [{"source": "A"}, {"source": "B", "rate": 2.0}, {"source": "F", "rate": 0.5}]}}
+      ]
+    }
+  ]
+}

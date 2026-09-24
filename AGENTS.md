@@ -126,7 +126,7 @@ vidance/
 ├── .opencode/
 │   ├── agents/{director,reviewer,asset,scout}.md
 │   └── skills/{scriptwriting,review,topic_scouting}/SKILL.md
-├── docs/                      # 设计文档（roadmap + v0-v9 design + deployed-models）
+├── docs/                      # 设计文档（roadmap + v0-v10 design + deployed-models + instructions/ 命令库+剪辑指令库）
 │   └── usage*.md              # 使用指南（usage.md 主入口 + usage-v1/v2/v3/v4/v6/v7/v10.md 分版本小工具）
 ├── voice_samples/ → /mnt/dataset/...  # 音色试听样本（软链）
 └── output/ → /mnt/dataset/... # 成片 + 元数据（软链到机械盘）

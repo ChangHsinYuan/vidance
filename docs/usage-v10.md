@@ -150,6 +150,41 @@ python core/vidance.py compose docs/example/compose_demo.json
 - overlay：3 个不同位置/颜色文字 + 右下角 0.28x 画中画（opacity 0.9）
 - audio：BGM `volume:0.35` + `ducking`
 
+### 示例 1b：完整效果演示视频（一条时间线串起所有效果）
+
+`docs/example/v10_effects_demo.json` → 9 段主轨，每段演示一个效果并配分段字幕：
+
+| 段 | 效果 | 转场入 |
+|----|------|--------|
+| 1 | `flash` + `zoom`（推近） | — |
+| 2 | `punch_in` | fade |
+| 3 | `glitch` | slideleft |
+| 4 | `grain_vignette` | circleopen |
+| 5 | `wipe` | wipeleft |
+| 6 | `zoom`（拉远） | pixelize |
+| 7 | `speed_ramp` | 硬切 |
+| 8 | `freeze_zoom` | 硬切 |
+| 9 | 画中画 + 文字 + BGM ducking | hblur |
+
+```bash
+python core/vidance.py compose docs/example/v10_effects_demo.json
+# → output/output/20260924_compose_demo/v10_effects_demo.mp4（13.7s / 12MB）
+```
+
+> 注：`speed_ramp` / `freeze_zoom` 会改变片段时长，compose 在特效后**强制归一回元素 `duration`**（不足克隆末帧、超出截断），保证时间轴可精确预测。
+
+### 指令库
+
+`docs/instructions/` 下有两份：
+
+1. **命令指令库** `commands.json`（v0-v10 全部 `/` 命令），供前端两级 `/help`：
+   - `/help` → 每命令一句概览（可点击展开）
+   - `/help 命令名` → 该命令版本/说明/参数/示例
+2. **剪辑指令模式库** `compose-commands.md` + `compose-commands.json`（36 条 v10 剪辑效果组合）：
+   - 覆盖拼接/转场/裁剪/变速/8 特效/画中画/文字/音频/组合
+   - 每条 = 自然语言指令（多说法）+ 斜杠命令 + CLI + 时间线 JSON 片段
+   - 后端 `GET /api/instructions` 提供
+
 ### 示例 2：把现有成片加水印+配乐
 
 ```jsonc

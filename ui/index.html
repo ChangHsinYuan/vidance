@@ -231,6 +231,20 @@
     #btn-menu { display: block; }
     .msg, .card { max-width: 95%; }
   }
+.ins-lib{margin-top:8px;max-height:340px;overflow:auto;font-size:12px;line-height:1.7;
+  border-left:2px solid #444;padding-left:10px}
+.ins-line{white-space:pre-wrap;word-break:break-word;color:#cfcfcf}
+.ins-line:nth-child(odd){background:rgba(255,255,255,.02)}
+.cmd-row{cursor:pointer;padding:2px 0}
+.cmd-row:hover{background:rgba(80,160,255,.12)}
+.cmd-row code{color:#6cf;font-weight:600}
+.cmd-brief{color:#cfcfcf}
+.ins-sec{margin:8px 0 2px;font-weight:600;color:#9ad}
+.ins-hint{color:#8a8;font-size:12px;margin-bottom:6px}
+.ver{color:#888;font-size:11px}
+.req{color:#e66;font-size:11px}
+.ch{color:#7a7;font-size:11px}
+.ins-line code{color:#6cf}
 </style>
 </head>
 <body>
@@ -457,6 +471,27 @@ function addVideoCard(t) {
   scrollBottom();
 }
 
+function quickHelp(cmd) {
+  input.value = '/help ' + cmd;
+  input.focus();
+  send();
+}
+
+function addComposeCard(output, videoUrl) {
+  hideEmpty();
+  const div = document.createElement('div');
+  div.className = 'card';
+  const url = videoUrl || ('/api/file?path=' + encodeURIComponent(output));
+  const name = (output || '').split('/').pop();
+  div.innerHTML = `
+    <h4><span class="pill completed">compose</span> 成片</h4>
+    <div class="concept">${escapeHtml(name)}</div>
+    <video controls preload="metadata" src="${url}"></video>
+    <div class="kv"><span class="k">输出</span><span>${escapeHtml(output || '')}</span></div>`;
+  messages.appendChild(div);
+  scrollBottom();
+}
+
 function startPolling(taskId) {
   if (pollers[taskId]) return;
   pollers[taskId] = setInterval(async () => {
@@ -587,6 +622,48 @@ async function dispatchSlash(text) {
   if (d.job_id && d.poll) {  // clip 异步
     addBot(`<b>✓ ${escapeHtml(d.message)}</b> 轮询 ${escapeHtml(d.poll)}`);
     pollClip(d.job_id);
+    return;
+  }
+  // compose：直接出成片卡片
+  if (d.compose_output) {
+    addBot(`<b>✓ ${escapeHtml(d.message || '成片已生成')}</b>`);
+    addComposeCard(d.compose_output, d.video_url);
+    return;
+  }
+  // help 详情：/help 命令名
+  if (name === 'help' && d.command && d.help_lines) {
+    const c = d.command;
+    const params = (c.params || []).map(p_ => {
+      const req = p_.required ? ' <span class="req">必填</span>' : '';
+      const ch = p_.choices ? ` <span class="ch">[${p_.choices.join('/')}]</span>` : '';
+      return `<div class="ins-line"><code>${escapeHtml(p_.key)}</code> ${escapeHtml(p_.desc||'')}${req}${ch}</div>`;
+    }).join('');
+    const exs = (c.examples || []).map(e =>
+      `<div class="ins-line">${escapeHtml(e)}</div>`).join('');
+    addBot(`<b>/${escapeHtml(c.name)}</b> <span class="ver">${escapeHtml(c.version||'')}</span> — ${escapeHtml(c.brief)}`
+      + `<div class="ins-lib"><div class="ins-line">${escapeHtml(c.detail||'')}</div>`
+      + (params ? `<div class="ins-sec">参数</div>${params}` : '')
+      + (exs ? `<div class="ins-sec">示例</div>${exs}` : '')
+      + `</div>`);
+    return;
+  }
+  // help 概览：/help
+  if (name === 'help' && d.help_lines) {
+    const lines = d.help_lines.map(l => {
+      const m = l.match(/^\/(\w+)\s+—\s+([\s\S]*)$/);
+      if (m) {
+        return `<div class="ins-line cmd-row" onclick="quickHelp('${m[1]}')">`
+          + `<code>/${m[1]}</code> <span class="cmd-brief">${escapeHtml(m[2])}</span></div>`;
+      }
+      return `<div class="ins-line">${escapeHtml(l)}</div>`;
+    }).join('');
+    const eff = (d.effects_index || []).length
+      ? `<div class="ins-sec">v10 剪辑效果分类（/compose，详见 /help compose）</div>`
+        + d.effects_index.map(l => `<div class="ins-line">${escapeHtml(l)}</div>`).join('')
+      : '';
+    const hint = d.help_hint ? `<div class="ins-hint">${escapeHtml(d.help_hint)}</div>` : '';
+    addBot(`<b>${escapeHtml(d.message || '命令一览')}</b>${hint}`
+      + `<div class="ins-lib">${lines}${eff}</div>`);
     return;
   }
   if (d.message) addBot('<b>' + escapeHtml(d.message) + '</b>');

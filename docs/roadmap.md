@@ -231,7 +231,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 **里程碑**：M1 时间线 JSON 模型 + 拼接 → M2 裁剪/分割/变速 → M3 转场+特效集成 → M4 CLI/API 暴露 + LLM 自然语言→时间线 JSON
 
-**状态**：M1-M4 全部完成。`utils/compose.py`（时间线 JSON 模型 + 主轨 xfade 拼接 + trim/rate + 8 特效链 + 画中画/文字叠加 + 多音轨 amix/ducking）；`vidance.py compose` CLI + `/api/tool/compose`；实测 `output/compose_fx_demo.mp4`（4 段特效主轨 + 3 转场 + 3 文字 + 画中画 + BGM ducking）。未做：关键帧 animations、掩码 masks、sticker/graphic 轨、分割 split。LLM 自然语言→时间线 JSON（`llm.timeline_from_text`）待补。用法见 [usage-v10.md](./usage-v10.md)。
+**状态**：M1-M4 全部完成。`utils/compose.py`（时间线 JSON 模型 + 主轨 xfade 拼接 + trim/rate + 8 特效链 + 画中画/文字叠加 + 多音轨 amix/ducking）；`vidance.py compose` CLI + `/api/tool/compose`；实测 `output/compose_fx_demo.mp4`（4 段特效主轨 + 3 转场 + 3 文字 + 画中画 + BGM ducking）。未做：关键帧 animations、掩码 masks、sticker/graphic 轨、分割 split。另建**剪辑指令模式库** `docs/instructions/compose-commands.{md,json}`（36 条，前端 `/help` 展示，供 SFT）；完整效果演示视频 `output/output/20260924_compose_demo/v10_effects_demo.mp4`。LLM 自然语言→时间线 JSON（`llm.timeline_from_text`）待补。用法见 [usage-v10.md](./usage-v10.md)。
 
 **参考**：OpenCut（时间线模型）、BigBanana CutOS（粗剪）、v5 effects.py、v2 `concat` 子命令。
 

@@ -118,6 +118,22 @@ def _trim_media(src: str, out: str, trim_start: float, duration: float, rate: fl
     _run(cmd)
 
 
+def _enforce_duration(src: str, out: str, dur: float, width: int, height: int) -> None:
+    """特效后强制归一：精确到 dur 秒（不足克隆末帧，超出截断），保留音轨。"""
+    vf = (f"tpad=stop_mode=clone:stop_duration={max(0.0, dur):.3f},"
+          f"trim=duration={dur:.3f},setpts=PTS-STARTPTS,"
+          f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+          f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2")
+    has_a = _probe(src)['has_audio']
+    if has_a:
+        cmd = [FFMPEG, '-y', '-i', src, '-vf', vf, '-r', '24',
+               '-af', f'atrim=duration={dur:.3f},asetpts=PTS-STARTPTS'] + ENC + \
+              ['-c:a', 'aac', '-shortest', out]
+    else:
+        cmd = [FFMPEG, '-y', '-i', src, '-vf', vf, '-r', '24'] + ENC + ['-an', out]
+    _run(cmd)
+
+
 # 兼容：图片走 loop
 def _media_kind(src: str) -> str:
     ext = os.path.splitext(src)[1].lower()
@@ -172,7 +188,10 @@ def normalize_clip(el: Dict[str, Any], work_dir: str) -> str:
                 continue
             cur = nxt
         if cur != tmp:
-            shutil.move(cur, tmp)
+            # 特效可能改变时长（speed_ramp/freeze_zoom），强制回到 out_dur 保证时间轴可预测
+            fixed = os.path.join(work_dir, f'main_{cid}_fix.mp4')
+            _enforce_duration(cur, fixed, out_dur, W, H)
+            shutil.move(fixed, tmp)
     return tmp
 
 
@@ -255,6 +274,12 @@ def build_timeline(tl: Dict[str, Any], out: str, tmp_root: Optional[str] = None)
     else:
         cmd = [FFMPEG, '-y', '-i', cur] + ENC + ['-c:a', 'aac', final_path]
         _run(cmd)
+    # 自动清理临时目录（仅当未显式指定 tmp_root）
+    if tmp_root is None:
+        try:
+            shutil.rmtree(work_dir, ignore_errors=True)
+        except Exception:
+            pass
     return final_path
 
 

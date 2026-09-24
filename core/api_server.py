@@ -408,6 +408,24 @@ def video_stream(task_id: str):
     return FileResponse(output, media_type='video/mp4', filename=os.path.basename(output))
 
 
+# ── /api/file?path=...：通用本地文件流（限制在 output_dir 与项目目录内）──
+@app.get('/api/file')
+def file_stream(path: str):
+    import os as _os
+    cfg = load_config()
+    out_root = _os.path.realpath(cfg.get('output_dir', 'output'))
+    proj_root = _os.path.realpath(_os.path.join(_os.path.dirname(__file__), '..'))
+    real = _os.path.realpath(path)
+    allowed = real.startswith(out_root) or real.startswith(proj_root)
+    if not allowed:
+        raise HTTPException(status_code=403, detail='path not allowed')
+    if not _os.path.isfile(real):
+        raise HTTPException(status_code=404, detail='file not found')
+    ext = _os.path.splitext(real)[1].lower()
+    media = 'video/mp4' if ext in ('.mp4', '.mov', '.webm') else             'image/png' if ext == '.png' else             'image/jpeg' if ext in ('.jpg', '.jpeg') else 'application/octet-stream'
+    return FileResponse(real, media_type=media, filename=_os.path.basename(real))
+
+
 # ── /api/tasks/{task_id}/log：任务详细日志（v7 折叠日志面板用）──
 @app.get('/api/tasks/{task_id}/log')
 def task_log(task_id: str, tail: int = Query(400, ge=1, le=5000)):
@@ -541,6 +559,18 @@ TOOLS = [
 ]
 
 
+@app.get('/api/instructions')
+def instructions():
+    """v10 剪辑指令模式库（docs/instructions/compose-commands.json）"""
+    import json as _json
+    path = os.path.join(os.path.dirname(__file__), '..', 'docs', 'instructions', 'compose-commands.json')
+    try:
+        with open(path, encoding='utf-8') as f:
+            return _json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'instructions load failed: {e}')
+
+
 @app.get('/api/tools')
 def tools():
     return {'tools': TOOLS}
@@ -600,10 +630,64 @@ def tool_dispatch(name: str, req: ToolRequest):
     pos = a['positional']
     flags = a['flags']
 
-    # ── help ──
+    # ── help（两级：/help 概览，/help 命令名 详情）──
     if name == 'help':
-        return {'message': '可用命令：' + '、'.join(f'/{t["name"]} {t["help"]}' for t in TOOLS),
-                'tools': TOOLS}
+        import json as _json
+
+        def _load_cmds():
+            ip = os.path.join(os.path.dirname(__file__), '..', 'docs', 'instructions', 'commands.json')
+            with open(ip, encoding='utf-8') as f:
+                return _json.load(f).get('commands', [])
+
+        # 详情模式：/help auto
+        if pos:
+            target = pos[0].lstrip('/')
+            try:
+                cmds = _load_cmds()
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f'commands load failed: {e}')
+            c = next((x for x in cmds if x['name'] == target), None)
+            if not c:
+                return {'message': f'未找到命令 /{target}（输入 /help 看全部）'}
+            lines = [f'/{c["name"]}  [{c.get("version", "")}]  {c["brief"]}', '', c.get('detail', '')]
+            if c.get('params'):
+                lines.append('')
+                lines.append('参数：')
+                for p_ in c['params']:
+                    req = '（必填）' if p_.get('required') else ''
+                    ch = f' 可选值：{"/".join(p_["choices"])}' if p_.get('choices') else ''
+                    lines.append(f'  {p_["key"]}  {p_.get("desc", "")}{req}{ch}')
+            if c.get('examples'):
+                lines.append('')
+                lines.append('示例：')
+                for ex in c['examples']:
+                    lines.append(f'  {ex}')
+            return {'message': f'/{c["name"]} 用法', 'command': c, 'help_lines': lines}
+
+        # 概览模式：/help
+        lines = []
+        try:
+            cmds = _load_cmds()
+            for c in cmds:
+                lines.append(f'/{c["name"]}  —  {c["brief"]}')
+        except Exception as _e:
+            lines = [f'/{t["name"]}  —  {t["help"]}' for t in TOOLS]
+            print('  help fallback:', _e)
+        # 附 v10 剪辑效果分类（压缩为一行索引）
+        effects_lines = []
+        try:
+            ip2 = os.path.join(os.path.dirname(__file__), '..', 'docs', 'instructions', 'compose-commands.json')
+            lib = _json.load(open(ip2, encoding='utf-8'))
+            for cat in lib.get('categories', []):
+                ids = ' '.join(it['id'] for it in cat.get('items', []))
+                effects_lines.append(f'  {cat["name"]}（{len(cat.get("items", []))}）：{ids}')
+        except Exception:
+            pass
+        return {'message': 'Vidance 命令一览（/help 命令名 看详情）',
+                'tools': TOOLS, 'help_lines': lines,
+                'help_hint': '输入 /help 命令名 查看详细参数与示例',
+                'effects_index': effects_lines,
+                'instruction_lines': lines}
 
     # ── voices ──
     if name == 'voices':
@@ -678,7 +762,8 @@ def tool_dispatch(name: str, req: ToolRequest):
         from utils.compose import run_timeline
         out = run_timeline(pos[0], flags.get('output'))
         return {'message': '成片已生成', 'output': out,
-                'video_url': '/api/video/' + os.path.basename(os.path.dirname(out)) if out else ''}
+                'compose_output': out,
+                'video_url': ('/api/file?path=' + out) if out else ''}
 
     # ── scout ──
     if name == 'scout':
