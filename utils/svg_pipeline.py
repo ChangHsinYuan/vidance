@@ -56,6 +56,26 @@ def _freeze_and_advance(page, t_ms: float):
     )
 
 
+def _find_chrome_executable():
+    """找可用的 Chromium 可执行文件（playwright headless shell 或完整 chrome）。
+
+    返回路径或 None（None 时让 playwright 自行查找）。
+    """
+    import glob
+    cache = os.path.expanduser('~/.cache/ms-playwright')
+    patterns = [
+        os.path.join(cache, 'chromium_headless_shell-*', 'chrome-headless-shell-linux64', 'chrome-headless-shell'),
+        os.path.join(cache, 'chromium-*', 'chrome-linux64', 'chrome'),
+        os.path.join(cache, 'chromium-*', 'chrome-linux', 'chrome'),
+    ]
+    for pat in patterns:
+        hits = sorted(glob.glob(pat))
+        for h in hits:
+            if os.access(h, os.X_OK):
+                return h
+    return None
+
+
 def render_frames(svg_code: str, width: int, height: int, fps: int, duration: float,
                   bg: str = '#ffffff', settle_ms: int = 200):
     """生成器：逐帧 yield PNG bytes（确定性时间点截图）。"""
@@ -70,9 +90,19 @@ def render_frames(svg_code: str, width: int, height: int, fps: int, duration: fl
 
     html = HTML_TPL.format(svg=svg_code, bg=bg)
     total_frames = max(1, int(round(fps * duration)))
+    exe = _find_chrome_executable()
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        launch_kwargs = {'headless': True}
+        if exe:
+            launch_kwargs['executable_path'] = exe
+        try:
+            browser = p.chromium.launch(**launch_kwargs)
+        except Exception:
+            if exe:
+                browser = p.chromium.launch(headless=True)
+            else:
+                raise
         page = browser.new_page(viewport={'width': width, 'height': height},
                                 device_scale_factor=1)
         page.set_content(html)

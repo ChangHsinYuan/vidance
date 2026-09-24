@@ -6,8 +6,8 @@
     "base_url": "https://api.llm.ustc.edu.cn/v1",
     "api_key": "***REMOVED***",
     "models": {
-      "script": "deepseek-v4-flash-ascend1",
-      "prompt_opt": "deepseek-v4-flash-ascend1",
+      "script": "deepseek-v4-flash-ascend",
+      "prompt_opt": "deepseek-v4-flash-ascend",
       "review": "qwen3.8-chat",
       "review_strict": "qwen3.8-chat"
     }
