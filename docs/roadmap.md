@@ -340,7 +340,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 - 纯 API 模式：所有生成任务可切云端 API（SiliconFlow 等），完全不依赖本地 GPU（对接 v9 模型提供商）
 - Pipeline 轻量化：去除 GPU 依赖的处理。**无 GPU 出片两条线**（均已具备或已规划）：
   1. **营销号流水线（已有）**：v4/v5 的生图/爬图 → zoompan 运镜 → TTS → 剪辑，零视频模型，已可用
-  2. **LLM 生成 SVG → 渲染成片（规划）**：LLM 产出带 CSS/SMIL 动画的自包含 SVG → 无头浏览器逐帧渲染 → ffmpeg 拼帧 → mp4。**纯 CPU、秒级、矢量清晰**，适合信息图/文字动画/数据可视化/科普短片。拟落 `utils/svg_pipeline.py`（见下）
+  2. **LLM 生成 SVG → 渲染成片（✅ S1-S4 已实现 2026-09-24）**：LLM 产出带 CSS/SMIL 动画的自包含 SVG → 无头浏览器逐帧渲染 → ffmpeg 拼帧 → mp4。**纯 CPU、秒级、矢量清晰**，适合信息图/文字动画/数据可视化/科普短片。已落 `utils/svg_llm.py`（S1 概念→SVG）+ `utils/svg_pipeline.py`（S2 单帧/S3 抽帧/S4 拼 mp4），CLI `vidance.py svg --concept "鹈鹕骑自行车"`，`/api/tool/svg`，指令集 `/svg`。依赖 Playwright+Chromium（已装）
      - 关键设计：**确定性逐帧**（用 Web Animations API 把动画 `currentTime=t` 后 pause 再截图，而非 wall-clock `wait_for_timeout`），保证帧率精确无抖动
      - 渲染后端：Playwright/Chromium（需装）或 `resvg`/`cairosvg`（仅静态帧）；`node` 已就绪可走 puppeteer
      - 可选：LLM 直接给 SVG 代码 + 时长/分辨率 → 一条命令出片；后续可接 v9 模型提供商
@@ -457,9 +457,10 @@ vidance/
 │   ├── ffmpeg_tools.py        # 抽帧/拼接/字幕/合成
 │   ├── rife.py / gen_luts.py / music.py / stt.py
 │   ├── compose.py             # v10 时间线拼接（M1-M4 已实现）
+│   ├── svg_pipeline.py        # v15 SVG→mp4（无头浏览器逐帧渲染，已实现 S1-S4）
+│   ├── svg_llm.py             # v15 概念→LLM→动效 SVG
 │   ├── t2c_server.py          # t2c 自然语言→命令（translate，进程内/可选 HTTP）
 │   ├── h3_prompt_video.py     # 整段式 prompt + 参考图 → H3 ref2va 单镜（原生音频直出）
-│   ├── svg_pipeline.py        # v15 SVG/HTML 动画 → mp4（无头浏览器逐帧渲染，🎯 待完善）
 │   ├── oneshot.py             # v14 一镜到底（🎯 待实现）
 │   ├── notify/                # v11 机器人网关（🎯 待实现）
 │   ├── luts/  bgm/  workflows/  voices/

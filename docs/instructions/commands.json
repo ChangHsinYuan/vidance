@@ -216,6 +216,50 @@
       ]
     },
     {
+      "name": "svg",
+      "version": "v15",
+      "brief": "SVG 流水线：概念→LLM 生成 SVG→逐帧渲染→mp4（纯 CPU，秒级）",
+      "detail": "LLM 产出带 CSS/SMIL 动画的自包含 SVG → 无头浏览器确定性逐帧渲染 → ffmpeg 拼帧成 mp4。不占 GPU，适合信息图/文字动画/数据可视化/科普短片。也可直接渲染已存在的 SVG（支持 --still 单帧、--frames 抽帧）。",
+      "params": [
+        {
+          "key": "--concept",
+          "desc": "概念（一键：LLM 生成 SVG→mp4）"
+        },
+        {
+          "key": "--svg",
+          "desc": "SVG 文件路径（渲染模式）"
+        },
+        {
+          "key": "-o",
+          "desc": "输出 mp4 路径"
+        },
+        {
+          "key": "--duration",
+          "desc": "动画时长（秒，默认 3）"
+        },
+        {
+          "key": "--width / --height",
+          "desc": "分辨率（默认 800x450）"
+        },
+        {
+          "key": "--fps",
+          "desc": "帧率（默认 24）"
+        },
+        {
+          "key": "--still",
+          "desc": "只渲染单帧 PNG（调试）"
+        },
+        {
+          "key": "--frames",
+          "desc": "抽帧成 PNG 序列"
+        }
+      ],
+      "examples": [
+        "/svg --concept \"鹈鹕骑自行车\"",
+        "/svg --svg output/svg/pelican_bike.svg -o output/svg_demo/out.mp4 --duration 3"
+      ]
+    },
+    {
       "name": "custom",
       "version": "v1.1",
       "brief": "参考图 + 分镜脚本 → MiniMax-H3 ref2va 逐镜生成（原生音频）",
@@ -306,6 +350,65 @@
         "/h3shot --prompt input/prompt1.txt --ref input/徽派布衣奶蛙.png --name 奶蛙 --ref input/豆包.jpg --name 豆包 -o prompt01/01.mp4",
         "/h3shot --prompt input/prompt6.txt --ref input/成功徽商奶蛙.png --name 奶蛙 --ref input/豆包.jpg --name 豆包 -o prompt06/06.mp4",
         "/h3shot --prompt input/prompt2.txt --ref input/徽派布衣奶蛙.png --name 奶蛙 --ref input/豆包.jpg --name 豆包 --fast -o prompt02/02.mp4"
+      ]
+    },
+    {
+      "name": "quick",
+      "version": "v0",
+      "brief": "纯 T2V：一句概念 → Wan 生成，无角色锚、无后处理（最快出素材）",
+      "detail": "跳过 LLM 编剧/角色锚/审片/LUT/BGM/STT，只用 Wan T2V 生成一条短片。适合快速试镜头、做拼接素材。需 GPU2:8189 (wan)。",
+      "params": [
+        {
+          "key": "concept",
+          "desc": "视频概念（中文）",
+          "required": true
+        },
+        {
+          "key": "--voice",
+          "desc": "TTS 音色（可选，一般不需要）"
+        },
+        {
+          "key": "-o",
+          "desc": "输出路径"
+        }
+      ],
+      "examples": [
+        "/quick 一只猫在月球上跳舞"
+      ]
+    },
+    {
+      "name": "concat",
+      "version": "v2.1",
+      "brief": "多视频拼接：cut 硬切 / crossfade 交叉淡化 / rife 光流过渡",
+      "detail": "把多个视频按顺序拼成一条。cut 用 ffmpeg stream copy（秒级、保留各段原生音轨）；crossfade 交叉淡化（moviepy，CPU）；rife 光流插帧过渡（最丝滑，需 GPU2:8189 wan）。规格不一致会自动处理。",
+      "params": [
+        {
+          "key": "videos",
+          "desc": "待拼接视频列表（可多个）",
+          "required": true
+        },
+        {
+          "key": "-o",
+          "desc": "输出路径"
+        },
+        {
+          "key": "--transition",
+          "desc": "cut(硬切) / crossfade(交叉淡化) / rife(光流)",
+          "choices": [
+            "cut",
+            "crossfade",
+            "rife"
+          ]
+        },
+        {
+          "key": "--crossfade-duration",
+          "desc": "交叉淡化时长（秒，默认 0.5）"
+        }
+      ],
+      "examples": [
+        "/concat output/output/prompt01/01.mp4 output/output/prompt02/02.mp4 -o merged.mp4 --transition cut",
+        "/concat a.mp4 b.mp4 c.mp4 -o merged.mp4 --transition crossfade --crossfade-duration 0.5",
+        "/concat a.mp4 b.mp4 -o merged.mp4 --transition rife"
       ]
     },
     {

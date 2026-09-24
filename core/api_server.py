@@ -707,6 +707,28 @@ TOOLS = [
          {'key': '--bgm', 'type': 'choice', 'choices': ['calm', 'uplifting', 'mysterious', 'dramatic', 'playful', 'epic'], 'desc': 'BGM'},
          {'key': '--stt', 'type': 'flag', 'desc': 'STT 字幕'},
      ]},
+    {'name': 'quick', 'help': '纯 T2V：一句概念→Wan 生成，无角色锚无后处理（最快出素材）',
+     'params': [
+         {'key': 'concept', 'type': 'text', 'required': True, 'desc': '视频概念（中文）'},
+         {'key': '--voice', 'type': 'text', 'desc': 'TTS 音色（可选）'},
+     ]},
+    {'name': 'concat', 'help': '多视频拼接：cut 硬切 / crossfade 交叉淡化 / rife 光流过渡',
+     'params': [
+         {'key': 'videos', 'type': 'text', 'required': True, 'desc': '待拼接视频路径（空格分隔，可多个）'},
+         {'key': '-o', 'type': 'text', 'desc': '输出路径'},
+         {'key': '--transition', 'type': 'choice', 'choices': ['cut', 'crossfade', 'rife'], 'desc': '转场方式'},
+         {'key': '--crossfade-duration', 'type': 'number', 'desc': '交叉淡化时长（秒，默认 0.5）'},
+     ]},
+    {'name': 'svg', 'help': 'SVG 流水线：概念→LLM 生成 SVG→逐帧渲染→mp4（纯 CPU，秒级）',
+     'params': [
+         {'key': '--concept', 'type': 'text', 'desc': '概念（一键：LLM 生成 SVG→mp4）'},
+         {'key': '--svg', 'type': 'text', 'desc': 'SVG 文件路径（渲染模式）'},
+         {'key': '-o', 'type': 'text', 'desc': '输出 mp4 路径'},
+         {'key': '--duration', 'type': 'number', 'desc': '动画时长（秒，默认 3）'},
+         {'key': '--width', 'type': 'number', 'desc': '宽（默认 800）'},
+         {'key': '--height', 'type': 'number', 'desc': '高（默认 450）'},
+         {'key': '--fps', 'type': 'number', 'desc': '帧率（默认 24）'},
+     ]},
     {'name': 'clip', 'help': 'FunClip：长素材 ASR 转写+语义裁剪',
      'params': [
          {'key': 'input', 'type': 'text', 'required': True, 'desc': '音频/视频路径'},
@@ -1061,13 +1083,16 @@ def tool_dispatch(name: str, req: ToolRequest):
         threading.Thread(target=_run_clip, args=(job_id, req2), daemon=True).start()
         return {'message': '裁剪任务已提交（异步）', 'job_id': job_id, 'poll': f'/api/clip/{job_id}'}
 
-    # ── 任务型：auto / fast / hot（提交任务队列，前端轮询）──
-    if name in ('auto', 'fast', 'hot'):
+    # ── 任务型：auto / fast / hot / quick（提交任务队列，前端轮询）──
+    if name in ('auto', 'fast', 'hot', 'quick'):
         if not pos:
             raise HTTPException(status_code=400, detail=f'用法: /{name} 概念')
         concept = ' '.join(pos)
         opts = {'mode': name}
-        if name == 'auto':
+        if name == 'quick':
+            if flags.get('voice'):
+                opts['voice'] = flags['voice']
+        elif name == 'auto':
             for k in ('character', 'character_mode', 'voice', 'lut', 'bgm'):
                 if flags.get(k):
                     opts[k] = flags[k]

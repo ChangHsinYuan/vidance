@@ -8,7 +8,7 @@ Vidance 是一个基于 opencode agent 编排的本地视频生成系统。核�
 
 **统一入口**：`python core/vidance.py {auto|custom|quick}` — auto 模式走 LLM 编剧+Wan/FLUX 生成，custom 模式走参考图+预写脚本+H3 ref2va 生成，quick 模式纯 T2V 无后处理。后处理（RIFE/LUT/BGM/STT）由 `core/postprocess.py` 共享模块提供。
 
-**当前状态：v0-v7 全部实现 + v10 时间线拼接（M1-M4）完成 + t2c 自然语言→命令已接入**（v2 长视频 + v2.1 backlog + v3 M0-M7 + v4 M1-M6 + v5 M1-M4 + v6 M1-M4 + v7 前端 M1-M4 + v10 + t2c），**v8-v15 规划就绪**（2026-09-23 重排）。
+**当前状态：v0-v7 全部实现 + v10 时间线拼接（M1-M4）+ t2c 自然语言→命令 + v15 SVG→mp4 流水线（S1-S4）**（v2 长视频 + v2.1 backlog + v3 M0-M7 + v4 M1-M6 + v5 M1-M4 + v6 M1-M4 + v7 前端 M1-M4 + v10 + t2c），**v8-v15 规划就绪**（2026-09-23 重排）。
 
 **版本路线**：v4 营销号流水线（fast/hot 爬图出片）→ v5 剪辑特效 → v6 prompt 多轮核实（ask + dialog API）→ v7 前端 agent WebUI（:8894/ui）→ **v8 前端增强**（资产库/分镜预览/进度可视化/时间线展示）→ **v9 API 标准化**（多 Vendor 适配/能力发现/用量限流/OpenAPI）→ **v10 拼接与特效**（OpenCut 时间线思路，后端 CLI 可被 LLM 调用）→ **v11 接入社交媒体**（发布渠道 + IM 机器人网关）→ **v12 整合开源仓库**（断点续跑/JSON 容错/RAG/五维提示词）→ **v13 多智能体**（三层 Agent 解耦）→ **v14 长视频质量**（关键帧驱动/一镜到底/层级一致性）→ **v15 轻量化**（纯 API 模式/无 GPU）。详见 docs/roadmap.md。
 
@@ -115,6 +115,9 @@ vidance/
 │   ├── dialog.py              # v6 prompt 多轮核实状态机（DialogManager，SQLite，M1-M4 已实现）
 │   ├── compose.py             # v10 时间线拼接与特效（OpenCut 思路，后端 CLI；M1-M4 已实现）
 │   ├── t2c_server.py          # t2c 推理封装（translate(text)→command，进程内单例/可选 HTTP）
+│   ├── svg_llm.py             # v15 概念→LLM→动效 SVG（S1）
+│   ├── svg_pipeline.py        # v15 SVG→mp4（无头浏览器逐帧渲染，纯 CPU；S2 单帧/S3 抽帧/S4 成片）
+│   ├── h3_prompt_video.py     # 整段式 prompt + 参考图 → H3 ref2va 单镜（原生音频直出）
 │   ├── oneshot.py             # v14 一镜到底（链式 I2V 末帧回灌 + 运镜脚本 + 漂移控制；🎯 待实现）
 │   ├── notify/                # v11 社交媒体/IM 网关（base/wecom/feishu/dingtalk/factory；🎯 待实现）
 │   ├── luts/                  # v2 LUT 文件目录（cinematic/warm/cool/vintage/vivid/soft .cube）
@@ -210,6 +213,12 @@ python core/vidance.py concat clip1.mp4 clip2.mp4 -o merged.mp4 --transition cro
 | `--no-bgm` | ✓ | ✓ | — | — | 禁用 BGM |
 | `--no-rife` | ✓ | ✓ | — | — | 禁用 RIFE 过渡 |
 | `--stt` | ✓ | ✓ | — | — | STT 字幕对齐 |
+
+# ── svg：v15 SVG 流水线（概念→LLM 生成 SVG→逐帧渲染→mp4，纯 CPU）──
+python core/vidance.py svg --concept "鹈鹕骑自行车"                    # 一键
+python core/vidance.py svg --svg output/svg/pelican_bike.svg -o output/svg_demo/out.mp4 --duration 3
+python core/vidance.py svg --svg scene.svg --still --at 1.5           # 单帧调试
+python core/vidance.py svg --svg scene.svg --frames                    # 抽帧成 PNG 序列
 
 > 旧入口 `python core/pipeline.py ...` 和 `python core/custom_gen.py ...` 仍可用（向后兼容），但推荐使用 `vidance.py`。
 

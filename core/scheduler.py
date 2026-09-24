@@ -265,13 +265,16 @@ class Scheduler:
         opts = task['options']
         concept = task['concept']
         mode = opts.get('mode', 'auto')
-        if mode not in ('auto', 'fast', 'hot'):
+        if mode not in ('auto', 'fast', 'hot', 'quick'):
             mode = 'auto'
 
         cmd = [sys.executable, '-u', os.path.join(os.path.dirname(__file__), 'vidance.py'),
                mode, concept]
 
-        if mode == 'auto':
+        if mode == 'quick':
+            if opts.get('voice'):
+                cmd += ['--voice', opts['voice']]
+        elif mode == 'auto':
             if opts.get('character'):
                 cmd += ['--character', opts['character']]
             if opts.get('character_mode'):
