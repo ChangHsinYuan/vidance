@@ -622,12 +622,17 @@ async function dispatchSlash(text) {
     addBot(`<b>${escapeHtml(d.message)}</b>${rows}`);
     return;
   }
+  // h3shot / custom 异步（长耗时，约 15-20 分钟/镜）
+  if (d.h3_job_id) {
+    addBot(`<b>✓ ${escapeHtml(d.message || 'H3 任务已提交')}</b> 轮询 ${escapeHtml(d.poll)}`);
+    pollH3(d.h3_job_id);
+    return;
+  }
   if (d.job_id && d.poll) {  // clip 异步
     addBot(`<b>✓ ${escapeHtml(d.message)}</b> 轮询 ${escapeHtml(d.poll)}`);
     pollClip(d.job_id);
     return;
-  }
-  // compose：直接出成片卡片
+  }  // compose：直接出成片卡片
   if (d.compose_output) {
     addBot(`<b>✓ ${escapeHtml(d.message || '成片已生成')}</b>`);
     addComposeCard(d.compose_output, d.video_url);
@@ -683,6 +688,23 @@ function pollClip(jobId) {
       addBot('<b>✗ 裁剪失败</b> ' + escapeHtml(d.error || ''));
     }
   }, 3000);
+}
+
+/* H3 单镜 / custom 异步轮询（长耗时，60s 一次） */
+function pollH3(jobId) {
+  addBot('<span class="d">H3 生成中，通常 15-20 分钟，可离开页面稍后回来查看…</span>');
+  const iv = setInterval(async () => {
+    const d = await (await fetch(`/api/h3shot/${jobId}`)).json();
+    if (d.status === 'completed') {
+      clearInterval(iv);
+      addBot(`<b>✓ H3 生成完成</b>\n输出: ${escapeHtml(d.output || '')}`
+        + (d.seed ? `\nseed: ${d.seed}` : ''));
+      if (d.video_url) addComposeCard(d.output, d.video_url);
+    } else if (d.status === 'failed') {
+      clearInterval(iv);
+      addBot('<b>✗ H3 生成失败</b> ' + escapeHtml(d.error || ''));
+    }
+  }, 60000);
 }
 
 /* 自然语言 → v6 dialog（续聊或新开） */

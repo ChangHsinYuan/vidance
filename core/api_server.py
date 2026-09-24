@@ -314,9 +314,10 @@ class H3ShotRequest(BaseModel):
     names: list = []           # 角色名（与 refs 对齐，可空）
     output: Optional[str] = None
     seconds: Optional[float] = None
-    width: int = 1344
-    height: int = 768
-    steps: int = 20
+    width: Optional[int] = None
+    height: Optional[int] = None
+    steps: Optional[int] = None
+    fast: bool = False         # 快速档：steps=14 + 1024x576
     ref_image_size: str = 'match'
     no_describe: bool = False
 
@@ -349,6 +350,12 @@ def _run_h3shot(job_id: str, req: H3ShotRequest):
         length = int(round(seconds * 24))
         refs = prepare_refs(req.refs, req.names, clips_dir)
 
+        # 速度档位（--fast 基线，显式参数优先）
+        d_w, d_h, d_steps = (1024, 576, 14) if req.fast else (1344, 768, 20)
+        width = req.width if req.width is not None else d_w
+        height = req.height if req.height is not None else d_h
+        steps = req.steps if req.steps is not None else d_steps
+
         descs = [''] * len(refs)
         if not req.no_describe:
             try:
@@ -366,8 +373,8 @@ def _run_h3shot(job_id: str, req: H3ShotRequest):
         h3 = ComfyClient(config=config, instance='h3')
         result = h3.generate_h3_ref2v(
             prompt=h3_prompt, ref_image_paths=[r[0] for r in refs],
-            seed=None, width=req.width, height=req.height, length=length,
-            steps=req.steps, ref_image_size=req.ref_image_size,
+            seed=None, width=width, height=height, length=length,
+            steps=steps, ref_image_size=req.ref_image_size,
             filename_prefix=f'vidance/h3_{job_id}', output_path=output_path,
         )
         out_rel = os.path.relpath(output_path, output_dir)
@@ -686,6 +693,7 @@ TOOLS = [
          {'key': '--ref', 'type': 'text', 'required': True, 'desc': '参考图（--ref 路径 --name 角色名，可重复）'},
          {'key': '--name', 'type': 'text', 'desc': '角色名（与 --ref 对齐）'},
          {'key': '-o', 'type': 'text', 'desc': '输出路径（相对→output_dir，如 prompt01/01.mp4）'},
+         {'key': '--fast', 'type': 'flag', 'desc': '快速档：steps=14 + 1024x576（约省一半时间）'},
          {'key': '--seconds', 'type': 'number', 'desc': '时长（秒）；缺省从 prompt「约N秒」解析'},
          {'key': '--ref-image-size', 'type': 'choice', 'choices': ['match', 'max'], 'desc': '参考图尺寸'},
          {'key': '--no-describe', 'type': 'flag', 'desc': '跳过 LLM 看图描述'},
@@ -994,6 +1002,7 @@ def tool_dispatch(name: str, req: ToolRequest):
                 prompt=prompt_file, refs=refs, names=names,
                 output=rr['flags'].get('o') or rr['flags'].get('output'),
                 seconds=float(rr['flags']['seconds']) if rr['flags'].get('seconds') not in (None, True) else None,
+                fast=bool(rr['flags'].get('fast')),
                 ref_image_size=rr['flags'].get('ref_image_size', 'match'),
                 no_describe=bool(rr['flags'].get('no_describe')),
             )

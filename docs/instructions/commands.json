@@ -278,6 +278,10 @@
           "desc": "输出路径（相对→output_dir，如 prompt01/01.mp4）"
         },
         {
+          "key": "--fast",
+          "desc": "快速档：steps=14 + 1024x576（约省一半时间，质量略降）"
+        },
+        {
           "key": "--seconds",
           "desc": "时长（秒）；缺省从 prompt「约N秒」解析"
         },
@@ -300,7 +304,8 @@
       ],
       "examples": [
         "/h3shot --prompt input/prompt1.txt --ref input/徽派布衣奶蛙.png --name 奶蛙 --ref input/豆包.jpg --name 豆包 -o prompt01/01.mp4",
-        "/h3shot --prompt input/prompt6.txt --ref input/成功徽商奶蛙.png --name 奶蛙 --ref input/豆包.jpg --name 豆包 -o prompt06/06.mp4"
+        "/h3shot --prompt input/prompt6.txt --ref input/成功徽商奶蛙.png --name 奶蛙 --ref input/豆包.jpg --name 豆包 -o prompt06/06.mp4",
+        "/h3shot --prompt input/prompt2.txt --ref input/徽派布衣奶蛙.png --name 奶蛙 --ref input/豆包.jpg --name 豆包 --fast -o prompt02/02.mp4"
       ]
     },
     {

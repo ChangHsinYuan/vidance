@@ -10,6 +10,7 @@
 #   bash utils/run_naiwa_episodes.sh            # 全部 01-13（跳过已存在的）
 #   bash utils/run_naiwa_episodes.sh 2 5        # 只跑 02-05
 #   FORCE=1 bash utils/run_naiwa_episodes.sh 6  # 重跑 06（覆盖）
+#   FAST=1  bash utils/run_naiwa_episodes.sh    # 快速档（steps=14 + 1024x576，约省一半时间）
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
@@ -21,6 +22,8 @@ REF_DB="input/豆包.jpg"
 START="${1:-1}"
 END="${2:-13}"
 FORCE="${FORCE:-0}"
+FAST_ARG=""
+[ "${FAST:-0}" = "1" ] && FAST_ARG="--fast"
 
 for i in $(seq "$START" "$END"); do
   p=$(printf '%02d' "$i")
@@ -35,6 +38,7 @@ for i in $(seq "$START" "$END"); do
     --prompt "input/prompt${i}.txt" \
     --ref "$REF" --name 奶蛙 \
     --ref "$REF_DB" --name 豆包 \
+    $FAST_ARG \
     -o "$out" || echo "!! ${p} 失败，继续下一集"
   echo "==== 完成 $p ====  $(date '+%H:%M:%S') ===="
 done

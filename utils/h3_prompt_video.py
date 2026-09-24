@@ -84,15 +84,28 @@ def main():
     ap.add_argument('--ref', action='append', default=[], help='参考图路径（可重复，顺序对应 <Picture i>）')
     ap.add_argument('--name', action='append', default=[], help='参考图角色名（可重复，与 --ref 对齐；缺省用文件名）')
     ap.add_argument('-o', '--output', default=None, help='输出 mp4 路径（相对→output_dir）')
-    ap.add_argument('--width', type=int, default=1344)
-    ap.add_argument('--height', type=int, default=768)
+    ap.add_argument('--width', type=int, default=None)
+    ap.add_argument('--height', type=int, default=None)
     ap.add_argument('--seconds', type=float, default=None, help='时长（秒）；缺省从 prompt 的"约N秒"解析')
-    ap.add_argument('--steps', type=int, default=20)
+    ap.add_argument('--steps', type=int, default=None)
     ap.add_argument('--fps', type=int, default=24)
     ap.add_argument('--seed', type=int, default=None)
     ap.add_argument('--ref-image-size', choices=['match', 'max'], default='match')
     ap.add_argument('--no-describe', action='store_true', help='跳过 LLM 看图描述，直接用角色名做标签')
+    ap.add_argument('--fast', action='store_true',
+                    help='快速档：steps=14 + 1024x576（约省一半时间，质量略降）；显式 --steps/--width/--height 可覆盖')
     args = ap.parse_args()
+
+    # ── 速度档位（--fast 为默认基线，显式参数优先）──
+    DEFAULT_W, DEFAULT_H, DEFAULT_STEPS = 1344, 768, 20
+    if args.fast:
+        defaults = {'width': 1024, 'height': 576, 'steps': 14}
+    else:
+        defaults = {'width': DEFAULT_W, 'height': DEFAULT_H, 'steps': DEFAULT_STEPS}
+    width = args.width if args.width is not None else defaults['width']
+    height = args.height if args.height is not None else defaults['height']
+    steps = args.steps if args.steps is not None else defaults['steps']
+    args.width, args.height, args.steps = width, height, steps
 
     if not args.ref:
         print('错误: 至少需要一个 --ref 参考图', file=sys.stderr)
@@ -115,10 +128,11 @@ def main():
     seconds = args.seconds if args.seconds is not None else parse_seconds(prompt_text)
     length = int(round(seconds * args.fps))
 
-    print(f'[{task_id}] H3 ref2va 单镜生成')
+    print(f'[{task_id}] H3 ref2va 单镜生成{"（fast 档）" if args.fast else ""}')
     print(f'  prompt: {args.prompt} ({seconds:.1f}s → {length} 帧)')
     print(f'  refs: {args.ref}')
     print(f'  output: {output_path}')
+    print(f'  size: {args.width}x{args.height}  steps: {args.steps}')
 
     refs = prepare_refs(args.ref, args.name, clips_dir)
 
@@ -171,6 +185,10 @@ def main():
         'h3_prompt': h3_prompt,
         'seconds': seconds,
         'length': length,
+        'width': args.width,
+        'height': args.height,
+        'steps': args.steps,
+        'fast': args.fast,
         'seed': result.get('seed'),
         'output': output_path,
         'status': 'completed',
