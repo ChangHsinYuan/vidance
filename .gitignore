@@ -30,6 +30,8 @@ compaction.md
 
 
 *.tar.gz
+*.zip
+
 *.pt
 *.model
 *.safetensors

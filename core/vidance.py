@@ -6,6 +6,8 @@
   custom  参考图 + 预写脚本 → H3 ref2va 生成 → 后处理
   quick   纯 T2V，无角色锚无后处理
   concat  多视频拼接（硬切 / RIFE 过渡 / 交叉淡化）
+  compose v10 时间线拼接（JSON 时间线：特效/转场/画中画/文字/混音）
+  svg     v15 SVG 流水线（概念→LLM 生成 SVG→逐帧渲染→mp4，纯 CPU）
 
 用法:
   python core/vidance.py auto "雪山日出：小狐狸的冒险" --character "红色小狐狸" --character-mode flux --stt
@@ -13,6 +15,7 @@
   python core/vidance.py custom --ref input/doubao.jpg --ref input/naiwa.jpg --script input/prompt1.txt --lut cinematic --bgm dramatic
   python core/vidance.py quick "一只猫在月球上跳舞"
   python core/vidance.py concat clip1.mp4 clip2.mp4 clip3.mp4 -o merged.mp4 --transition rife
+  python core/vidance.py svg --concept "鹈鹕骑自行车"
 """
 import argparse
 import json
@@ -337,6 +340,41 @@ def cmd_compose(args):
     print(out)
 
 
+def cmd_svg(args):
+    """v15 SVG 流水线：概念 → LLM 生成 SVG → 无头浏览器逐帧渲染 → mp4（纯 CPU）"""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from utils import svg_pipeline as sp
+
+    out = args.output
+    if out is None:
+        root = _compose_default_out()
+        out = os.path.join(os.path.dirname(root), 'svg.mp4')
+    if not os.path.isabs(out):
+        from core.pipeline import load_config
+        out = os.path.join(load_config()['output_dir'], out)
+
+    if args.concept:
+        res = sp.concept_to_mp4(args.concept, out_path=out, duration=args.duration,
+                                width=args.width, height=args.height, fps=args.fps,
+                                model=args.model)
+        print(res['mp4'])
+    elif args.svg:
+        if args.still:
+            print(sp.render_still(svg_path=args.svg, out_path=os.path.splitext(out)[0] + '.png',
+                                  width=args.width, height=args.height, at=args.at))
+        elif args.frames:
+            print(sp.dump_frames(svg_path=args.svg,
+                                 out_dir=args.frames_dir or os.path.splitext(out)[0] + '_frames',
+                                 width=args.width, height=args.height, fps=args.fps,
+                                 duration=args.duration))
+        else:
+            print(sp.svg_to_mp4(svg_path=args.svg, out_path=out, width=args.width,
+                                height=args.height, fps=args.fps, duration=args.duration))
+    else:
+        print('usage: svg --concept "鹈鹕骑自行车" | svg --svg scene.svg [--still|--frames]')
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         prog='vidance',
@@ -508,6 +546,23 @@ def build_parser():
     p_compose.add_argument('--transition', default='fade')
     p_compose.add_argument('--transition-duration', type=float, default=0.4)
     p_compose.set_defaults(func=cmd_compose)
+
+    # ── svg 子命令（v15 SVG 流水线，纯 CPU） ──
+    p_svg = sub.add_parser('svg',
+        help='v15 SVG 流水线：概念→LLM 生成 SVG→逐帧渲染→mp4（纯 CPU，秒级）')
+    p_svg.add_argument('--concept', default=None, help='概念（一键：LLM 生成 SVG→mp4）')
+    p_svg.add_argument('--svg', default=None, help='SVG 文件路径（渲染模式）')
+    p_svg.add_argument('-o', '--output', default=None, help='输出 mp4 路径')
+    p_svg.add_argument('--duration', type=float, default=3.0, help='动画时长（秒）')
+    p_svg.add_argument('--width', type=int, default=800)
+    p_svg.add_argument('--height', type=int, default=450)
+    p_svg.add_argument('--fps', type=int, default=24)
+    p_svg.add_argument('--model', default=None, help='LLM 模型（一键模式）')
+    p_svg.add_argument('--still', action='store_true', help='只渲染单帧 PNG（调试）')
+    p_svg.add_argument('--at', type=float, default=0.0, help='--still 时刻（秒）')
+    p_svg.add_argument('--frames', action='store_true', help='抽帧成 PNG 序列')
+    p_svg.add_argument('--frames-dir', default=None, help='抽帧输出目录')
+    p_svg.set_defaults(func=cmd_svg)
 
     return parser
 
