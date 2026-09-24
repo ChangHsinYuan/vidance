@@ -30,3 +30,9 @@ compaction.md
 
 
 *.tar.gz
+*.pt
+*.model
+*.safetensors
+t2c/model
+
+

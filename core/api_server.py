@@ -356,6 +356,25 @@ def chat_endpoint(req: ChatReq):
     return {'reply': reply, 'want_video': False, 'concept': None}
 
 
+class T2CReq(BaseModel):
+    text: str
+
+
+@app.post('/api/t2c')
+def t2c_endpoint(req: T2CReq):
+    """text→command：把（v6 核实后的）详细中文需求翻译成 Vidance 命令。
+
+    返回 {text, command}。command 形如 `python core/vidance.py auto "..."`。
+    """
+    try:
+        from utils.t2c_server import translate
+        cmd = translate(req.text)
+    except Exception as e:
+        return {'text': req.text, 'command': '', 'error': str(e)[:200]}
+    return {'text': req.text, 'command': cmd,
+            'runnable': bool(cmd and cmd.startswith('python core/vidance.py'))}
+
+
 @app.post('/api/dialog/start')
 def dialog_start(req: DialogStart):
     """启动多轮需求核实会话 → {dialog_id, status, missing, questions, concept}"""

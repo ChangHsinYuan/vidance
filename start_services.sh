@@ -87,11 +87,11 @@ port_of() {
 # 匹配该服务的进程命令行特征（用于 stop / 查进程）
 match_of() {
     case "$1" in
-        h3)      echo "main.py --listen 127.0.0.1 --port 8188" ;;
-        wan)     echo "main.py --listen 127.0.0.1 --port 8189" ;;
-        hunyuan) echo "main.py --listen 127.0.0.1 --port 8190" ;;
-        flux)    echo "main.py --listen 127.0.0.1 --port 8192" ;;
-        h3d)     echo "main.py --listen 127.0.0.1 --port 8193" ;;
+        h3)      echo "main.py --listen 0.0.0.0 --port 8188" ;;
+        wan)     echo "main.py --listen 0.0.0.0 --port 8189" ;;
+        hunyuan) echo "main.py --listen 0.0.0.0 --port 8190" ;;
+        flux)    echo "main.py --listen 0.0.0.0 --port 8192" ;;
+        h3d)     echo "main.py --listen 0.0.0.0 --port 8193" ;;
         tts)     echo "[t]ts_server.py" ;;
         api)     echo "[a]pi_server.py --port 8894" ;;
         *)       echo "" ;;
@@ -110,19 +110,19 @@ start_one() {
     case "$name" in
         h3)   # H3 ref2va → GPU0
             bg_run h3 "$LOG_DIR/comfyui_8188.log" "$COMFYUI_DIR" \
-                env CUDA_VISIBLE_DEVICES=0 "$PY_COMFY" main.py --listen 127.0.0.1 --port 8188 ;;
+                env CUDA_VISIBLE_DEVICES=0 "$PY_COMFY" main.py --listen 0.0.0.0 --port 8188 ;;
         wan)  # Wan T2V/I2V + RIFE → GPU2
             bg_run wan "$LOG_DIR/comfyui_8189.log" "$COMFYUI_DIR" \
-                env CUDA_VISIBLE_DEVICES=2 "$PY_COMFY" main.py --listen 127.0.0.1 --port 8189 ;;
+                env CUDA_VISIBLE_DEVICES=2 "$PY_COMFY" main.py --listen 0.0.0.0 --port 8189 ;;
         hunyuan) # HunyuanVideo → GPU3（与 flux 互斥）
             bg_run hunyuan "$LOG_DIR/comfyui_8190.log" "$COMFYUI_DIR" \
-                env CUDA_VISIBLE_DEVICES=3 "$PY_COMFY" main.py --listen 127.0.0.1 --port 8190 ;;
+                env CUDA_VISIBLE_DEVICES=3 "$PY_COMFY" main.py --listen 0.0.0.0 --port 8190 ;;
         flux) # FLUX / TripoSplat → GPU3
             bg_run flux "$LOG_DIR/comfyui_8192.log" "$COMFYUI_DIR" \
-                env CUDA_VISIBLE_DEVICES=3 "$PY_COMFY" main.py --listen 127.0.0.1 --port 8192 ;;
+                env CUDA_VISIBLE_DEVICES=3 "$PY_COMFY" main.py --listen 0.0.0.0 --port 8192 ;;
         h3d)  # Hunyuan3Dv2 → GPU1
             bg_run h3d "$LOG_DIR/comfyui_8193.log" "$COMFYUI_DIR" \
-                env CUDA_VISIBLE_DEVICES=1 "$PY_COMFY" main.py --listen 127.0.0.1 --port 8193 ;;
+                env CUDA_VISIBLE_DEVICES=1 "$PY_COMFY" main.py --listen 0.0.0.0 --port 8193 ;;
         tts)  # TTS 双引擎 → GPU2（启动即加载 CosyVoice，约 28s）
             bg_run tts "$LOG_DIR/tts_9880.log" "$VIDANCE_DIR" \
                 env CUDA_VISIBLE_DEVICES=2 TTS_FP16=1 "$PY_COSY" utils/tts_server.py ;;
@@ -251,9 +251,17 @@ case "$CMD" in
         for s in $SERVICES; do stop_one "$s"; done
         ;;
     restart)
-        echo "先停止全部..."; for s in $ALL_SERVICES; do stop_one "$s"; done
-        sleep 2
-        echo "再启动默认集..."; for s in $DEFAULT_SERVICES; do start_one "$s"; done
+        # 支持 restart [服务名...]：给了名字只重启这些，否则全部
+        RESTART_LIST="${*:-}"
+        if [ -n "$RESTART_LIST" ]; then
+            echo "先停止: $RESTART_LIST"; for s in $RESTART_LIST; do stop_one "$s"; done
+            sleep 2
+            echo "再启动: $RESTART_LIST"; for s in $RESTART_LIST; do start_one "$s"; done
+        else
+            echo "先停止全部..."; for s in $ALL_SERVICES; do stop_one "$s"; done
+            sleep 2
+            echo "再启动默认集..."; for s in $DEFAULT_SERVICES; do start_one "$s"; done
+        fi
         echo; show_status
         ;;
     status) show_status ;;

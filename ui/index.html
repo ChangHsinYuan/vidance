@@ -245,6 +245,9 @@
 .req{color:#e66;font-size:11px}
 .ch{color:#7a7;font-size:11px}
 .ins-line code{color:#6cf}
+.t2c-cmd{display:block;padding:8px 10px;margin:6px 0;background:#1b2330;border:1px solid #2d4a6b;
+  border-radius:6px;color:#7fd;white-space:pre-wrap;word-break:break-all;font-size:12px}
+.t2c-src{color:#888;font-size:11px;margin-bottom:4px}
 </style>
 </head>
 <body>
@@ -719,8 +722,10 @@ function renderDialog(d, userText) {
   const st = d.status;
   let html = '';
   if (st === 'COMPLETE' || st === 'LOCKED') {
+    lastConcept = d.concept || '';
     html = `<b>✓ 概念已${st === 'COMPLETE' ? '补全' : '达 3 轮上限，强制放行'}</b>\n增强概念：\n${escapeHtml(d.concept)}`
-      + `<br><button class="chip-btn" onclick="useConcept()">→ /fast 出片</button>`
+      + `<br><button class="chip-btn" onclick="t2cTranslate()">→ 智能翻译成命令</button>`
+      + `<button class="chip-btn" onclick="useConcept()">→ /fast 出片</button>`
       + `<button class="chip-btn" onclick="useConcept('auto')">→ /auto 完整生成</button>`;
     activeDialog = null;
   } else {
@@ -728,6 +733,34 @@ function renderDialog(d, userText) {
     html = `<b>还差 ${d.missing.length} 项</b>（${escapeHtml(d.missing.join('、'))}）\n${qs}\n<i>直接回答即可，或说"随便"跳过</i>`;
   }
   addBot(html);
+}
+
+let lastConcept = '';
+
+/* t2c：把增强概念/详细需求翻译成 Vidance 命令 */
+async function t2cTranslate(text) {
+  const t = (text || lastConcept || '').trim();
+  if (!t) { addBot('没有可翻译的内容'); return; }
+  addBot('<i>正在翻译为命令…</i>');
+  const last = messages.querySelectorAll('.msg.bot');
+  last[last.length - 1].remove();
+  const r = await fetch('/api/t2c', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: t }),
+  });
+  const d = await r.json();
+  if (!d.command) { addBot('<b>✗ 翻译失败</b> ' + escapeHtml(d.error || '模型无输出')); return; }
+  // 把 `python core/vidance.py xxx` 转成斜杠命令展示
+  const slash = d.command.replace(/^python\s+core\/vidance\.py\s+/, '/');
+  addBot(`<b>✓ 建议命令</b>\n<code class="t2c-cmd">${escapeHtml(slash)}</code>`
+    + `<div class="t2c-src">源: ${escapeHtml(t)}</div>`
+    + `<br><button class="chip-btn" onclick="runT2CCmd(${JSON.stringify(slash).replace(/"/g,'&quot;')})">▶ 执行</button>`);
+}
+
+function runT2CCmd(slash) {
+  input.value = slash;
+  input.focus();
+  send();
 }
 
 function useConcept(mode) {
@@ -1045,7 +1078,7 @@ function newSession() {
 
 /* ── 打开 ComfyUI 自带前端（直连，不走代理）── */
 function openComfyUI() {
-  // 用当前访问的主机名 + 默认实例端口 8189（Wan），远程访问也能正确跳转
+  // 直连 ComfyUI（Wan 实例 8189），用当前访问的主机名，远程访问也能正确跳转
   const host = window.location.hostname || '127.0.0.1';
   window.open(`http://${host}:8189/`, '_blank');
 }
