@@ -237,6 +237,23 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
+### t2c — 自然语言 → 命令翻译层（✅ 已接入 2026-09-24）
+
+**目标**：让用户用中文口语驱动 Vidance，而非记斜杠命令。总体是自建 **agent_loop**：tool = Vidance 自己的命令；text→command 翻译器 = **自训练的 mt5-small 微调模型**（非通用 LLM）。
+
+**链路**：`/api/chat`（LLM 判意图：闲聊直接回 / 创作返回 `[[VIDEO:概念]]`）→ v6 dialog 多轮核实 → `POST /api/t2c`（`utils/t2c_server.py` 的 `translate(text)`）→ 得命令 → 前端展示 + ▶ 执行。
+
+**范围**：
+- 模型 `t2c/model`（mt5-small 微调，CPU 可跑）；推理封装 `utils/t2c_server.py`（进程内单例 + 可选 HTTP :9881）
+- 后端 `POST /api/t2c`；前端 `t2cTranslate`/`runT2CCmd`（dialog COMPLETE 后出「→ 智能翻译成命令」）
+- 网页端 `:8894/ui` 直接测；命令行 `python utils/t2c_server.py '帮我auto生成城市夜景'` → `python core/vidance.py auto "城市夜景"`
+
+**已知局限**：现模型只覆盖训练时（旧）命令分布，对 fast/quick 等偶有偏差。**计划**：全部指令（含 v10 剪辑）齐全后，用 `docs/instructions/*.json` 作数据源**重训**覆盖全量。
+
+**详细设计**：[v-t2c.md](./v-t2c.md)
+
+---
+
 ### v11 — 接入社交媒体（🎯 待开发）
 
 **目标**：把成片一键分发到社交平台 / IM，任务完成可推送通知、可在 IM 里用 `/` 命令触发。
@@ -393,7 +410,7 @@ vidance/
 │   └── skills/                # scriptwriting/review/topic_scouting
 ├── config/config.json         # API key、引擎地址、模型名、音色配置
 ├── core/                      # 编排层
-│   ├── vidance.py             # 统一 CLI（auto/custom/quick/concat/fast/hot/ask）
+│   ├── vidance.py             # 统一 CLI（auto/custom/quick/concat/fast/hot/ask/compose）
 │   ├── pipeline.py            # auto 模式流水线主控
 │   ├── custom_gen.py          # custom 模式 H3 ref2va 生成
 │   ├── postprocess.py         # 共享后处理（RIFE/LUT/BGM/STT）
@@ -417,12 +434,14 @@ vidance/
 │   ├── dialog.py              # prompt 多轮核实状态机（v6）
 │   ├── ffmpeg_tools.py        # 抽帧/拼接/字幕/合成
 │   ├── rife.py / gen_luts.py / music.py / stt.py
-│   ├── compose.py             # v10 时间线拼接（🎯 待实现）
+│   ├── compose.py             # v10 时间线拼接（M1-M4 已实现）
+│   ├── t2c_server.py          # t2c 自然语言→命令（translate，进程内/可选 HTTP）
 │   ├── oneshot.py             # v14 一镜到底（🎯 待实现）
 │   ├── notify/                # v11 机器人网关（🎯 待实现）
 │   ├── luts/  bgm/  workflows/  voices/
+├── t2c/                       # t2c 模型（mt5-small 微调）+ 推理脚本 + README
 ├── ui/                        # v7/v8 前端（index.html 自包含，:8894/ui）
-├── docs/                      # roadmap + v0-v15 design + usage*.md
+├── docs/                      # roadmap + v0-v15 design + usage*.md + instructions/ + v-t2c.md
 ├── voice_samples/ → /mnt/dataset/...  # 音色试听样本（软链）
 └── output/ → /mnt/dataset/zxy/vidance/output/  # 成片（软链）
 ```
@@ -445,6 +464,7 @@ vidance/
 
 各模型部署细节见 `/mnt/disk_sdb/zxy/` 下：
 - `MiniMax-H3-部署记录.md`、`Wan2.2-部署记录.md`、`HunyuanVideo-部署记录.md`、`SDXL-部署记录.md`、`FLUX-部署记录.md`
+- t2c（mt5-small 微调，自然语言→命令）见 v-t2c.md；模型与推理脚本随项目 `t2c/`
 - Hunyuan3Dv2 见 v3-design.md §13
 
 > 模型文件统一存 `/mnt/dataset/zxy/<Model>-ComfyUI/`，通过 `extra_model_paths.yaml` 映射到 ComfyUI。

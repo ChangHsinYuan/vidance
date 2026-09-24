@@ -8,11 +8,16 @@ Vidance 是一个基于 opencode agent 编排的本地视频生成系统。核�
 
 **统一入口**：`python core/vidance.py {auto|custom|quick}` — auto 模式走 LLM 编剧+Wan/FLUX 生成，custom 模式走参考图+预写脚本+H3 ref2va 生成，quick 模式纯 T2V 无后处理。后处理（RIFE/LUT/BGM/STT）由 `core/postprocess.py` 共享模块提供。
 
-**当前状态：v0-v7 全部实现 + v10 时间线拼接（M1-M4）完成**（v2 长视频 + v2.1 backlog + v3 M0-M7 + v4 M1-M6 + v5 M1-M4 + v6 M1-M4 + v7 前端 M1-M4），**v8-v15 规划就绪**（2026-09-23 重排）。
+**当前状态：v0-v7 全部实现 + v10 时间线拼接（M1-M4）完成 + t2c 自然语言→命令已接入**（v2 长视频 + v2.1 backlog + v3 M0-M7 + v4 M1-M6 + v5 M1-M4 + v6 M1-M4 + v7 前端 M1-M4 + v10 + t2c），**v8-v15 规划就绪**（2026-09-23 重排）。
 
 **版本路线**：v4 营销号流水线（fast/hot 爬图出片）→ v5 剪辑特效 → v6 prompt 多轮核实（ask + dialog API）→ v7 前端 agent WebUI（:8894/ui）→ **v8 前端增强**（资产库/分镜预览/进度可视化/时间线展示）→ **v9 API 标准化**（多 Vendor 适配/能力发现/用量限流/OpenAPI）→ **v10 拼接与特效**（OpenCut 时间线思路，后端 CLI 可被 LLM 调用）→ **v11 接入社交媒体**（发布渠道 + IM 机器人网关）→ **v12 整合开源仓库**（断点续跑/JSON 容错/RAG/五维提示词）→ **v13 多智能体**（三层 Agent 解耦）→ **v14 长视频质量**（关键帧驱动/一镜到底/层级一致性）→ **v15 轻量化**（纯 API 模式/无 GPU）。详见 docs/roadmap.md。
 
 v1 角色锚流程：FLUX 生角色图 → TripoSplat 重建 3DGS → 每镜 RenderSplat 按角度渲染参考帧 → Wan I2V 生成。
+
+**t2c 自然语言 → 命令**（2026-09-24 接入，见 docs/v-t2c.md）：
+自建 agent_loop 的"翻译层"——用户中文口语经 mt5-small 微调模型（`t2c/model`，CPU 可跑）转成 Vidance 命令。链路：`/api/chat`（LLM 判意图，闲聊直接回 / 创作返回 `[[VIDEO:概念]]`）→ v6 dialog 多轮核实 → `POST /api/t2c`（`utils/t2c_server.py` 的 `translate(text)`）→ 得命令 → 前端展示 + ▶ 执行。网页端 `:8894/ui` 直接测；命令行 `python utils/t2c_server.py '帮我auto生成城市夜景'` → `python core/vidance.py auto "城市夜景"`。计划：全部指令（含 v10 剪辑）齐全后重训覆盖全量。
+
+
 
 **v2 长视频**（M1-M5 全部完成）：
 - **M1 RIFE 光流插帧**：镜头间光流过渡（rife_v4.26，multiplier=8，0.375s@24fps）
@@ -109,6 +114,7 @@ vidance/
 │   ├── effects.py             # v5 剪辑特效（8 种镜头内特效 + xfade 链式转场，M1-M4 已实现）
 │   ├── dialog.py              # v6 prompt 多轮核实状态机（DialogManager，SQLite，M1-M4 已实现）
 │   ├── compose.py             # v10 时间线拼接与特效（OpenCut 思路，后端 CLI；M1-M4 已实现）
+│   ├── t2c_server.py          # t2c 推理封装（translate(text)→command，进程内单例/可选 HTTP）
 │   ├── oneshot.py             # v14 一镜到底（链式 I2V 末帧回灌 + 运镜脚本 + 漂移控制；🎯 待实现）
 │   ├── notify/                # v11 社交媒体/IM 网关（base/wecom/feishu/dingtalk/factory；🎯 待实现）
 │   ├── luts/                  # v2 LUT 文件目录（cinematic/warm/cool/vintage/vivid/soft .cube）
@@ -120,13 +126,14 @@ vidance/
 │       ├── rife_transition.json  # v2 RIFE 插帧 workflow（7 节点）
 │       ├── hunyuan3d_single.json  # v3 Hunyuan3Dv2 单图→mesh workflow（M1 验证）
 │       └── hunyuan3d_multiview.json  # v3 Hunyuan3Dv2 多视角→mesh workflow（M2 验证）
+├── t2c/                       # t2c 自然语言→命令（mt5-small 微调模型 + 推理脚本 + README）
 ├── ui/                        # v7 前端（index.html 自包含，零 npm，:8894/ui 访问）
 ├── voices/                    # 自定义 CosyVoice 克隆音色素材目录
 ├── bgm/                       # v2 自定义 BGM 素材目录（放 {mood}.wav 自动使用）
 ├── .opencode/
 │   ├── agents/{director,reviewer,asset,scout}.md
 │   └── skills/{scriptwriting,review,topic_scouting}/SKILL.md
-├── docs/                      # 设计文档（roadmap + v0-v10 design + deployed-models + instructions/ 命令库+剪辑指令库）
+├── docs/                      # 设计文档（roadmap + v0-v10 design + deployed-models + instructions/ 命令库+剪辑指令库 + v-t2c.md）
 │   └── usage*.md              # 使用指南（usage.md 主入口 + usage-v1/v2/v3/v4/v6/v7/v10.md 分版本小工具）
 ├── voice_samples/ → /mnt/dataset/...  # 音色试听样本（软链）
 └── output/ → /mnt/dataset/... # 成片 + 元数据（软链到机械盘）

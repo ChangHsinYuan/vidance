@@ -34,7 +34,11 @@
 - v9：API配置
 <img src="./assets/v9_api1.png">
 <img src="./assets/v9_api2.png">
-- v10：
+- v10：特效剪辑（仿照opencut）
+[v10](./assets/v10.mp4)
+- v-t2c：完善对话pipeline
+<img src="./assets/v-t2c1.png">
+<img src="./assets/v-t2c2.png">
 - v11：
 - v12：
 - v13：
