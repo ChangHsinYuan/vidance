@@ -340,7 +340,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 - 纯 API 模式：所有生成任务可切云端 API（SiliconFlow 等），完全不依赖本地 GPU（对接 v9 模型提供商）
 - Pipeline 轻量化：去除 GPU 依赖的处理。**无 GPU 出片两条线**（均已具备或已规划）：
   1. **营销号流水线（已有）**：v4/v5 的生图/爬图 → zoompan 运镜 → TTS → 剪辑，零视频模型，已可用
-  2. **LLM 生成 SVG → 渲染成片（✅ S1-S4 已实现 2026-09-24）**：LLM 产出带 CSS/SMIL 动画的自包含 SVG → 无头浏览器逐帧渲染 → ffmpeg 拼帧 → mp4。**纯 CPU、秒级、矢量清晰**，适合信息图/文字动画/数据可视化/科普短片。已落 `utils/svg_llm.py`（S1 概念→SVG）+ `utils/svg_pipeline.py`（S2 单帧/S3 抽帧/S4 拼 mp4），CLI `vidance.py svg --concept "鹈鹕骑自行车"`，`/api/tool/svg`，指令集 `/svg`。依赖 Playwright+Chromium（已装）
+  2. **LLM 生成 SVG → 渲染成片（✅ S1-S5 已实现 2026-09-24/26）**：LLM 产出带 CSS/SMIL 动画的自包含 SVG → 无头浏览器逐帧渲染 → ffmpeg 拼帧 → mp4。**纯 CPU、秒级、矢量清晰**，适合信息图/文字动画/数据可视化/科普短片。已落 `utils/svg_llm.py`（S1 概念→SVG + S5 plan_narration 旁白规划）+ `utils/svg_pipeline.py`（S2 单帧/S3 抽帧/S4 拼 mp4/**S5 SvgLine 有声流水线**：LLM 旁白→逐段 TTS（edge→cosy→静音降级）→逐段 SVG 渲染→字幕烧录→crossfade 拼接→可选 LUT/BGM），CLI `vidance.py svg --concept "…" [--voice 音色 -n 3 | --say "句1" --say "句2"]`；`/api/tool/svg` 无声同步/有声异步（svg_* job 复用 h3shot 轮询）。实测 `output/svg_e2e/s1.mp4`（音视频双流）。依赖 Playwright+Chromium（已装）
      - 关键设计：**确定性逐帧**（用 Web Animations API 把动画 `currentTime=t` 后 pause 再截图，而非 wall-clock `wait_for_timeout`），保证帧率精确无抖动
      - 渲染后端：Playwright/Chromium（需装）或 `resvg`/`cairosvg`（仅静态帧）；`node` 已就绪可走 puppeteer
      - 可选：LLM 直接给 SVG 代码 + 时长/分辨率 → 一条命令出片；后续可接 v9 模型提供商
@@ -369,6 +369,18 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 **依赖**：v4 下载/STT/TTS + v5 剪辑特效 + v10 时间线 compose（把二创素材编排成时间线）。
 
 **里程碑**：M1 下载+抽帧+转写 → M2 改写解说词+重配音 → M3 画面二创（特效/转场）→ M4 一条命令端到端。
+
+---
+
+### v17 — 三排正交模块化（🔄 M1 已完成 2026-09-26，详见 [v17-modules.md](./v17-modules.md)）
+
+**目标**：导演层（人肉/LLM/热点/对话）× 生成层（H3/Wan/爬图生图/SVG/二创）× 后期层（配音/字幕/拼接/调色配乐/特效/时间线）三层彻底解耦，任意排列组合出一条完整链路，环节实现唯一无冗余。
+
+**里程碑**：
+- **M1 ✅**：`core/narration.py`（Narrator：say 含三级降级链 / silence / srt）；fastline `_tts_segment`/`_gen_silence`/`_build_srt`/`srt_time`/`_video_duration` 与 svg_pipeline `_tts_seg`/`_silence`/`_srt_time`/`_probe_duration` 全部改薄壳转发（删 ~80 行重复）；SVG S5 回归通过
+- M2 `vidance.py make --director --generator` 统一入口（现有子命令变别名）
+- M3 `utils/director.py` 合并三套编剧/旁白 prompt（pipeline/fastline/svg_llm）为统一 schema
+- M4 生成器契约统一，v16 二创作为 G5 即插即用
 
 ---
 
@@ -457,7 +469,7 @@ vidance/
 │   ├── ffmpeg_tools.py        # 抽帧/拼接/字幕/合成
 │   ├── rife.py / gen_luts.py / music.py / stt.py
 │   ├── compose.py             # v10 时间线拼接（M1-M4 已实现）
-│   ├── svg_pipeline.py        # v15 SVG→mp4（无头浏览器逐帧渲染，已实现 S1-S4）
+│   ├── svg_pipeline.py        # v15 SVG→mp4（逐帧渲染 + S5 有声流水线，已实现 S1-S5）
 │   ├── svg_llm.py             # v15 概念→LLM→动效 SVG
 │   ├── t2c_server.py          # t2c 自然语言→命令（translate，进程内/可选 HTTP）
 │   ├── h3_prompt_video.py     # 整段式 prompt + 参考图 → H3 ref2va 单镜（原生音频直出）

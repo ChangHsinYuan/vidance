@@ -430,6 +430,38 @@ def _run_custom_job(job_id: str, rr: dict):
             })
 
 
+def _run_svgjob(job_id: str, concept, n: int, say: list, flags: dict):
+    """SVG 有声短片（异步 job，复用 h3shot 轮询通道；回执 output/video_url）"""
+    def _num(k, d):
+        v = flags.get(k)
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return d
+    try:
+        from utils.svg_pipeline import narrate_to_mp4
+        meta = narrate_to_mp4(
+            concept=concept, n=n, say=say or None,
+            out_path=flags.get('o') or flags.get('output'),
+            voice=flags.get('voice') or None,
+            width=_num('width', 800), height=_num('height', 450), fps=_num('fps', 24),
+            lut=flags.get('lut'), bgm=flags.get('bgm'),
+        )
+        out = meta.get('output')
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'completed', 'output': out,
+                'video_url': ('/api/file?path=' + out) if out else '',
+                'completed_at': datetime.now().isoformat(),
+            })
+    except Exception as e:
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'failed', 'error': str(e),
+                'completed_at': datetime.now().isoformat(),
+            })
+
+
 @app.post('/api/h3shot')
 def h3shot(req: H3ShotRequest):
     if not req.prompt or not req.refs:
@@ -728,6 +760,11 @@ TOOLS = [
          {'key': '--width', 'type': 'number', 'desc': '宽（默认 800）'},
          {'key': '--height', 'type': 'number', 'desc': '高（默认 450）'},
          {'key': '--fps', 'type': 'number', 'desc': '帧率（默认 24）'},
+         {'key': '--voice', 'type': 'text', 'desc': 'S5 有声模式：配音音色（给定即出有声片）'},
+         {'key': '--say', 'type': 'text', 'desc': 'S5 有声模式：手动旁白段（可重复多个）'},
+         {'key': '--n', 'type': 'number', 'desc': 'S5：LLM 规划旁白段数（默认 3）'},
+         {'key': '--lut', 'type': 'text', 'desc': 'S5：调色风格'},
+         {'key': '--bgm', 'type': 'text', 'desc': 'S5：BGM mood'},
      ]},
     {'name': 'clip', 'help': 'FunClip：长素材 ASR 转写+语义裁剪',
      'params': [
@@ -1009,6 +1046,65 @@ def tool_dispatch(name: str, req: ToolRequest):
         return {'message': '成片已生成', 'output': out,
                 'compose_output': out,
                 'video_url': ('/api/file?path=' + out) if out else ''}
+
+    # ── svg（v15 流水线：无声同步；--voice/--say 有声走异步 job，前端 pollH3 复用）──
+    if name == 'svg':
+        from utils import svg_pipeline as _sp
+        rr = _parse_repeated(req.args or '', {'say'})
+        fl, pos2 = rr['flags'], rr['pos']
+        say = rr['rep'].get('say') or []
+        concept = fl.get('concept') or (' '.join(pos2) if pos2 else None)
+
+        def _num(k, d):
+            try:
+                return int(fl.get(k))
+            except (TypeError, ValueError):
+                return d
+
+        if not concept and not say:
+            raise HTTPException(status_code=400,
+                                detail='用法: /svg 概念 [--voice 音色 --n 3] | /svg --say "文本" --say …')
+        if say or fl.get('voice'):
+            job_id = f'svg_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+            with _h3_jobs_lock:
+                _h3_jobs[job_id] = {'job_id': job_id,
+                                    'concept': concept or (say[0][:20] if say else ''),
+                                    'status': 'running',
+                                    'created_at': datetime.now().isoformat()}
+            threading.Thread(target=_run_svgjob, args=(job_id, concept, _num('n', 3), say, fl),
+                             daemon=True).start()
+            return {'message': 'SVG 有声任务已提交（异步，约 1-3 分钟/段）',
+                    'job_id': job_id, 'poll': f'/api/h3shot/{job_id}', 'h3_job_id': job_id}
+        res = _sp.concept_to_mp4(concept, out_path=fl.get('o') or fl.get('output'),
+                                 duration=float(fl.get('duration') or 3),
+                                 width=_num('width', 800), height=_num('height', 450),
+                                 fps=_num('fps', 24))
+        out = res['mp4']
+        return {'message': 'SVG 无声成片已生成', 'output': out, 'compose_output': out,
+                'video_url': '/api/file?path=' + out}
+
+    # ── concat（多视频拼接，同步子进程）──
+    if name == 'concat':
+        if len(pos) < 2:
+            raise HTTPException(status_code=400,
+                                detail='用法: /concat A.mp4 B.mp4 [...] -o out.mp4 [--transition cut|crossfade|rife]')
+        out = flags.get('o') or flags.get('output')
+        if not out:
+            out = os.path.join(load_config()['output_dir'],
+                               'concat_' + datetime.now().strftime('%Y%m%d_%H%M%S') + '.mp4')
+        cmd = [sys.executable, os.path.join(os.path.dirname(__file__), 'vidance.py'),
+               'concat', *pos, '-o', out]
+        if flags.get('transition'):
+            cmd += ['--transition', str(flags['transition'])]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=500, detail='concat 超时（30 min）')
+        if r.returncode != 0:
+            raise HTTPException(status_code=500,
+                                detail='concat 失败: ' + ((r.stderr or '') + (r.stdout or ''))[-400:])
+        return {'message': '拼接完成', 'output': out, 'compose_output': out,
+                'video_url': '/api/file?path=' + out}
 
     # ── h3shot（整段式 prompt + 参考图 → H3 单镜，异步）──
     if name == 'h3shot':

@@ -354,7 +354,15 @@ def cmd_svg(args):
         from core.pipeline import load_config
         out = os.path.join(load_config()['output_dir'], out)
 
-    if args.concept:
+    voiced = bool(getattr(args, 'voice', None)) or bool(getattr(args, 'say', None))
+    if voiced:
+        res = sp.narrate_to_mp4(concept=args.concept, n=args.n, say=args.say,
+                                out_path=out, width=args.width, height=args.height,
+                                fps=args.fps, model=args.model,
+                                lut=getattr(args, 'lut', None),
+                                bgm=getattr(args, 'bgm', None))
+        print(res['output'])
+    elif args.concept:
         res = sp.concept_to_mp4(args.concept, out_path=out, duration=args.duration,
                                 width=args.width, height=args.height, fps=args.fps,
                                 model=args.model)
@@ -562,6 +570,11 @@ def build_parser():
     p_svg.add_argument('--at', type=float, default=0.0, help='--still 时刻（秒）')
     p_svg.add_argument('--frames', action='store_true', help='抽帧成 PNG 序列')
     p_svg.add_argument('--frames-dir', default=None, help='抽帧输出目录')
+    p_svg.add_argument('--voice', default=None, help='S5 有声模式：配音音色')
+    p_svg.add_argument('--say', action='append', default=None, help='S5 有声模式：手动旁白段（可重复）')
+    p_svg.add_argument('-n', type=int, default=3, help='S5：LLM 旁白段数（默认 3）')
+    p_svg.add_argument('--lut', default=None, help='S5：调色风格')
+    p_svg.add_argument('--bgm', default=None, help='S5：BGM mood')
     p_svg.set_defaults(func=cmd_svg)
 
     return parser

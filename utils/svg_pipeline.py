@@ -228,6 +228,124 @@ def load_output_dir() -> str:
         return 'output'
 
 
+def _probe_duration(path: str) -> float:
+    """P5：时长探测（统一走 ffmpeg_tools.get_duration）。"""
+    from utils.ffmpeg_tools import get_duration
+    try:
+        return float(get_duration(path))
+    except Exception:
+        return 0.0
+
+
+class SvgLine:
+    """S5：概念 → 分段旁白 → 逐段 TTS → 逐段 SVG 渲染 → crossfade 拼接 + 字幕 + 可选 LUT/BGM。
+
+    与 fastline 同构（图换成 SVG 动画）。配音/字幕复用 core.narration.Narrator（v17 单一实现），
+    降级链：voice → cosy-default → 静音兜底（出片不崩）。
+    """
+
+    def __init__(self, config=None):
+        from utils.config_loader import load_config
+        from utils.svg_llm import plan_narration, generate_svg
+        from core.narration import Narrator
+        self.config = config or load_config()
+        self.output_dir = self.config.get('output_dir', 'output')
+        self.narr = Narrator(self.config)
+        self._plan = plan_narration
+        self._gen_svg = generate_svg
+
+    def run(self, concept, n=3, say=None, voice=None, out_path=None,
+            width=800, height=450, fps=24, bg='#ffffff', model=None,
+            lut=None, bgm=None, keep_workdir=False) -> dict:
+        """一键出有声 SVG 短片。say 给定时用手动旁白（每元素一段），否则 LLM 规划 n 段。"""
+        import json as _json
+        from datetime import datetime
+        from utils.ffmpeg_tools import compose
+        import time as _t
+        start = _t.time()
+
+        if say:
+            segments = [{'text': t, 'scene': t} for t in say]
+        else:
+            print(f'[S5] 旁白规划（{n} 段）…')
+            segments = self._plan(concept, n, model=model)
+        n = len(segments)
+        print(f'  {n} 段: ' + ' | '.join(s['text'] for s in segments))
+
+        ts = datetime.now().strftime('svg%Y%m%d_%H%M%S')
+        workdir = os.path.join(self.output_dir, ts)
+        os.makedirs(workdir, exist_ok=True)
+        voice = voice or self.config.get('tts', {}).get('default_voice', 'cosy-default')
+
+        clips, audios, srt_ts, t = [], [], [], 0.0
+        for i, seg in enumerate(segments, 1):
+            wav = os.path.join(workdir, f'seg_{i}.wav')
+            print(f'  [{i}/{n}] TTS "{seg["text"]}"')
+            self.narr.say(seg['text'], wav, voice=voice)
+            adur = _probe_duration(wav)
+            d_i = max(adur + 0.6, 2.5)
+            print(f'  [{i}/{n}] SVG+渲染（{d_i:.1f}s）…')
+            svg = self._gen_svg(f"{concept}——{seg['scene']}", duration=d_i,
+                                width=width, height=height, model=model)
+            svg_path = os.path.join(workdir, f'seg_{i}.svg')
+            with open(svg_path, 'w', encoding='utf-8') as f:
+                f.write(svg + '\n')
+            clip = os.path.join(workdir, f'seg_{i}.mp4')
+            svg_to_mp4(svg_code=svg, out_path=clip, width=width, height=height,
+                       fps=fps, duration=d_i, bg=bg)
+            clips.append(clip)
+            audios.append(wav)
+            srt_ts.append({'start': t, 'end': t + adur + 0.3, 'text': seg['text']})
+            t += d_i
+
+        from core.narration import Narrator
+        srt_path = Narrator.srt(srt_ts, os.path.join(workdir, 'subtitle.srt'))
+
+        if out_path is None:
+            out_path = os.path.join(workdir, 'final.mp4')
+        elif not os.path.isabs(out_path):
+            out_path = os.path.join(self.output_dir, out_path)
+        os.makedirs(os.path.dirname(os.path.abspath(out_path)) or '.', exist_ok=True)
+
+        lut_path = None
+        if lut and lut != 'none':
+            cand = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'luts', f'{lut}.cube')
+            lut_path = cand if os.path.isfile(cand) else None
+        bgm_path = None
+        if bgm and bgm != 'none':
+            for d in (os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'bgm'),
+                      'bgm'):
+                cand = os.path.join(d, f'{bgm}.wav')
+                if os.path.isfile(cand):
+                    bgm_path = cand
+                    break
+
+        extra = (' + LUT ' + str(lut) if lut_path else '') + \
+                (' + BGM ' + str(bgm) if bgm_path else '')
+        print(f'[S5] 合成（crossfade + 字幕{extra}）…')
+        compose(clips, audios, srt_path=srt_path, output_path=out_path,
+                transition_types=['crossfade'] * max(0, n - 1),
+                lut_path=lut_path, bgm_path=bgm_path)
+
+        meta = {'task_id': ts, 'concept': concept, 'mode': 'svg',
+                'segments': segments, 'voice': voice, 'clips': clips,
+                'lut': lut, 'bgm': bgm, 'output': out_path,
+                'duration': _probe_duration(out_path),
+                'elapsed_s': round(_t.time() - start, 1)}
+        with open(os.path.join(workdir, 'meta.json'), 'w', encoding='utf-8') as f:
+            _json.dump(meta, f, ensure_ascii=False, indent=2)
+        print(f'✅ {out_path}（{meta["duration"]:.1f}s，{meta["elapsed_s"]}s）')
+        return meta
+
+
+def narrate_to_mp4(concept=None, n=3, say=None, **kwargs) -> dict:
+    """S5 便捷函数。"""
+    sl = SvgLine()
+    if not concept and say:
+        concept = say[0][:24]
+    return sl.run(concept, n=n, say=say, **kwargs)
+
+
 def _main():
     ap = argparse.ArgumentParser(description='SVG → MP4 流水线（无头浏览器逐帧渲染，纯 CPU）')
     ap.add_argument('--svg', help='SVG 文件路径（渲染模式）')
@@ -243,6 +361,11 @@ def _main():
     ap.add_argument('--at', type=float, default=0.0, help='--still 的时刻（秒）')
     ap.add_argument('--frames', action='store_true', help='S3：抽帧成 PNG 序列')
     ap.add_argument('--frames-dir', default=None, help='抽帧输出目录')
+    ap.add_argument('--voice', default=None, help='S5：配音音色（给定即进入有声旁白模式）')
+    ap.add_argument('--say', action='append', default=None, help='S5：手动旁白段（可重复）')
+    ap.add_argument('-n', type=int, default=3, help='S5：LLM 规划旁白段数')
+    ap.add_argument('--lut', default=None, help='S5：调色风格（LUT 名）')
+    ap.add_argument('--bgm', default=None, help='S5：BGM mood')
     args = ap.parse_args()
 
     out = args.output
@@ -250,7 +373,11 @@ def _main():
         d = os.path.join(load_output_dir(), 'svg_pipeline')
         out = os.path.join(d, 'out.mp4')
 
-    if args.concept:
+    if args.voice or args.say:
+        narrate_to_mp4(concept=args.concept, n=args.n, say=args.say, out_path=out,
+                       width=args.width, height=args.height, fps=args.fps,
+                       model=args.model, bg=args.bg, lut=args.lut, bgm=args.bgm)
+    elif args.concept:
         concept_to_mp4(args.concept, out_path=out, duration=args.duration,
                        width=args.width, height=args.height, fps=args.fps,
                        model=args.model, bg=args.bg)

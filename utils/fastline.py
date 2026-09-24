@@ -45,9 +45,11 @@ class FastLine:
     """快速营销号链路器：图片 + 运镜 + 旁白 + BGM，跳过视频模型。"""
 
     def __init__(self, config=None, llm=None):
+        from core.narration import Narrator
         self.config = config or load_config()
         self.llm = llm or LLMClient(self.config)
         self.tts = TTSClient(self.config)
+        self.narr = Narrator(self.config)  # v17 M1：配音/字幕单一实现
         self.crawler = AssetCrawler()
         self.post = PostProcessor(self.config, llm=self.llm)
         self.output_dir = self.config['output_dir']
@@ -285,56 +287,15 @@ class FastLine:
     # ══ 4. 每段 TTS 旁白 ══
     def _tts_segment(self, text, out_path, voice, speed, fallback_seconds=3.0,
                      retries=3):
-        """TTS 合成，带重试与降级兜底。
-
-        降级链：目标音色（重试 retries 次，抗 edge-tts 偶发网络超时）
-                 → 本地 CosyVoice 音色 cosy-default（离线可跑，真声）
-                 → 静音音频（最后兜底，流程不崩，打印缺省警告）。
-        """
-        import time as _time
-        # 1) 目标音色，重试抗网络抖动
-        last_err = None
-        for attempt in range(1, retries + 1):
-            try:
-                r = self.tts.synthesize(text, output_path=out_path, voice=voice, speed=speed)
-                if attempt > 1:
-                    print(f'    [TTS 重试成功] 第 {attempt} 次（{voice}）')
-                return r.get('audio_path', out_path)
-            except Exception as e:
-                last_err = e
-                if attempt < retries:
-                    print(f'    ⚠ TTS 第 {attempt}/{retries} 次失败（{voice}）: {e}，重试…')
-                    _time.sleep(1.5 * attempt)
-
-        # 2) edge-* 失败 → 降级到本地 CosyVoice（真声，避免"有字幕没语音"）
-        if voice and voice.startswith('edge-') and voice != 'cosy-default':
-            try:
-                print(f'  ⚠ [TTS 降级] {voice} 不可用（{last_err}），改用本地 cosy-default')
-                r = self.tts.synthesize(text, output_path=out_path,
-                                        voice='cosy-default', speed=speed)
-                return r.get('audio_path', out_path)
-            except Exception as e2:
-                last_err = e2
-                print(f'  ⚠ [TTS 降级] cosy-default 也不可用（{e2}）')
-
-        # 3) 最后兜底：静音
-        print(f'  ⚠ [TTS 缺省] TTS 服务不可用（{last_err}），段音频用静音 {fallback_seconds}s 兜底')
-        print(f'    （启动 TTS: CUDA_VISIBLE_DEVICES=2 TTS_FP16=1 python utils/tts_server.py）')
-        self._gen_silence(out_path, fallback_seconds)
-        return out_path
+        """TTS 合成（薄壳，统一走 core.narration.Narrator，v17 M1 收口冗余）。"""
+        return self.narr.say(text, out_path, voice=voice, speed=speed,
+                             fallback_seconds=fallback_seconds, retries=retries)
 
     @staticmethod
     def _gen_silence(out_path, seconds):
-        """ffmpeg 生成静音 wav（24kHz mono 16bit，与 TTS 输出格式一致）"""
-        subprocess.run(
-            ['ffmpeg', '-y', '-f', 'lavfi', '-i',
-             f'anullsrc=r=24000:cl=mono', '-t', str(seconds),
-             '-c:a', 'pcm_s16le', out_path],
-            capture_output=True, timeout=30,
-            check=True,
-        )
+        from core.narration import Narrator
+        Narrator.silence(out_path, seconds)
 
-    # ══ 5. 主跑 ══
     def run(self, concept, output_path=None, images_dir=None, n=5,
             voice=None, speed=1.0, motion=None, seconds=None,
             task_id=None, no_rife=False, no_color=False, bgm_override=None,
@@ -504,41 +465,29 @@ class FastLine:
             _sh.move(temp, video_path)
 
     def _build_srt(self, segments, clips_dir):
-        """基于 TTS 时间戳估算每段字幕起止（无 STT 时用近似）；从 0s 依次排，保证与配音对齐。"""
-        ts = []
-        t = 0.0
+        """基于每段配音实测时长排字幕时间轴（Narrator.srt 单一实现）。"""
+        from core.narration import Narrator
+        ts, t = [], 0.0
         for i, seg in enumerate(segments):
             a = os.path.join(clips_dir, f'seg_{i+1}.wav')
-            dur = 0.0
-            if os.path.isfile(a):
-                r = subprocess.run(
-                    ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-                     '-of', 'csv=p=0', a], capture_output=True, text=True)
-                dur = float(r.stdout.strip() or 0)
+            dur = self._probe_audio(a) if os.path.isfile(a) else 0.0
             ts.append({'start': t, 'end': t + dur + 0.4, 'text': seg['text']})
             t += dur + 0.4
-        srt = os.path.join(clips_dir, 'subtitle.srt')
-        with open(srt, 'w', encoding='utf-8') as f:
-            for i, x in enumerate(ts, 1):
-                f.write(f'{i}\n{srt_time(x["start"])} --> {srt_time(x["end"])}\n{x["text"]}\n\n')
-        return srt
+        return Narrator.srt(ts, os.path.join(clips_dir, 'subtitle.srt'))
 
+    @staticmethod
+    def _probe_audio(p):
+        from utils.ffmpeg_tools import get_duration
+        return get_duration(p)
 
 def srt_time(sec):
-    h = int(sec // 3600)
-    m = int((sec % 3600) // 60)
-    s = int(sec % 60)
-    ms = int(round((sec - int(sec)) * 1000))
-    return f'{h:02d}:{m:02d}:{s:02d},{ms:03d}'
+    from core.narration import Narrator
+    return Narrator.srt_time(sec)
 
 
 def _video_duration(p):
-    r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-                        '-of', 'csv=p=0', p], capture_output=True, text=True)
-    try:
-        return float(r.stdout.strip())
-    except ValueError:
-        return 0.0
+    from utils.ffmpeg_tools import get_duration
+    return get_duration(p)
 
 
 def _split_text(text, n):

@@ -89,6 +89,7 @@ vidance/
 │   ├── pipeline.py            # auto 模式流水线主控（内部模块）
 │   ├── custom_gen.py          # custom 模式 H3 ref2va 生成（内部模块）
 │   ├── postprocess.py         # 共享后处理（RIFE/LUT/BGM/STT）
+│   ├── narration.py           # v17 配音/字幕单一实现（Narrator：TTS 三级降级+静音兜底+SRT）
 │   ├── scheduler.py           # v4 异步任务队列（TaskQueue SQLite + Scheduler 线程轮询）
 │   ├── api_server.py          # v4 FastAPI 服务（:8894，任务提交/查询/仪表盘/选题/克隆/裁剪）
 │   └── dashboard.py           # v4 HTML 仪表盘生成（队列统计+缩略图+选题批次）
@@ -136,7 +137,7 @@ vidance/
 ├── .opencode/
 │   ├── agents/{director,reviewer,asset,scout}.md
 │   └── skills/{scriptwriting,review,topic_scouting}/SKILL.md
-├── docs/                      # 设计文档（roadmap + v0-v10 design + deployed-models + instructions/ 命令库+剪辑指令库 + v-t2c.md）
+├── docs/                      # 设计文档（roadmap + hierachy.md 方法脉络图 + v17-modules.md 三排正交 + v0-v15 design + deployed-models + instructions/ 命令库+剪辑指令库 + v-t2c.md）
 │   └── usage*.md              # 使用指南（usage.md 主入口 + usage-v1/v2/v3/v4/v6/v7/v10.md 分版本小工具）
 ├── voice_samples/ → /mnt/dataset/...  # 音色试听样本（软链）
 └── output/ → /mnt/dataset/... # 成片 + 元数据（软链到机械盘）

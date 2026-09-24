@@ -14,6 +14,7 @@
 | S2 | `vidance.py svg --svg scene.svg --still --at 1.5` | 单帧 PNG |
 | S3 | `vidance.py svg --svg scene.svg --frames` | PNG 序列 |
 | S4 | `vidance.py svg --svg scene.svg -o out.mp4` | mp4 |
+| S5 | `vidance.py svg --concept "复利" --voice cosy-default -n 3` | **有声** mp4（旁白+字幕+转场） |
 
 ## 用法
 
@@ -30,6 +31,10 @@ python core/vidance.py svg --svg scene.svg --still --at 1.5
 # 抽帧（S3）
 python core/vidance.py svg --svg scene.svg --frames --frames-dir output/frames
 
+# 有声模式（S5）：LLM 规划旁白 → 逐段 TTS → 逐段 SVG → 烧字幕 → crossfade 拼接
+python core/vidance.py svg --concept "三分钟讲清复利" --voice cosy-default --n 3 --bgm calm --lut warm
+python core/vidance.py svg --say "第一段旁白" --say "第二段旁白" --voice cosy-jieshuo1
+
 # 直接调模块
 python utils/svg_llm.py "鹈鹕骑自行车" -o output/svg/pelican_bike.svg   # S1
 python utils/svg_pipeline.py --svg output/svg/pelican_bike.svg -o out.mp4 --duration 3
@@ -38,6 +43,8 @@ python utils/svg_pipeline.py --svg output/svg/pelican_bike.svg -o out.mp4 --dura
 ## API / 前端
 - `POST /api/tool/svg` — `{"args": "--concept \"鹈鹕骑自行车\""}` 或 `{"args": "--svg path.svg -o out.mp4"}`
 - 前端 `:8894/ui` 输入 `/svg --concept "鹈鹕骑自行车"` → 出成片卡片
+- 有声模式（`--voice`/`--say`）走**异步 job**（`svg_*` 任务，复用 `/api/h3shot/{job_id}` 轮询通道，前端 pollH3 直接出卡片，无需改前端）
+- S5 降级链与 fast 一致：目标音色 3 重试 → cosy-default → 静音兜底（出片不崩）
 
 ## 关键设计
 - **确定性逐帧**：`document.getAnimations()`（Web Animations）+ SVG SMIL `pauseAnimations/setCurrentTime` 把动画设到精确 t 再截图；不用 wall-clock `wait_for_timeout`（会随机器速度丢帧）。

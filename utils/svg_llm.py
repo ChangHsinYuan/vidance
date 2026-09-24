@@ -108,6 +108,38 @@ def generate_svg(concept: str, duration: float = 3.0, width: int = 800, height: 
     return extract_svg(text)
 
 
+NARR_SYS = """你是科普/营销短视频的旁白撰稿人。根据主题写 {n} 段递进式中文旁白，
+每段 15-35 字（朗读约 3-7 秒），口语化、有信息量、段间衔接自然。
+同时为每段给一个适合 SVG 矢量动画表现的**画面描述**（具体图形元素+颜色+动作，扁平风格，不要真人实拍感）。
+只输出 JSON 数组，不要其他文字，格式：
+[{{"text": "旁白文本", "scene": "画面视觉描述"}}]"""
+
+
+def plan_narration(concept: str, n: int = 3, model: str = None) -> list:
+    """概念 → LLM → n 段旁白 [{text, scene}]（S5 配音模式的剧本层）。
+
+    解析失败/数量不足时兜底：截断 JSON 或按段复制概念。
+    """
+    llm = LLMClient(load_config())
+    sys_p = NARR_SYS.format(n=n)
+    messages = [{'role': 'system', 'content': sys_p},
+                {'role': 'user', 'content': f'主题：{concept}'}]
+    import json as _json
+    try:
+        text = _chat_stream(llm, messages, model=model, temperature=0.6, read_timeout=20)
+        m = re.search(r'\[[\s\S]*\]', text)
+        segs = _json.loads(m.group(0)) if m else []
+        segs = [{'text': str(s.get('text', '')).strip(),
+                 'scene': str(s.get('scene', '')).strip() or str(s.get('text', concept))}
+                for s in segs if isinstance(s, dict) and s.get('text')]
+    except Exception as e:
+        print(f'  ⚠ 旁白规划失败（{e}），用概念兜底')
+        segs = []
+    if not segs:
+        segs = [{'text': concept, 'scene': concept} for _ in range(n)]
+    return segs[:n] if len(segs) >= n else segs
+
+
 def main():
     ap = argparse.ArgumentParser(description='概念 → LLM → 动效 SVG（S1）')
     ap.add_argument('concept', help='场景概念（中文），如"鹈鹕骑自行车"')
