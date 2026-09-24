@@ -618,14 +618,24 @@ async function sendNatural(text) {
     renderDialog(d, text);
     return;
   }
-  // 新开 dialog
-  const r = await fetch('/api/dialog/start', {
+  // 先问 LLM 是否出片意图；闲聊则直接回复
+  const c = await fetch('/api/chat', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ concept: text }),
+    body: JSON.stringify({ text }),
   });
-  const d = await r.json();
-  activeDialog = d;
-  renderDialog(d, text);
+  const cd = await c.json();
+  if (!c.ok) { addBot('<b>✗ ' + escapeHtml(cd.detail || c.status) + '</b>'); return; }
+  if (cd.want_video && cd.concept) {
+    const r = await fetch('/api/dialog/start', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ concept: cd.concept }),
+    });
+    const d = await r.json();
+    activeDialog = d;
+    renderDialog(d, text);
+  } else {
+    addBot(cd.reply || '…');
+  }
 }
 
 function renderDialog(d, userText) {

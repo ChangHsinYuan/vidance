@@ -285,6 +285,44 @@ def cmd_ask(args):
     return concept
 
 
+
+def cmd_compose(args):
+    # v10 timeline compose
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if args.init:
+        import json as _j
+        from utils.compose import FFMPEG
+        tmpl = {
+            'output': 'out.mp4', 'width': 1280, 'height': 704,
+            'main': [{'id': 'c1', 'type': 'video', 'source': 'clip1.mp4',
+                      'transition_in': {'kind': 'fade', 'duration': 0.4}}],
+            'overlay': [{'id': 't1', 'type': 'text', 'text': 'title',
+                          'start': 0.5, 'duration': 3, 'fontsize': 48,
+                          'fontcolor': 'white'}],
+            'audio': [{'id': 'a1', 'source': 'bgm.wav', 'start': 0,
+                        'volume': 0.3, 'ducking': True}],
+        }
+        _j.dump(tmpl, open(args.init, 'w'), ensure_ascii=False, indent=2)
+        print('template ->', args.init)
+        return
+    from utils.compose import run_timeline, _media_kind, json as _j
+    if args.clips:
+        els = []
+        for i, c in enumerate(args.clips):
+            els.append({'id': 'c%d' % i, 'type': _media_kind(c), 'source': c,
+                        'transition_in': None if i == 0 else
+                        {'kind': args.transition, 'duration': args.transition_duration}})
+        tl = {'output': args.output or 'merged.mp4', 'main': els}
+        out = run_timeline(tl)
+    elif args.timeline:
+        out = run_timeline(args.timeline, args.output)
+    else:
+        print('usage: compose timeline.json [-o out] | compose a.mp4 b.mp4 --transition fade | compose --init tmpl.json')
+        return
+    print(out)
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         prog='vidance',
@@ -444,6 +482,18 @@ def build_parser():
     p_ask.add_argument('--out', default=None,
                        help='输出增强概念到文件（否则打印 stdout）')
     p_ask.set_defaults(func=cmd_ask)
+
+    # compose zilingmian (v10 timeline)
+    p_compose = sub.add_parser('compose',
+        help='v10 timeline compose: JSON timeline -> video (trim/rate/fx/xfade/pip/text/audio)')
+    p_compose.add_argument('timeline', nargs='?', default=None,
+                          help='timeline JSON path')
+    p_compose.add_argument('-o', '--output', default=None, help='output path (override)')
+    p_compose.add_argument('--init', default=None, help='write template then exit')
+    p_compose.add_argument('clips', nargs='*', help='quick: list clips to concat')
+    p_compose.add_argument('--transition', default='fade')
+    p_compose.add_argument('--transition-duration', type=float, default=0.4)
+    p_compose.set_defaults(func=cmd_compose)
 
     return parser
 

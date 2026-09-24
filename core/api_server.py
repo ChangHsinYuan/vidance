@@ -24,6 +24,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -315,6 +316,46 @@ class DialogReply(BaseModel):
     text: str
 
 
+class ChatReq(BaseModel):
+    text: str
+    history: Optional[list] = None  # [{role, content}]，前端可带上下文
+
+
+@app.post('/api/chat')
+def chat_endpoint(req: ChatReq):
+    """闲聊/意图识别：普通对话由 LLM 回复；若用户想生成视频则返回 concept 交 v6 dialog。
+
+    返回 {reply, want_video, concept}。want_video=True 时前端转 /api/dialog/start。
+    """
+    from utils.llm import LLMClient
+    llm = LLMClient(load_config())
+    system = (
+        '你是 Vidance（AI 有声短片生成助手）的前台助理。用户可以随便聊天，也可以让你帮它做视频。\n'
+        '规则：\n'
+        '1. 若用户只是打招呼/闲聊/问你能做什么 → 用中文友好简短回复（1-3 句）。\n'
+        '2. 若用户表达了"想生成/制作某个视频"的意图 → 只输出一行：[[VIDEO:<提炼后的视频概念>]]\n'
+        '   例如用户说"帮我做个深海探险的视频" → 输出 [[VIDEO:深海探险]]\n'
+        '   用户只是描述主题但没说要做视频时不要触发。\n'
+        '3. 不要输出多余解释。'
+    )
+    msgs = [{'role': 'system', 'content': system}]
+    if req.history:
+        for m in req.history[-8:]:
+            if isinstance(m, dict) and m.get('role') in ('user', 'assistant'):
+                msgs.append({'role': m['role'], 'content': str(m.get('content', ''))})
+    msgs.append({'role': 'user', 'content': req.text})
+    try:
+        reply = llm.chat(msgs, temperature=0.7)
+    except Exception as e:
+        return {'reply': '（LLM 暂时不可用，请稍后再试）', 'want_video': False,
+                'concept': None, 'error': str(e)[:200]}
+    reply = (reply or '').strip()
+    m = re.search(r'\[\[VIDEO:\s*(.+?)\s*\]\]', reply)
+    if m:
+        return {'reply': '', 'want_video': True, 'concept': m.group(1)}
+    return {'reply': reply, 'want_video': False, 'concept': None}
+
+
 @app.post('/api/dialog/start')
 def dialog_start(req: DialogStart):
     """启动多轮需求核实会话 → {dialog_id, status, missing, questions, concept}"""
@@ -456,6 +497,11 @@ TOOLS = [
     {'name': 'ask', 'help': 'v6 多轮核实：补齐概念缺失维度 → 增强概念',
      'params': [
          {'key': 'concept', 'type': 'text', 'required': True, 'desc': '原始概念（中文）'},
+     ]},
+    {'name': 'compose', 'help': 'v10 时间线拼接：JSON 时间线合成（特效/转场/画中画/文字/混音）',
+     'params': [
+         {'key': 'timeline', 'type': 'text', 'required': True, 'desc': '时间线 JSON 路径'},
+         {'key': '--output', 'type': 'text', 'desc': '输出路径（覆盖 JSON 内）'},
      ]},
     {'name': 'clip', 'help': 'FunClip：长素材 ASR 转写+语义裁剪',
      'params': [
@@ -624,6 +670,15 @@ def tool_dispatch(name: str, req: ToolRequest):
         dm = DialogManager()
         s = dm.start(' '.join(pos))
         return {'message': f'评估 {s["status"]}，缺失 {len(s["missing"])} 项', 'dialog': s}
+
+    # ── compose（v10 时间线拼接，纯 ffmpeg 后处理）──
+    if name == 'compose':
+        if not pos:
+            raise HTTPException(status_code=400, detail='用法: /compose timeline.json [--output out]')
+        from utils.compose import run_timeline
+        out = run_timeline(pos[0], flags.get('output'))
+        return {'message': '成片已生成', 'output': out,
+                'video_url': '/api/video/' + os.path.basename(os.path.dirname(out)) if out else ''}
 
     # ── scout ──
     if name == 'scout':

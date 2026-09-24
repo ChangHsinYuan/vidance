@@ -108,7 +108,7 @@ vidance/
 │   ├── fastline.py            # v4 M6 快速营销号链路（图片+zoompan 运镜+RIFE，跳过视频模型，M6 已封装）
 │   ├── effects.py             # v5 剪辑特效（8 种镜头内特效 + xfade 链式转场，M1-M4 已实现）
 │   ├── dialog.py              # v6 prompt 多轮核实状态机（DialogManager，SQLite，M1-M4 已实现）
-│   ├── compose.py             # v10 时间线拼接与特效（OpenCut 思路，后端 CLI；🎯 待实现）
+│   ├── compose.py             # v10 时间线拼接与特效（OpenCut 思路，后端 CLI；M1-M4 已实现）
 │   ├── oneshot.py             # v14 一镜到底（链式 I2V 末帧回灌 + 运镜脚本 + 漂移控制；🎯 待实现）
 │   ├── notify/                # v11 社交媒体/IM 网关（base/wecom/feishu/dingtalk/factory；🎯 待实现）
 │   ├── luts/                  # v2 LUT 文件目录（cinematic/warm/cool/vintage/vivid/soft .cube）
