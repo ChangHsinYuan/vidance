@@ -142,7 +142,7 @@ vidance/
 │   ├── roadmap.md             # 总览与 v0-v4 路线图
 │   ├── v0-design.md           # 本文档
 │   ├── v1-design.md           # v1 角色一致性设计
-│   ├── hierachy.md            # （已有，空）
+│   ├── hierarchy.md           # 方法脉络图（原 hierachy.md）
 │   ├── tech.md                # （已有，空）
 │   └── experience.md          # （已有，空）
 │

@@ -1,7 +1,7 @@
 # Vidance 总览与路线图
 
 > 视频生成 agent 系统：opencode 当"制片人"编排本地生图/生视频/生3D/语音引擎，从一句概念产出有声短片。
-> 本文件结构对照 `roadmap_origin.md`；v0-v7 已实现，v8 起为规划版本。
+> 原始规划稿见 `archive/roadmap_origin.md`。**已实现**：v0-v7 + v10 时间线拼接（M1-M8）+ v15 SVG 流水线（S1-S5）+ t2c + v17（M1-M2）；其余（v8/v9/v11-v14/v16、v17 M3-M4）为规划版本。
 
 ## 1. 定位
 
