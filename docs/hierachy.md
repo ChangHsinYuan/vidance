@@ -63,7 +63,7 @@
 |----|------|------|
 | 后处理 | RIFE 插帧/slowmo、LUT 6色、BGM ducking、STT 字幕 | `core/postprocess.py` |
 | 特效 | 8 种镜内特效 + 30+ xfade 转场 + LLM 自动选 | `utils/effects.py` |
-| 拼接 | 时间线 JSON（主轨/画中画/文字/多音轨）+ 快捷 concat | `utils/compose.py`、`vidance.py concat` |
+| 拼接 | 时间线 JSON（主轨/画中画/贴纸/文字/多音轨）+ 关键帧/掩码 + split + 快捷 concat | `utils/compose.py`、`vidance.py concat` |
 | 声音 | edge-tts+CosyVoice 双引擎、B站克隆音色、FunClip 语义裁剪 | `utils/tts*.py`、`voice_clone.py`、`funclip.py` |
 | 前端 | :8894/ui slash 分发（轮询 task/h3_job/compose_output 三类回执） | `ui/index.html` |
 
@@ -106,7 +106,7 @@
 │ P3 调色 LUT×6（LLM 自选或手给）           │
 │ P4 STT  whisper 重转写对齐字幕（--stt）    │
 │ P5 拼接 compose/concat：crossfade/时间线  │
-│ P6 特效 effects×8 + xfade 转场（--effects）│
+│ P6 特效×8+xfade转场+关键帧/掩码/贴纸/split│
 └──────────────┬───────────────────────┘
                ▼
           final.mp4 + meta.json

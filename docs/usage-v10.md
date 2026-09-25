@@ -30,6 +30,7 @@ python utils/compose.py run timeline.json -o out.mp4   # 执行时间线
 python utils/compose.py probe clip.mp4                  # 探测时长/分辨率/有无音轨
 python utils/compose.py init -o timeline.json           # 生成模板
 python utils/compose.py merge a.mp4 b.mp4 -o out.mp4     # 快捷顺序拼接
+python utils/compose.py split clip.mp4 --at 2 5.5 -o part  # 按时码分割（--precise 帧级精确）
 ```
 
 ## 效果总表
@@ -63,9 +64,38 @@ v10 集成的所有剪辑能力（✅ = 已实测出片）：
 | **音频** | 多音轨混音 | `audio[]` + `amix` | ✅ |
 | | BGM 自动闪避（ducking） | `audio[].ducking:true` | ✅ |
 | | 音轨音量/延迟 | `audio[].volume` / `start` | ✅ |
-| **探测** | 媒体信息 | `python utils/compose.py probe` | ✅ |
+ | **探测** | 媒体信息 | `python utils/compose.py probe` | ✅ |
+ | **关键帧** | x/y/scale/opacity/rotation 属性动画 | `keyframes:[{t,x,y,scale,opacity,rotation}]` | ✅ |
+ | | 缓动 | `easing: linear\|ease-in-out`（默认 ease-in-out） | ✅ |
+ | **掩码** | 圆形/圆角/矩形/自定义图 蒙版 | `mask:{kind:circle\|rounded\|rect\|image,...}` | ✅ |
+ | | 羽化 | `mask.feather`（高斯模糊半径） | ✅ |
+ | **贴纸轨** | PNG 静图循环/GIF 循环贴图 | `sticker[]`（同 overlay 字段） | ✅ |
+ | **分割** | 按时码切成多段 | `python utils/compose.py split --at 2 --precise` | ✅ |
 
-**未实现**（OpenCut 有，v10 保留字段未做）：关键帧 `animations`、掩码 `masks`、贴纸 sticker / graphic 图形轨、独立分割 split 命令。
+**未做**（OpenCut 有，v10 保留字段）：graphic 矢量图形轨（SVG 走 v15/svg 链路）、animations 独立字段（关键帧并入元素 `keyframes`）。
+
+### 关键帧与掩码（M5-M8，2026-09-25 补完）
+
+适用于 `main[]`、`overlay[]`、`sticker[]` 三种元素：
+
+```jsonc
+{
+  "id": "s1", "source": "star.png", "start": 0.3, "duration": 4.6,
+  "keyframes": [                    // t 为元素本地秒（相对 start）
+    {"t": 0.0, "x": 780, "y": -130, "scale": 0.3, "opacity": 0.0, "rotation": -30},
+    {"t": 1.2, "x": 420, "y": 60,  "scale": 0.5, "opacity": 1.0, "rotation": 15},
+    {"t": 3.6, "x": 60,  "y": 250, "scale": 0.35,"opacity": 0.7, "rotation": -8}
+  ],
+  "easing": "ease-in-out",          // linear=直线；ease-in-out=cos S 曲线
+  "mask": {"kind": "circle", "feather": 4}   // 白=显示；kind=image 时给 "source":"mask.png"
+}
+```
+
+- 每个关键帧对象只写要动的属性即可，未写的保持顶层默认值
+- x/y/scale/rotation 走 ffmpeg 表达式（旋转 `rotate`、位移 `overlay`、缩放 `scale eval=frame`）；opacity/mask 走 `geq + alphamerge`（掩码按源尺寸生成）
+- 主轨也支持：scale 动画自动叠固定 W×H 黑底（防编码器尺寸抖动），mask 支持圆角片头效果
+- 文字层增强：`borderw/bordercolor`（描边）、`shadowx/shadowy/shadowcolor`（阴影）、`box/boxcolor/boxborderw`（底框）
+- GIF 贴纸自动循环（`-ignore_loop 0`）；PNG 静图自动补帧到 `duration`
 
 ## 时间线 JSON 格式
 

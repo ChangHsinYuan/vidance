@@ -214,7 +214,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v10 — 拼接与特效（OpenCut 思路，后端 CLI）（✅ M1-M4 完成 2026-09-24）
+### v10 — 拼接与特效（OpenCut 思路，后端 CLI）（✅ M1-M8 全部完成 2026-09-25）
 
 **目标**：把"拼接/剪辑/特效"做成**后端可调用命令**（不做前端），方便 LLM 直接编排。
 
@@ -231,7 +231,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 **里程碑**：M1 时间线 JSON 模型 + 拼接 → M2 裁剪/分割/变速 → M3 转场+特效集成 → M4 CLI/API 暴露 + LLM 自然语言→时间线 JSON
 
-**状态**：M1-M4 全部完成。`utils/compose.py`（时间线 JSON 模型 + 主轨 xfade 拼接 + trim/rate + 8 特效链 + 画中画/文字叠加 + 多音轨 amix/ducking）；`vidance.py compose` CLI + `/api/tool/compose`；实测 `output/compose_fx_demo.mp4`（4 段特效主轨 + 3 转场 + 3 文字 + 画中画 + BGM ducking）。未做：关键帧 animations、掩码 masks、sticker/graphic 轨、分割 split。另建**剪辑指令模式库** `docs/instructions/compose-commands.{md,json}`（36 条，前端 `/help` 展示，供 SFT）；完整效果演示视频 `output/output/20260924_compose_demo/v10_effects_demo.mp4`。LLM 自然语言→时间线 JSON（`llm.timeline_from_text`）待补。用法见 [usage-v10.md](./usage-v10.md)。
+**状态**：M1-M8 全部完成（M5-M8 2026-09-25）。`utils/compose.py`（时间线 JSON 模型 + 主轨 xfade 拼接 + trim/rate + 8 特效链 + 画中画/文字叠加 + 多音轨 amix/ducking）；`vidance.py compose` CLI + `/api/tool/compose`；实测 `output/compose_fx_demo.mp4`（4 段特效主轨 + 3 转场 + 3 文字 + 画中画 + BGM ducking）。**M5 关键帧**（x/y/scale/opacity/rotation 表达式动画 + linear/ease-in-out，三轨通用）、**M6 掩码**（circle/rounded/rect/image + feather，geq+alphamerge）、**M7 贴纸轨**（PNG 循环补帧/GIF 循环）、**M8 split**（`--at` 多切点，`--precise` 帧级）全部实测通过。另建**剪辑指令模式库** `docs/instructions/compose-commands.{md,json}`（36 条，前端 `/help` 展示，供 SFT）；完整效果演示视频 `output/output/20260924_compose_demo/v10_effects_demo.mp4`。LLM 自然语言→时间线 JSON（`llm.timeline_from_text`）待补。用法见 [usage-v10.md](./usage-v10.md)。
 
 **参考**：OpenCut（时间线模型）、BigBanana CutOS（粗剪）、v5 effects.py、v2 `concat` 子命令。
 
@@ -468,7 +468,7 @@ vidance/
 │   ├── dialog.py              # prompt 多轮核实状态机（v6）
 │   ├── ffmpeg_tools.py        # 抽帧/拼接/字幕/合成
 │   ├── rife.py / gen_luts.py / music.py / stt.py
-│   ├── compose.py             # v10 时间线拼接（M1-M4 已实现）
+│   ├── compose.py             # v10 时间线拼接（M1-M8 已实现）
 │   ├── svg_pipeline.py        # v15 SVG→mp4（逐帧渲染 + S5 有声流水线，已实现 S1-S5）
 │   ├── svg_llm.py             # v15 概念→LLM→动效 SVG
 │   ├── t2c_server.py          # t2c 自然语言→命令（translate，进程内/可选 HTTP）

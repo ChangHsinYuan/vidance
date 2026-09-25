@@ -227,5 +227,5 @@ utils/compose.py
   - `python utils/compose.py run|probe|init|merge` 四子命令可用
   - `curl -X POST /api/tool/compose -d '{"args":"/tmp/tl_fx.json --output /tmp/x.mp4"}'` 出片
 
-**已集成的 OpenCut 效果**：主轨拼接（xfade 30+）、trim 裁剪、retime 变速、8 种镜头内特效（flash/punch_in/glitch/grain_vignette/wipe/zoom/speed_ramp/freeze_zoom）、画中画 overlay（缩放/位置/透明度）、drawtext 文字层（位置/字号/颜色/时间轴 enable）、多音轨 amix+sidechain ducking。
-**未实现**（留 OpenCut 字段未用）：关键帧 `animations`、掩码 `masks`、贴纸 sticker / graphic 图形轨、分割 split。
+**已集成的 OpenCut 效果**：主轨拼接（xfade 30+）、trim 裁剪、retime 变速、8 种镜头内特效（flash/punch_in/glitch/grain_vignette/wipe/zoom/speed_ramp/freeze_zoom）、画中画 overlay（缩放/位置/透明度）、drawtext 文字层（位置/字号/颜色/时间轴 enable/描边/阴影/底框）、多音轨 amix+sidechain ducking。
+**M5-M8 已集成**（2026-09-25）：关键帧（元素 `keyframes[]`：x/y/scale/opacity/rotation + linear/ease-in-out 缓动，主轨/叠加/贴纸三轨通用）、掩码（`mask:{kind:circle|rounded|rect|image, radius, feather}`，geq+alphamerge）、贴纸轨（`sticker[]`：PNG 循环补帧/GIF 循环贴图）、分割（`compose split --at 2 5 --precise`）。**仍未实现**：graphic 矢量图形轨（走 v15/svg 链路替代）、独立 `animations` 字段（合并进 `keyframes`）。

@@ -230,6 +230,23 @@
 ```
 
 ---
+## 八、关键帧 / 掩码 / 贴纸 / 分割（v10 M5-M8）
+
+### 关键帧（keyframes，元素本地秒，未写属性沿用默认）
+- **fx-064 贴纸飘入**：左上浮入 → 中部 → 左下，边飞边缩放渐显（`easing:ease-in-out`）
+- **fx-065 主轨推近**：`main[].keyframes [{t:0,scale:1.06},{t:1,scale:1.0}]`
+- **fx-066 主轨淡入**：`main[].keyframes [{t:0,opacity:0},{t:0.8,opacity:1}]`
+
+### 掩码（mask）
+- **fx-067 形状掩码**：`mask:{kind:"circle|rounded|rect", radius?, feather?}`（白=显示，作用于三轨）
+- **fx-068 图片掩码**：`mask:{kind:"image", source:"mask.png"}`（灰度图白显黑隐）
+
+### 贴纸轨（sticker[]，PNG 自动补帧循环 / GIF 自动 loop）
+- **fx-069 GIF 循环贴图**：`sticker:[{source:"anim.gif", start, duration, scale, pos}]`
+
+### 分割（split，单文件 CLI）
+- **fx-070 时码切段**：`python utils/compose.py split clip.mp4 --at 2 5 --precise -o part`
+
 
 ## 附：时间线 JSON 字段速查
 
