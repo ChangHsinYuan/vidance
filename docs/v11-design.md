@@ -78,7 +78,9 @@ def fx(params: dict) -> TaskResult: ...
 - 产物以 `as.artifact` 和裸 `artifact` 双键并入 ctx；步骤失败即停（`optional:true` 跳过继续）。
 - 入口三件套：`python -m agents.runtime '{…}'`、`vidance.py agent chain steps.json`、`POST /api/agents/chain`；scheduler `mode='chain'` 走队列（进程内执行）。
 
-## 6. 注册 Agent 清单（24）
+## 6. 注册 Agent 清单（28）
+
+> 下表为代表性示例（v11.2 GPU 注册后有扩充）；实际以 `python core/vidance.py agent list` 为准（post 10 / generator 7 / director 6 / audit 5）。
 
 | 层 | Agent | 包装对象 |
 |---|---|---|

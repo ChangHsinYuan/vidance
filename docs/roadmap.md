@@ -180,6 +180,8 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ### v8 — 前端增强（已初步完成）
 
+**详细设计**：[v8-design.md](./v8-design.md)
+
 目标：做出更好用的UI
 
 进度：
@@ -207,6 +209,8 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ### v9 — API 接口标准化（已初步完成）
 
+**详细设计**：[v9-design.md](./v9-design.md)
+
 目前v8里面也说了，基本已经配置好了，主要是平时我们也不太需要这个，后面就整合到一起就好了，但是我感觉这个不是很硬核的功能，所以可以留到最后试试。
 
 （目前感觉我的目标就做到这种程度）
@@ -229,6 +233,8 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 ---
 
 ### v10 — 拼接与特效（OpenCut 思路，后端 CLI）（✅ M1-M8 全部完成 2026-09-25）
+
+**详细设计**：[v10-design.md](./v10-design.md)
 
 **目标**：把"拼接/剪辑/特效"做成**后端可调用命令**（不做前端），方便 LLM 直接编排。
 
@@ -270,6 +276,8 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ### v11 — 多智能体系统（原 v13）（✅ M0-M4 全部完成，2026-09-26）
 
+**详细设计**：[v11-design.md](./v11-design.md)（原 v13-design.md，git mv 留史）
+
 （✅ M0-M4 全部完成，2026-09-26）
 
 **目标（定稿口径）**：物理分层 D/G/P/V + 薄包装 Agent + 黑板 + chain 编排，不改既有业务逻辑。
@@ -308,6 +316,8 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 ---
 
 ### v13 — 轻量化（无 GPU 优先）（原 v15）（🔄 S1-S5 已实现）
+
+**详细设计**：[v-svg-pipeline.md](./v-svg-pipeline.md)、[usage-v-svg.md](./usage-v-svg.md)
 
 **目标**：降低/消除本地 GPU 依赖，纯 API 也能跑。
 
@@ -486,7 +496,7 @@ vidance/
 │   └── skills/                # scriptwriting/review/topic_scouting
 ├── config/config.json         # API key、引擎地址、模型名、音色配置
 ├── core/                      # 编排层
-│   ├── vidance.py             # 统一 CLI（auto/custom/quick/concat/fast/hot/ask/compose）
+│   ├── vidance.py             # 统一 CLI（auto/custom/quick/concat/fast/hot/ask/compose/svg/make/agent）
 │   ├── pipeline.py            # auto 模式流水线主控
 │   ├── custom_gen.py          # custom 模式 H3 ref2va 生成
 │   ├── postprocess.py         # 共享后处理（RIFE/LUT/BGM/STT）
@@ -511,138 +521,17 @@ vidance/
 │   ├── ffmpeg_tools.py        # 抽帧/拼接/字幕/合成
 │   ├── rife.py / gen_luts.py / music.py / stt.py
 │   ├── compose.py             # v10 时间线拼接（M1-M8 已实现）
-│   ├── svg_pipeline.py        # v15 SVG→mp4（逐帧渲染 + S5 有声流水线，已实现 S1-S5）
-│   ├── svg_llm.py             # v15 概念→LLM→动效 SVG
+│   ├── svg_pipeline.py        # v13（原 v15）SVG→mp4（逐帧渲染 + S5 有声流水线，已实现 S1-S5）
+│   ├── svg_llm.py             # v13（原 v15）概念→LLM→动效 SVG
 │   ├── t2c_server.py          # t2c 自然语言→命令（translate，进程内/可选 HTTP）
 │   ├── h3_prompt_video.py     # 整段式 prompt + 参考图 → H3 ref2va 单镜（原生音频直出）
-│   ├── oneshot.py             # v14 一镜到底（🎯 待实现）
-│   ├── notify/                # v11 机器人网关（🎯 待实现）
+│   ├── oneshot.py             # v16（原 v14）一镜到底（🎯 待实现）
+│   ├── notify/                # v14（原 v11）机器人网关（🎯 待实现）
 │   ├── luts/  bgm/  workflows/  voices/
+├── agents/                    # v11 多智能体（原 v13）：D/G/P/V 物理分层 + 薄包装（docs/v11-design.md）
 ├── t2c/                       # t2c 模型（mt5-small 微调）+ 推理脚本 + README
 ├── ui/                        # v7/v8 前端（index.html 自包含，:8894/ui）
-├── docs/                      # roadmap + v0-v15 design + usage*.md + instructions/ + v-t2c.md
-├── voice_samples/ → /mnt/dataset/...  # 音色试听样本（软链）
-└── output/ → /mnt/dataset/zxy/vidance/output/  # 成片（软链）
-```
-
----
-
-## 9. 相关仓库与参考
-
-| 仓库 | 用途 |
-|------|------|
-| ComfyUI (`/mnt/disk_sdb/zxy/ComfyUI/`) | 共用推理引擎，多实例 |
-| CosyVoice (`/mnt/disk_sdb/zxy/CosyVoice/`) | TTS 引擎 |
-| MoneyPrinterTurbo | 架构参考（字幕双模式/VideoParams/skill） |
-| OpenCut | v10 拼接/时间线模型参考（仅后端思路） |
-| ViMax / Toonflow / BigBanana | v11 多智能体 / v16 长视频（原 v13/v14）/ v15 开源整合参考 |
-
----
-
-## 10. 部署记录
-
-各模型部署细节见 `/mnt/disk_sdb/zxy/` 下：
-- `MiniMax-H3-部署记录.md`、`Wan2.2-部署记录.md`、`HunyuanVideo-部署记录.md`、`SDXL-部署记录.md`、`FLUX-部署记录.md`
-- t2c（mt5-small 微调，自然语言→命令）见 v-t2c.md；模型与推理脚本随项目 `t2c/`
-- Hunyuan3Dv2 见 v3-design.md §13
-
-> 模型文件统一存 `/mnt/dataset/zxy/<Model>-ComfyUI/`，通过 `extra_model_paths.yaml` 映射到 ComfyUI。
-
-## 5. GPU 与端口分配
-
-| 服务 | 端口 | GPU | 环境 | 启动方式 |
-|------|------|-----|------|---------|
-| MiniMax-H3 ref2va (ComfyUI) | 8188 | GPU0 | comfyui | `./start_services.sh start h3` |
-| Wan T2V/I2V + RIFE (ComfyUI) | 8189 | GPU2 | comfyui | `./start_services.sh start wan` |
-| HunyuanVideo (ComfyUI) | 8190 | GPU3 | comfyui | `./start_services.sh start hunyuan` |
-| FLUX + TripoSplat (ComfyUI) | 8192 | GPU3 | comfyui | `./start_services.sh start flux` |
-| Hunyuan3Dv2 turbo (ComfyUI) | 8193 | GPU1 | comfyui | `./start_services.sh start h3d` |
-| TTS 双引擎 (edge-tts + CosyVoice) | 9880 | GPU2 | cosyvoice | `./start_services.sh start tts` |
-| Vidance API + WebUI | 8894 | — | comfyui | `./start_services.sh start api` |
-
-- **一键脚本** `start_services.sh`（start/stop/restart/status/test/logs），服务↔端口↔GPU 映射见脚本注释
-- ⚠️ ComfyUI 启动不能加 `--cuda-device`，会覆盖 `CUDA_VISIBLE_DEVICES`（main.py:87）
-- FLUX(8192) 与 HunyuanVideo(8190) 共用 GPU3，互斥
-- 模型按需加载；TTS 启动即加载 CosyVoice（约 28s）
-- edge-tts 在线引擎不占 GPU（需外网，偶发抖动）
-
----
-
-## 6. LLM 与 API
-
-| 服务 | 用途 | 状态 |
-|------|------|------|
-| USTC deepseek-v4-flash | 编剧、prompt 优化、LUT/BGM/特效选择、完整度评估 | ✅ 免费 |
-| USTC qwen3.8-chat | 多模态审片 + 图片相关性审核 | ✅ 免费 |
-
-> USTC API：`https://api.llm.ustc.edu.cn/v1`，key 存 `config/config.json`（不入 git）
-
----
-
-## 7. 关键技术决策
-
-1. **混合模式编排**：确定性流程硬编码，创意/判断交 agent
-2. **ComfyUI workflow JSON 模板 + 参数注入**：可视化调试
-3. **director + reviewer/asset/scout subagents**：opencode 原生，职责隔离
-4. **TTS 双引擎**：cosy-* 本地默认（规避 edge 外网抖动）+ edge-* 在线备选
-5. **字幕用 TTS 时间戳**，STT 兜底（`--stt`）
-6. **审片用 qwen3.8-chat**：支持视觉，180s timeout + 2 retries + safe fallback
-7. **每镜随机 seed**：防 ComfyUI 缓存命中
-8. **审片 3 次上限 + 最高分兜底**：防死循环
-9. **存储分层**：代码/配置/小素材放 sdb，模型/视频/产出放机械盘，软链统一访问
-10. **服务缺省兜底**：TTS 不可用→降级 cosy/default→静音；图源 crawl→FLUX→占位图，流程不崩
-11. **拼接/特效后端化**（v10）：只做可被 LLM 调用的 CLI/API，不做前端，参考 OpenCut 时间线模型
-12. **前端零 npm**：v7/v8 自包含 HTML+vanilla JS，FastAPI 静态服务
-
----
-
-## 8. 目录结构
-
-```
-vidance/
-├── opencode.json              # opencode 配置：provider + agents + permissions
-├── AGENTS.md                  # 项目约定 + 命令（供 agent 读）
-├── start_services.sh          # 模型服务一键启停/自检脚本
-├── .opencode/
-│   ├── agents/                # director/reviewer/asset/scout.md
-│   └── skills/                # scriptwriting/review/topic_scouting
-├── config/config.json         # API key、引擎地址、模型名、音色配置
-├── core/                      # 编排层
-│   ├── vidance.py             # 统一 CLI（auto/custom/quick/concat/fast/hot/ask/compose）
-│   ├── pipeline.py            # auto 模式流水线主控
-│   ├── custom_gen.py          # custom 模式 H3 ref2va 生成
-│   ├── postprocess.py         # 共享后处理（RIFE/LUT/BGM/STT）
-│   ├── scheduler.py           # 异步任务队列（TaskQueue SQLite + Scheduler）
-│   ├── api_server.py          # FastAPI :8894（任务/dialog/tool/ui/…）
-│   └── dashboard.py           # HTML 仪表盘
-├── utils/                     # 工具层
-│   ├── comfy_api.py           # ComfyUI 客户端（T2V/I2V/TripoSplat/FLUX/H3）
-│   ├── llm.py                 # USTC LLM（文本+多模态）
-│   ├── tts.py / tts_server.py # TTS 客户端 + 双引擎服务
-│   ├── splat_renderer.py      # 3DGS 多角度渲染
-│   ├── mesh_render.py         # headless mesh 渲染（pyrender+EGL）
-│   ├── hunyuan3d.py           # Hunyuan3Dv2 重建客户端
-│   ├── asset_registry.py      # 资产库管理
-│   ├── crawler.py             # 热点爬虫
-│   ├── voice_clone.py         # 声音克隆生产化
-│   ├── funclip.py             # FunClip 智能裁剪
-│   ├── asset_crawler.py       # 素材爬取（Pexels 图源 + BGM）
-│   ├── fastline.py            # 快速营销号链路（图片+zoompan+TTS）
-│   ├── effects.py             # 剪辑特效（v5）
-│   ├── dialog.py              # prompt 多轮核实状态机（v6）
-│   ├── ffmpeg_tools.py        # 抽帧/拼接/字幕/合成
-│   ├── rife.py / gen_luts.py / music.py / stt.py
-│   ├── compose.py             # v10 时间线拼接（M1-M8 已实现）
-│   ├── svg_pipeline.py        # v15 SVG→mp4（逐帧渲染 + S5 有声流水线，已实现 S1-S5）
-│   ├── svg_llm.py             # v15 概念→LLM→动效 SVG
-│   ├── t2c_server.py          # t2c 自然语言→命令（translate，进程内/可选 HTTP）
-│   ├── h3_prompt_video.py     # 整段式 prompt + 参考图 → H3 ref2va 单镜（原生音频直出）
-│   ├── oneshot.py             # v14 一镜到底（🎯 待实现）
-│   ├── notify/                # v11 机器人网关（🎯 待实现）
-│   ├── luts/  bgm/  workflows/  voices/
-├── t2c/                       # t2c 模型（mt5-small 微调）+ 推理脚本 + README
-├── ui/                        # v7/v8 前端（index.html 自包含，:8894/ui）
-├── docs/                      # roadmap + v0-v15 design + usage*.md + instructions/ + v-t2c.md
+├── docs/                      # roadmap + v0-v18 design + usage*.md + instructions/ + v-t2c.md
 ├── voice_samples/ → /mnt/dataset/...  # 音色试听样本（软链）
 └── output/ → /mnt/dataset/zxy/vidance/output/  # 成片（软链）
 ```
