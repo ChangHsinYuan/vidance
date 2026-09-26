@@ -91,6 +91,11 @@ def run_agent(name, params, board=None, task_id=''):
         return TaskResult(agent=name, ok=False, error='unknown agent: %s' % name)
     t0 = time.time()
     try:
+        from utils.tasklog import set_log as _set_log
+        _set_log(task_id, name)
+    except Exception:
+        pass
+    try:
         res = spec['fn'](params or {})
         if not isinstance(res, TaskResult):
             res = TaskResult(agent=name, ok=True,

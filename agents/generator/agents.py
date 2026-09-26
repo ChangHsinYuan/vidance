@@ -30,8 +30,14 @@ def svg(p):
           inputs='{concept, n?, images_dir?, motion?, out_path?}')
 def fast(p):
     from agents.generator.tools.fastline import FastLine
-    kwargs = {k: p[k] for k in ('images_dir', 'n', 'motion', 'output_path')
+    kwargs = {k: p[k] for k in ('images_dir', 'n', 'motion',
+                                'voice', 'speed', 'effects', 'images_source',
+                                'bgm_override', 'lut_override', 'use_stt')
               if k in p}
+    if 'output_path' in p:
+        kwargs['output_path'] = p['output_path']
+    elif 'out_path' in p:
+        kwargs['output_path'] = p['out_path']
     meta = FastLine().run(p['concept'], **kwargs)
     video = (meta.get('video') or meta.get('output') or meta.get('output_path')) if isinstance(meta, dict) else meta
     return TaskResult(ok=bool(video), artifacts={'video': video, 'meta': meta},
@@ -47,6 +53,9 @@ def wan_t2v(p):
     pipeline.rife_config['enabled'] = False
     pipeline.color_config['enabled'] = False
     pipeline.bgm_config['enabled'] = False
+    pipeline.max_retries = int(p.get('max_retries', 0))
+    if 'review_mode' in p:
+        pipeline.review_mode = p['review_mode']
     meta = pipeline.run(p['concept'], output_path=p.get('out_path'),
                         character_desc=None, voice=p.get('voice'),
                         character_mode='auto')

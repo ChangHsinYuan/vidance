@@ -63,6 +63,10 @@ class Pipeline:
         self.bgm_config = self.config.get('bgm', {})
         self.stt_config = self.config.get('stt', {})
         self.max_retries = 2
+        self.review_mode = 'light'
+        self._review_pool = ThreadPoolExecutor(max_workers=1)
+        self._pending_review = None
+        self._light_reviews = {}
         self.post = PostProcessor(self.config, llm=self.llm)
         self._rife_client = None
 
@@ -120,6 +124,11 @@ class Pipeline:
             print(f'  character: {character_desc}')
             print(f'  character_mode: {character_mode}')
 
+        # 审片模式：none/light 不重试（light=抽1帧问1句·与下一镜生成并行）
+        self._pending_review = None
+        self._light_reviews = {}
+        if self.review_mode in ('none', 'light'):
+            self.max_retries = 0
         # ── 1. 编剧 ──
         print('\n=== [1] 编剧 ===')
         script = self.llm.script_write(concept, character_desc=character_desc,
@@ -127,6 +136,8 @@ class Pipeline:
         meta['script'] = script
         print(f'  title: {script["title"]}')
         print(f'  shots: {len(script["shots"])}')
+        self._log('▸ [1] 编剧完成: %s · %d 镜 · review=%s' % (
+            script.get('title', ''), len(script['shots']), self.review_mode))
 
         # 如果 LLM 生成了 character.desc 但用户没提供，用 LLM 的
         if not character_desc and 'character' in script:
@@ -193,6 +204,7 @@ class Pipeline:
         for shot in script['shots']:
             sid = shot['id']
             print(f'\n=== [4] shot {sid} 生成 ===')
+            self._log('▸ [4] shot %s 生成' % sid)
             clip_info = self._process_shot(
                 shot, clips_dir, task_id, character, voice,
                 prefetched=prefetched.get(sid),
@@ -210,6 +222,15 @@ class Pipeline:
                 })
             audio_offset += clip_info['audio']['duration']
 
+        # 收集最后一镜的并行审片结果，回填真实分数
+        self._collect_light_review()
+        for ci in meta.get('clips', []):
+            rev = self._light_reviews.get(ci.get('shot_id'))
+            if rev:
+                ci['final_score'] = rev.get('score')
+                ci['review_light'] = rev
+        self._review_pool.shutdown(wait=False)
+
         # ── 4.5 RIFE 镜头间过渡 ──
         transition_clips = []
         transition_types = []
@@ -223,6 +244,7 @@ class Pipeline:
 
         # ── 5. 合成 ──
         print('\n=== [5] 合成 ===')
+        self._log('▸ [5] 合成 compose: %d 镜' % len(all_clips))
         if output_path is None:
             output_path = os.path.join(task_dir, 'final.mp4')
 
@@ -287,12 +309,66 @@ class Pipeline:
 
         print(f'\n=== 完成 ===')
         print(f'  成片: {output_path}')
+        self._log('■ 成片: %s' % output_path)
         print(f'  元数据: {meta_path}')
         return meta
 
     @staticmethod
     def _default_review(score=7, feedback='Review unavailable, auto-pass'):
         return {'score': score, 'dimensions': {}, 'feedback': feedback, 'pass': score >= 7}
+
+    def _log(self, msg):
+        """明细日志：追加 output/{tid}/agent.log（有 tasklog 上下文时）。"""
+        try:
+            from utils.tasklog import log as _tlog
+            _tlog(msg, self.output_dir)
+        except Exception:
+            pass
+
+    def _light_review(self, scene_desc, frames, char_ref=None):
+        """轻度审片：抽 1 帧问 LLM 一次"与描述像不像"（1 维 1 问，快）。"""
+        try:
+            system = (
+                '你是审片助手。根据给定的场景描述，判断这张视频帧与描述是否相符。\n'
+                '只输出JSON：{"score": 8, "pass": true, "reason": "一句话"}\n'
+                'score为1-10整数（画面与描述的匹配度），≥6为pass。不必评画质细节。'
+            )
+            content = [{'type': 'text',
+                        'text': '场景描述：%s\n判断该帧与描述的匹配度。' % scene_desc}]
+            if char_ref:
+                content.append({'type': 'image_url',
+                                'image_url': {'url': self.llm._image_to_base64(char_ref)}})
+            for path in frames[:1]:
+                content.append({'type': 'image_url',
+                                'image_url': {'url': self.llm._image_to_base64(path)}})
+            messages = [{'role': 'system', 'content': system},
+                        {'role': 'user', 'content': content}]
+            r = self.llm.chat_json(messages, model=self.llm.models.get('review'),
+                                   temperature=0.1, timeout=60, retries=1)
+            if isinstance(r, dict):
+                r.setdefault('score', 7)
+                r.setdefault('pass', float(r.get('score', 7)) >= 6)
+                r.setdefault('feedback', r.get('reason', ''))
+            return r
+        except Exception as e:
+            return self._default_review(score=7, feedback='light review error: %s' % e)
+
+    def _collect_light_review(self):
+        """收集上一镜的并行轻度审片结果（生成等待期它已在后台跑）。"""
+        pr = self._pending_review
+        if not pr:
+            return None
+        sid, fut = pr
+        try:
+            rev = fut.result(timeout=300)
+        except Exception as e:
+            rev = self._default_review(score=7, feedback='light review error: %s' % e)
+        warn = '' if rev.get('pass') else ' ⚠ 未过(不重试): %s' % str(rev.get('feedback', ''))[:60]
+        self._log('▸ shot %s 审片(light): score=%s pass=%s%s' % (
+            sid, rev.get('score'), rev.get('pass'), warn))
+        self._light_reviews[sid] = rev
+        self._pending_review = None
+        return sid, rev
 
     def _safe_review_character(self, ref_path, preview_paths):
         try:
@@ -614,6 +690,8 @@ class Pipeline:
                 video_path = os.path.join(clips_dir, f'shot_{sid}_v{attempt}.mp4')
 
             print(f'  attempt {attempt}, seed={seed}, length={length}')
+            self._log('▸ shot %s attempt %d seed=%d len=%d帧 | %s' % (
+                sid, attempt, seed, length, str(shot.get('video_prompt', ''))[:48]))
 
             # 参考帧生成（首次尝试用预取数据，重试时重新生成）
             composite_ref = None
@@ -653,6 +731,7 @@ class Pipeline:
                     output_path=video_path,
                 )
             print(f'  video: {video_path}')
+            self._log('▸ shot %s 生成完成: %s' % (sid, os.path.basename(video_path)))
 
             # [9] TTS（首次尝试用预取数据）
             if attempt == 1 and prefetched and prefetched.get('audio'):
@@ -677,10 +756,22 @@ class Pipeline:
                                     output_dir=os.path.join(clips_dir, 'frames'))
             print(f'  frames: {len(frames)}')
 
-            # 审片
+            # 审片（none=不审 / light=抽1帧问1句·与下一镜生成并行 / full=多维同步+重试）
             char_ref = character['ref_image'] if character else None
-            review = self._safe_review_shot(shot['scene_desc'], frames,
-                                            char_ref=char_ref)
+            if self.review_mode == 'none':
+                review = self._default_review(score=10, feedback='review off (none)')
+            elif self.review_mode == 'light':
+                self._collect_light_review()
+                fut = self._review_pool.submit(self._light_review, shot['scene_desc'],
+                                               frames, char_ref)
+                self._pending_review = (sid, fut)
+                self._log('▸ shot %s 审片提交(light·与下一镜并行)' % sid)
+                review = self._default_review(score=8, feedback='light review parallel')
+            else:
+                review = self._safe_review_shot(shot['scene_desc'], frames,
+                                                char_ref=char_ref)
+                self._log('▸ shot %s 审片(full): score=%s pass=%s' % (
+                    sid, review.get('score'), review.get('pass')))
             print(f'  review: score={review["score"]}, pass={review["pass"]}')
 
             attempt_info = {
@@ -722,6 +813,7 @@ class Pipeline:
                 final_video = slowmo_out
                 slowmo_info = result
                 print(f'  [slowmo] done: {result["frame_count"]} frames')
+                self._log('▸ shot %s slowmo %dx: %d 帧' % (sid, mult, result['frame_count']))
             except Exception as e:
                 print(f'  ⚠ slowmo failed: {e}, using original video')
 

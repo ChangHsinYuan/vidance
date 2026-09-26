@@ -77,7 +77,8 @@ class ModelRouter:
         result.append({'id': 'llm-ustc', 'name': 'USTC 网关（内置文本）', 'type': 'llm',
                        'base_url': self.config.get('llm', {}).get('base_url', ''),
                        'capabilities': ['chat', 'script', 'review', 'translate'],
-                       'models': [{'id': v, 'for': k} for k, v in llm_models.items()],
+                       'models': [{'id': v, 'for': k} for k, v in llm_models.items()
+                               if ':' not in str(v)],
                        'status': 'configured', 'builtin': True})
         for cp in self._custom:
             models = cp.get('models', [])
@@ -150,8 +151,12 @@ class ModelRouter:
             llm = self.config.setdefault('llm', {})
             models = llm.setdefault('models', {})
             if provider_id == 'llm-ustc':
-                model = (model or models.get(key)
-                         or self.config.get('llm', {}).get('model') or 'default')
+                if not model or ':' in (model or ''):
+                    cur = str(models.get(key) or '')
+                    cand = [v for v in models.values() if v and ':' not in str(v)]
+                    model = (cur if cur and ':' not in cur else
+                             (str(cand[0]) if cand
+                              else self.config.get('llm', {}).get('model') or 'default'))
                 models[key] = model
             else:
                 cp = self._custom_by_id(provider_id)

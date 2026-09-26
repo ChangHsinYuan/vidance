@@ -135,6 +135,44 @@ def list_tasks(
     return {'tasks': tasks, 'count': len(tasks)}
 
 
+@app.delete('/api/tasks/{task_id}')
+def delete_task(task_id: str):
+    """删除历史记录：tasks 行 + agent_runs 台账行 + output 下同名目录。"""
+    import shutil
+    import sqlite3
+    if not re.fullmatch(r'[\w.\-]{1,120}', task_id):
+        raise HTTPException(status_code=400, detail='bad task_id')
+    try:
+        queue.cancel_task(task_id)
+    except Exception:
+        pass
+    rows = 0
+    conn = sqlite3.connect(os.path.join(os.path.dirname(__file__), '..',
+                                        'output', 'tasks.sqlite'), timeout=30)
+    try:
+        rows += conn.execute('DELETE FROM tasks WHERE task_id=?',
+                             (task_id,)).rowcount
+        try:
+            rows += conn.execute('DELETE FROM agent_runs WHERE task_id=?',
+                                 (task_id,)).rowcount
+        except sqlite3.OperationalError:
+            pass
+        conn.commit()
+    finally:
+        conn.close()
+    roots = [os.path.realpath(load_config().get('output_dir', 'output')),
+             os.path.realpath(os.path.join(os.path.dirname(__file__), '..', 'output'))]
+    dir_removed = False
+    for oroot in dict.fromkeys(roots):
+        d = os.path.realpath(os.path.join(oroot, task_id))
+        if d.startswith(oroot + os.sep) and os.path.isdir(d):
+            shutil.rmtree(d, ignore_errors=True)
+            dir_removed = not os.path.isdir(d)
+            if dir_removed:
+                break
+    return {'deleted': task_id, 'rows': rows, 'dir_removed': bool(dir_removed)}
+
+
 @app.get('/api/tasks/{task_id}')
 def get_task(task_id: str):
     task = queue.get_task(task_id)
@@ -143,7 +181,7 @@ def get_task(task_id: str):
     return task
 
 
-@app.delete('/api/tasks/{task_id}')
+@app.post('/api/tasks/{task_id}/cancel')
 def cancel_task(task_id: str):
     ok, msg = queue.cancel_task(task_id)
     if not ok:
@@ -942,6 +980,86 @@ def _agent_log(tid, *lines):
         pass
 
 
+ACTIVE_RUNS = {}  # 正在执行/刚结束的 agent 运行（board 实时区）
+
+
+# 执行前硬约束：out_path 越界（output_dir 之外）直接改写进本次运行目录，/tmp 不留正本
+def _out_roots():
+    """output 的全部合法根（config 指向的目录 + 仓库 output 目录），双根都认。"""
+    return [os.path.realpath(load_config().get('output_dir', 'output')),
+            os.path.realpath(os.path.join(os.path.dirname(__file__), '..', 'output'))]
+
+
+def _inside_out(path, roots=None):
+    roots = roots or _out_roots()
+    rp = os.path.realpath(path)
+    return any(rp == r or rp.startswith(r + os.sep) for r in roots)
+
+
+def _enforce_out(params, tid):
+    try:
+        roots = _out_roots()
+        oroot = roots[0]
+        changed = False
+        for k in ('out_path', 'out', 'output_path'):
+            v = params.get(k)
+            if not (isinstance(v, str) and v) or v.startswith('${'):
+                continue
+            if v.startswith('output/'):
+                params[k] = os.path.join(oroot, v[7:])
+                os.makedirs(os.path.dirname(params[k]), exist_ok=True)
+                continue
+            if os.path.isabs(v) and _inside_out(v, roots):
+                continue
+            if not os.path.isabs(v):
+                params[k] = os.path.join(oroot, v)
+                os.makedirs(os.path.dirname(params[k]), exist_ok=True)
+                continue
+            params[k] = os.path.join(oroot, tid, os.path.basename(v))
+            changed = True
+        if changed:
+            os.makedirs(os.path.dirname(params.get('out_path')
+                                    or params.get('out') or oroot), exist_ok=True)
+        return changed
+    except OSError:
+        return False
+
+
+def _vault_final(tid, fin):
+    """成片/产物归仓到 output/{tid}/final.ext，返回 (路径, 是否归仓)。
+
+    output 外 → 复制归仓；output 内但不在 {tid} 目录（如 fast 的 f<ts>/、wan 的
+    2026<ts>/）→ 复制进 {tid} 目录，链目录/记录里直接可预览。
+    """
+    moved = False
+    try:
+        if fin and os.path.isfile(fin):
+            if not _inside_out(fin):
+                _or = _out_roots()[0]
+                import shutil as _sh
+                dest = os.path.join(_or, tid, 'final' + (os.path.splitext(fin)[1] or '.mp4'))
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                _sh.copy2(fin, dest)
+                _agent_log(tid, '⤓ 成片归仓 output: %s' % dest)
+                fin, moved = dest, True
+            else:
+                _or = _out_roots()[0]
+                dest = os.path.join(_or, tid, 'final' + (os.path.splitext(fin)[1] or '.mp4'))
+                if os.path.normpath(fin) != os.path.normpath(dest) \
+                        and not os.path.exists(dest):
+                    import shutil as _sh
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    try:
+                        _sh.copy2(fin, dest)
+                        _agent_log(tid, '⤓ 成片并入链目录: %s' % dest)
+                        fin, moved = dest, True
+                    except OSError:
+                        pass
+    except OSError:
+        pass
+    return fin, moved
+
+
 def _v13_board():
     from agents.blackboard import AgentBoard
     return AgentBoard()
@@ -1265,6 +1383,10 @@ def tool_dispatch(name: str, req: ToolRequest):
             except ValueError as e:
                 raise HTTPException(status_code=400, detail='--with 非法 JSON: %s' % e)
             tid = 'agent_' + _time.strftime('%Y%m%d_%H%M%S') + '_run'
+            ACTIVE_RUNS[tid] = {'kind': 'run:' + agen, 'steps': 1, 'done': 0,
+                                'status': 'run', 't0': _time.time()}
+            if _enforce_out(params, tid):
+                _agent_log(tid, '\u26d4 out_path \u8d8a\u754c\uff0c\u5df2\u6539\u5199\u8fdb\u8fd0\u884c\u76ee\u5f55')
             _agent_log(tid, '▶ run %s %s' % (
                 agen, _json.dumps(params, ensure_ascii=False, default=str)[:300]))
             res = _ra(agen, params, board=_v13_board(), task_id=tid)
@@ -1272,7 +1394,15 @@ def tool_dispatch(name: str, req: ToolRequest):
                        + ', '.join(str(p) for p in list(res.artifacts.values())[:3]))
             dd = res.to_dict()
             dd['task_id'] = tid
-            dd['message'] = ('✓ %s 完成' % agen) if res.ok else ('✗ %s 失败' % agen)
+            fin0 = next((res.artifacts[k] for k in ('video', 'video_path', 'glb_path',
+                                                    'ply_path', 'audio', 'wav_path')
+                         if res.artifacts.get(k)), None)
+            fin0, mv0 = _vault_final(tid, fin0)
+            ACTIVE_RUNS[tid] = {**ACTIVE_RUNS.get(tid, {}), 'status': 'ended',
+                                'done': 1, 't1': _time.time()}
+            dd['final'] = fin0
+            dd['message'] = ('✓ %s 完成%s' % (agen, '（已归仓 output）' if mv0 else '')
+                             if res.ok else ('✗ %s 失败' % agen))
             return dd
         if sub == 'chain':
             raw = _greedy('steps') or flags.get('steps') or flags.get('f')
@@ -1290,8 +1420,18 @@ def tool_dispatch(name: str, req: ToolRequest):
                 raise HTTPException(status_code=400, detail='steps 非法 JSON: %s' % e)
             steps = data.get('steps', data.get('chain', data)) if isinstance(data, dict) else data
             tid = 'agent_' + _time.strftime('%Y%m%d_%H%M%S') + '_chain'
+            ACTIVE_RUNS[tid] = {'kind': 'chain', 'steps': len(steps), 'done': 0,
+                                'status': 'run', 't0': _time.time()}
+
+            _n = sum(1 for _st in steps if isinstance(_st, dict)
+                     and isinstance(_st.get('with'), dict) and _enforce_out(_st['with'], tid))
+            if _n:
+                _agent_log(tid, '\u26d4 %d \u5904 out_path \u8d8a\u754c\uff0c\u5df2\u6539\u5199\u8fdb\u8fd0\u884c\u76ee\u5f55' % _n)
 
             def _log_ev(e, _tid=tid):
+                ar = ACTIVE_RUNS.get(_tid)
+                if ar and e['event'] == 'done':
+                    ar['done'] += 1
                 if e['event'] == 'start':
                     _agent_log(_tid, '▶ chain %d 步' % e['total'])
                 elif e['event'] == 'step':
@@ -1303,8 +1443,16 @@ def tool_dispatch(name: str, req: ToolRequest):
 
             out = run_chain(steps, ctx=data.get('ctx') if isinstance(data, dict) else None,
                             task_id=tid, board=_v13_board(), on_event=_log_ev)
+            ACTIVE_RUNS[tid] = {**ACTIVE_RUNS.get(tid, {}), 'status': 'ended', 't1': _time.time()}
             _agent_log(tid, '■ 结束 ok=%s %.1fs' % (out['ok'], out['t_dur']))
-            out['message'] = ('✓ 链完成（%d 步，%.1fs）' % (len(out['steps']), out['t_dur'])
+            la = (out['steps'][-1].get('artifacts') or {}) if out['steps'] else {}
+            fin0 = next((la[k] for k in ('video', 'video_path', 'glb_path', 'ply_path',
+                                         'audio', 'wav_path') if la.get(k)),
+                        out['ctx'].get('video'))
+            fin0, mv0 = _vault_final(tid, fin0)
+            out['final'] = fin0
+            out['message'] = ('✓ 链完成（%d 步，%.1fs%s）'
+                              % (len(out['steps']), out['t_dur'], '，已归仓' if mv0 else '')
                               if out['ok'] else '✗ 链中断')
             out.pop('ctx', None)
             return out
@@ -1835,6 +1983,9 @@ def agent_stream(req: AgentStreamReq):
             _agent_log(tid, '%s [%d] %s %.1fs %s' % (
                 '✓' if e['ok'] else '✗ %s' % e.get('error'), e['i'] + 1, e['name'],
                 e['secs'], (e.get('arts') or {}).get('video') or (e.get('arts') or {}).get('audio') or ''))
+            ar = ACTIVE_RUNS.get(tid)
+            if ar:
+                ar['done'] += 1
 
     def worker():
         try:
@@ -1842,19 +1993,33 @@ def agent_stream(req: AgentStreamReq):
                             on_event=_fwd)
             ctx = out['ctx']
             last_arts = (out['steps'][-1].get('artifacts') or {}) if out['steps'] else {}
-            fin = next((last_arts[k] for k in ('video', 'audio', 'glb_path', 'ply_path',
-                                               'wav_path') if last_arts.get(k)),
+            fin = next((last_arts[k] for k in ('video', 'video_path', 'glb_path', 'ply_path',
+                                               'audio', 'wav_path') if last_arts.get(k)),
                        next((ctx[k] for k in ('video', 'glb_path', 'ply_path')
                              if ctx.get(k)), None))
+            fin, moved = _vault_final(tid, fin)
             q.put({'event': 'final', 'ok': out['ok'], 'secs': out['t_dur'],
-                   'final': fin, 'task_id': tid})
+                   'final': fin, 'task_id': tid, 'moved': moved})
             _agent_log(tid, '■ 结束 ok=%s %.1fs' % (out['ok'], out['t_dur']))
         except Exception as e:
             q.put({'event': 'error', 'msg': str(e)[:200]})
             _agent_log(tid, '✗ 异常: %s' % str(e)[:200])
         finally:
+            ar = ACTIVE_RUNS.get(tid)
+            if ar:
+                ar['status'] = 'ended'
+                ar['t1'] = time.time()
+                ACTIVE_RUNS[tid] = ar
+                while len(ACTIVE_RUNS) > 20:
+                    ACTIVE_RUNS.pop(next(iter(ACTIVE_RUNS)))
             q.put({'event': '__end__'})
 
+    ACTIVE_RUNS[tid] = {'kind': 'chain', 'steps': len(steps), 'done': 0,
+                        'status': 'run', 't0': time.time()}
+    _n = sum(1 for _st in steps if isinstance(_st, dict)
+             and isinstance(_st.get('with'), dict) and _enforce_out(_st['with'], tid))
+    if _n:
+        _agent_log(tid, '\u26d4 %d \u5904 out_path \u8d8a\u754c\uff0c\u5df2\u6539\u5199\u8fdb\u8fd0\u884c\u76ee\u5f55' % _n)
     threading.Thread(target=worker, daemon=True).start()
 
     def gen():
@@ -1905,11 +2070,102 @@ def task_trace(task_id: str):
             'runs': runs}
 
 
+@app.get('/api/agents/records')
+def agent_records(limit: int = Query(40, ge=1, le=200)):
+    """扫描 output 下现存运行目录（agent.log 或 meta.json），历史记录不依赖浏览器存储。
+
+    覆盖三类目录：agent_<ts>_<name>（agent 链）、<时间戳>（pipeline 任务）、
+    f<时间戳>（fast 链）。final 在本目录或一层子目录里找。
+    """
+    def _find_final(d):
+        for f in ('final.mp4', 'final.mov', 'final.webm'):
+            p = os.path.join(d, f)
+            if os.path.isfile(p):
+                return p
+        try:
+            for sub in sorted(os.listdir(d)):
+                sd = os.path.join(d, sub)
+                if os.path.isdir(sd):
+                    for f in ('final.mp4', 'final.mov', 'final.webm'):
+                        p = os.path.join(sd, f)
+                        if os.path.isfile(p):
+                            return p
+        except OSError:
+            pass
+        return None
+
+    def _meta(d):
+        mp = os.path.join(d, 'meta.json')
+        if os.path.isfile(mp):
+            try:
+                import json as _json
+                return _json.loads(open(mp, encoding='utf-8', errors='ignore').read())
+            except Exception:
+                return {}
+        return {}
+
+    roots = [os.path.realpath(load_config().get('output_dir', 'output')),
+             os.path.realpath(os.path.join(os.path.dirname(__file__), '..', 'output')),
+             '/mnt/dataset/zxy/vidance/output']
+    recs, seen = [], set()
+    for oroot in dict.fromkeys(roots):
+        if not os.path.isdir(oroot):
+            continue
+        for name in sorted(os.listdir(oroot)):
+            if name in seen:
+                continue
+            d = os.path.join(oroot, name)
+            if not os.path.isdir(d):
+                continue
+            lp = os.path.join(d, 'agent.log')
+            meta = _meta(d)
+            if not os.path.isfile(lp) and not meta:
+                continue
+            seen.add(name)
+            ts_src = lp if os.path.isfile(lp) else os.path.join(d, 'meta.json')
+            ts = int(os.path.getmtime(ts_src) * 1000)
+            status, title, n_lines = 'done', name, 0
+            if os.path.isfile(lp):
+                try:
+                    lines = [l.strip() for l in open(lp, encoding='utf-8', errors='ignore')
+                             if l.strip()]
+                except OSError:
+                    lines = []
+                n_lines = len(lines)
+                if lines:
+                    start = next((l for l in lines if '▶' in l), lines[0])
+                    title = start[:60]
+                    last = lines[-1]
+                    status = 'run'
+                    if '■' in last:
+                        status = 'ok' if ' ok=True' in last else 'fail'
+                    elif '✗' in last:
+                        status = 'fail'
+            if status == 'done' and not _find_final(d):
+                continue
+            if meta.get('concept') and title == name:
+                title = str(meta['concept'])[:60]
+            recs.append({'task_id': name, 'ts': ts,
+                         'title': title, 'status': status, 'n': n_lines,
+                         'dir': d,
+                         'final': _find_final(d)})
+    recs.sort(key=lambda r: -r['ts'])
+    return {'records': recs[:limit]}
+
+
 @app.get('/api/agents/board')
 def agents_board(task_id: str = '', limit: int = Query(50, ge=1, le=500)):
     """黑板记录：agent_runs 表（谁跑了、产物、评分、耗时）。"""
     from agents.blackboard import AgentBoard
-    return {'runs': AgentBoard().runs(task_id=task_id or None, limit=limit)}
+    runs = AgentBoard().runs(task_id=task_id or None, limit=limit)
+    live = [{'run_id': 'act:' + k, 'task_id': k, 'agent': v.get('kind', 'chain'),
+             'ok': None, 'status': v.get('status'),
+             'note': '%d/%d 步 · %ds' % (v.get('done', 0), v.get('steps', 0),
+                                        int((v.get('t1') or time.time()) - v.get('t0', time.time()))),
+             'ts': time.strftime('%Y-%m-%d %H:%M:%S',
+                                 time.localtime(v.get('t0', time.time())))}
+            for k, v in sorted(ACTIVE_RUNS.items(), key=lambda x: -x[1].get('t0', 0))]
+    return {'runs': live + runs, 'live': len(live)}
 
 
 # ── 静态前端 /ui ──

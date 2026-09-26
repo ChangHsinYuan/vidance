@@ -67,7 +67,7 @@
     },
     "custom_voice_dir": "/mnt/disk_sdb/zxy/vidance/voices"
   },
-  "output_dir": "/mnt/dataset/zxy/vidance/output",
+  "output_dir": "/mnt/disk_sdb/zxy/vidance/output",
   "wan_defaults": {
     "width": 1280,
     "height": 704,
