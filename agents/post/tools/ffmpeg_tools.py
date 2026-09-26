@@ -1,0 +1,288 @@
+#!/usr/bin/env python3
+"""ffmpeg + moviepy 后处理工具 — 抽帧、SRT生成、视频合成
+
+用法:
+  from utils.ffmpeg_tools import extract_frames, generate_srt, compose
+  extract_frames('clips/shot_1.mp4', 4, 'clips/frames/')
+  generate_srt(timestamps, 'clips/subtitle.srt')
+  compose(clips, audio_path, srt_path, 'output/final.mp4')
+"""
+
+import os as _os
+import sys as _sys
+_ROOT = _os.path.abspath(__file__)
+for _ in range(4):
+    _ROOT = _os.path.dirname(_ROOT)
+if _ROOT not in _sys.path:
+    _sys.path.insert(0, _ROOT)
+import os
+import sys
+import json
+import subprocess
+import shutil
+
+FFMPEG = shutil.which('ffmpeg') or os.path.expanduser('~/.local/bin/ffmpeg')
+
+
+def _run(cmd: list, timeout: int = 300):
+    """运行命令，检查返回码"""
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    if result.returncode != 0:
+        raise RuntimeError(f'command failed: {" ".join(cmd[:5])}...\nstderr: {result.stderr[-500:]}')
+    return result
+
+
+def get_duration(video_path: str) -> float:
+    """获取视频时长（秒）"""
+    cmd = [
+        FFMPEG, '-i', video_path,
+        '-show_entries', 'format=duration',
+        '-v', 'quiet',
+        '-of', 'csv=p=0',
+    ]
+    # ffprobe is more reliable for this, but use ffmpeg -i fallback
+    cmd[0] = shutil.which('ffprobe') or FFMPEG.replace('ffmpeg', 'ffprobe')
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    try:
+        return float(result.stdout.strip())
+    except ValueError:
+        return 0.0
+
+
+def extract_frames(video_path: str, n_frames: int = 4,
+                   output_dir: str = None, prefix: str = None) -> list:
+    """从视频中均匀抽取 n_frames 帧，返回帧文件路径列表"""
+    if output_dir is None:
+        output_dir = os.path.join(os.path.dirname(video_path), 'frames')
+    os.makedirs(output_dir, exist_ok=True)
+    if prefix is None:
+        prefix = os.path.splitext(os.path.basename(video_path))[0]
+
+    duration = get_duration(video_path)
+    if duration <= 0:
+        raise RuntimeError(f'cannot get duration for {video_path}')
+
+    frame_paths = []
+    for i in range(n_frames):
+        t = duration * (i + 0.5) / n_frames
+        out_path = os.path.join(output_dir, f'{prefix}_frame_{i}.jpg')
+        cmd = [
+            FFMPEG, '-y', '-ss', f'{t:.2f}', '-i', video_path,
+            '-frames:v', '1', '-q:v', '2', out_path,
+        ]
+        _run(cmd, timeout=30)
+        if os.path.isfile(out_path):
+            frame_paths.append(out_path)
+    return frame_paths
+
+
+def _srt_time(seconds: float) -> str:
+    """秒→SRT时间格式 HH:MM:SS,mmm"""
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    ms = int((seconds % 1) * 1000)
+    return f'{h:02d}:{m:02d}:{s:02d},{ms:03d}'
+
+
+def generate_srt(timestamps: list, output_path: str, offset: float = 0.0) -> str:
+    """从 TTS 时间戳生成 SRT 字幕文件
+
+    Args:
+        timestamps: [{text, start, end, duration, ...}, ...]
+        output_path: SRT 输出路径
+        offset: 时间偏移（秒，用于拼接时各镜头的起始偏移）
+    """
+    lines = []
+    for i, ts in enumerate(timestamps):
+        idx = i + 1
+        start = ts['start'] + offset
+        end = ts['end'] + offset
+        text = ts['text']
+        lines.append(str(idx))
+        lines.append(f'{_srt_time(start)} --> {_srt_time(end)}')
+        lines.append(text)
+        lines.append('')
+
+    srt_content = '\n'.join(lines) + '\n'
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(srt_content)
+    return output_path
+
+
+def compose(clips: list, audio_paths: list, srt_path: str = None,
+            output_path: str = 'output/final.mp4',
+            transition: str = 'crossfade',
+            transition_duration: float = 0.3,
+            transition_clips: list = None,
+            transition_types: list = None,
+            lut_path: str = None,
+            bgm_path: str = None,
+            bgm_volume: float = 0.3) -> str:
+    """合成最终视频：拼接画面 + 合并配音 + 调色 + 烧录字幕 + 配乐 ducking
+
+    Args:
+        clips: 视频片段路径列表 [shot_1.mp4, shot_2.mp4, ...]
+        audio_paths: 对应音频路径列表 [shot_1.wav, shot_2.wav, ...]
+        srt_path: SRT字幕文件路径（None则不烧字幕）
+        output_path: 输出视频路径
+        transition: 全局转场类型 ('crossfade' 或 'cut')，仅当无 transition_types 时使用
+        transition_duration: 转场时长（秒）
+        transition_clips: 镜头间过渡视频路径列表 [trans_1.mp4, trans_2.mp4, ...]
+                         长度 = len(clips) - 1，None 则不用 RIFE 过渡
+        transition_types: 每个边界的过渡类型 ['rife', 'crossfade', 'cut', ...]
+                         长度 = len(clips) - 1。优先于 transition 参数。
+                         'rife' → 插入 transition_clips 中的过渡片段
+                         'crossfade' → CrossFadeIn
+                         'cut' → 硬切
+        lut_path: 3D LUT .cube 文件路径（None 则不调色）
+        bgm_path: 背景音乐文件路径（None 则不加配乐）
+        bgm_volume: BGM 基础音量 (0-1)
+    """
+    from moviepy import VideoFileClip, AudioFileClip, concatenate_videoclips
+    from moviepy.video.fx import CrossFadeIn, Freeze
+
+    video_clips = []
+    all_audio_clips = []
+
+    for i, (video_path, audio_path) in enumerate(zip(clips, audio_paths)):
+        vc = VideoFileClip(video_path)
+        ac = AudioFileClip(audio_path)
+
+        if ac.duration > vc.duration:
+            freeze_t = max(0, vc.duration - 0.04)
+            vc = vc.with_effects([Freeze(t=freeze_t,
+                                         freeze_duration=ac.duration - vc.duration,
+                                         padding_end=True)])
+        elif ac.duration < vc.duration:
+            vc = vc.subclipped(0, ac.duration)
+
+        vc = vc.with_audio(ac)
+
+        # Determine transition type for this boundary (i-1 → i)
+        if i > 0:
+            if transition_types and i - 1 < len(transition_types):
+                t_type = transition_types[i - 1]
+            elif transition_clips:
+                t_type = 'rife'
+            else:
+                t_type = transition
+
+            if t_type == 'crossfade':
+                vc = vc.with_effects([CrossFadeIn(transition_duration)])
+
+        video_clips.append(vc)
+        all_audio_clips.append(ac)
+
+        # Insert RIFE transition clip between shots (only for 'rife' type)
+        if i < len(clips) - 1:
+            if transition_types and i < len(transition_types):
+                t_type = transition_types[i]
+            elif transition_clips:
+                t_type = 'rife'
+            else:
+                t_type = None
+
+            if t_type == 'rife' and transition_clips and i < len(transition_clips):
+                trans_path = transition_clips[i]
+                if trans_path and os.path.isfile(trans_path):
+                    tc = VideoFileClip(trans_path)
+                    video_clips.append(tc)
+
+    final_video = concatenate_videoclips(video_clips, method='compose')
+
+    temp_output = output_path.replace('.mp4', '_nosub.mp4')
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    final_video.write_videofile(
+        temp_output,
+        codec='libx264',
+        audio_codec='aac',
+        fps=24,
+        logger=None,
+    )
+    final_video.close()
+    for vc in video_clips:
+        vc.close()
+    for ac in all_audio_clips:
+        ac.close()
+
+    # 后处理：调色 + 烧录字幕
+    def _ffpath(p):
+        # Windows 反斜杠会被 ffmpeg filter 语法吞掉，统一转正斜杠
+        return p.replace('\\', '/')
+
+    filters = []
+    if lut_path and os.path.isfile(lut_path):
+        filters.append(f"lut3d='{_ffpath(lut_path)}'")
+    if srt_path and os.path.isfile(srt_path):
+        filters.append(
+            f"subtitles='{_ffpath(srt_path)}':force_style='FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Alignment=2'"
+        )
+
+    if filters:
+        vf = ','.join(filters)
+        cmd = [
+            FFMPEG, '-y', '-i', temp_output,
+            '-vf', vf,
+            '-c:a', 'copy',
+            '-c:v', 'libx264',
+            '-preset', 'medium',
+            '-crf', '18',
+            '-pix_fmt', 'yuv420p',
+            output_path,
+        ]
+        _run(cmd, timeout=600)
+        os.remove(temp_output)
+    else:
+        shutil.move(temp_output, output_path)
+
+    # 配乐 ducking：BGM 在旁白时自动降低音量
+    if bgm_path and os.path.isfile(bgm_path):
+        temp_bgm = output_path.replace('.mp4', '_nobgm.mp4')
+        shutil.move(output_path, temp_bgm)
+        cmd = [
+            FFMPEG, '-y', '-i', temp_bgm, '-i', bgm_path,
+            '-filter_complex',
+            f'[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,volume={bgm_volume}[bgm];'
+            f'[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,asplit=2[av][avsc];'
+            f'[bgm][avsc]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=300[ducked];'
+            f'[av][ducked]amix=inputs=2:duration=first:weights=1 0.8[a]',
+            '-map', '0:v', '-map', '[a]',
+            '-c:v', 'copy',
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            output_path,
+        ]
+        _run(cmd, timeout=600)
+        os.remove(temp_bgm)
+
+    return output_path
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='ffmpeg tools')
+    sub = parser.add_subparsers(dest='cmd')
+
+    p_frames = sub.add_parser('frames', help='Extract frames')
+    p_frames.add_argument('video')
+    p_frames.add_argument('-n', '--count', type=int, default=4)
+    p_frames.add_argument('-o', '--output', default=None)
+
+    p_srt = sub.add_parser('srt', help='Generate SRT from timestamps JSON')
+    p_srt.add_argument('timestamps_json', help='JSON file with timestamps')
+    p_srt.add_argument('-o', '--output', required=True)
+
+    args = parser.parse_args()
+
+    if args.cmd == 'frames':
+        paths = extract_frames(args.video, args.count, args.output)
+        print(f'Extracted {len(paths)} frames:')
+        for p in paths:
+            print(f'  {p}')
+    elif args.cmd == 'srt':
+        with open(args.timestamps_json) as f:
+            ts = json.load(f)
+        generate_srt(ts, args.output)
+        print(f'Generated: {args.output}')
