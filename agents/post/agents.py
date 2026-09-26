@@ -10,7 +10,7 @@ for _ in range(3):
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from agents.base import TaskResult, register
+from agents.base import TaskResult, default_out, register
 
 
 def _post():
@@ -25,7 +25,7 @@ def _post():
 def tts(p):
     from core.narration import Narrator
     narr = Narrator()
-    out = p.get('out_path') or os.path.join(os.getcwd(), 'tts_%d.wav' % abs(hash(p['text']) % 10**8))
+    out = p.get('out_path') or default_out('post.tts', 'voice', 'wav')
     ok = narr.say(p['text'], out, voice=p.get('voice'), speed=p.get('speed', 1.0))
     return TaskResult(ok=bool(ok) and os.path.isfile(out),
                       artifacts={'audio': out})
@@ -113,7 +113,7 @@ def fx(p):
           inputs='{clip_a, clip_b, kind?, duration?, out_path?}')
 def transition(p):
     from agents.post.tools.effects import transition as tfade
-    out = p.get('out_path') or os.path.join(os.getcwd(), 'merged.mp4')
+    out = p.get('out_path') or default_out('post.transition', 'merged')
     ok = tfade(p['clip_a'], p['clip_b'], out, kind=p.get('kind', 'fade'),
                duration=p.get('duration', 0.4))
     return TaskResult(ok=bool(ok), artifacts={'video': out})
@@ -127,8 +127,7 @@ def voice(p):
     from agents.common.tools.config_loader import load_config
     cfg = load_config()
     client = TTSClient(cfg)
-    out = p.get('out_path') or os.path.join(
-        os.getcwd(), 'voice_%d.wav' % abs(hash(p['text']) % 10 ** 8))
+    out = p.get('out_path') or default_out('post.voice', 'voice', 'wav')
     wanted = p.get('voice') or client.default_voice
     chain = [wanted]
     for fb in (cfg.get('tts', {}).get('fallback_voice'), 'cosy-default', 'edge-xiaoxiao'):

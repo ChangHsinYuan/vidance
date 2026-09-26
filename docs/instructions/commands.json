@@ -704,7 +704,8 @@
     "/agent board --n 20",
     "/agent run director.brain --with {\"prompt\":\"用五个字形容月亮\"}",
     "/agent run post.lut --with {\"video\":\"in.mp4\",\"lut\":\"warm\",\"out_path\":\"out.mp4\"}",
-    "/agent chain --steps {\"steps\":[{\"agent\":\"post.lut\",\"as\":\"c\",\"with\":{\"video\":\"in.mp4\",\"lut\":\"warm\",\"out_path\":\"/tmp/l.mp4\"}},{\"agent\":\"post.fx\",\"with\":{\"video\":\"${c.video}\",\"effect\":\"zoom\",\"out_path\":\"/tmp/f.mp4\"}}]}"
+    "/agent chain --steps {\"steps\":[{\"agent\":\"post.lut\",\"as\":\"c\",\"with\":{\"video\":\"in.mp4\",\"lut\":\"warm\",\"out_path\":\"/tmp/l.mp4\"}},{\"agent\":\"post.fx\",\"with\":{\"video\":\"${c.video}\",\"effect\":\"zoom\",\"out_path\":\"/tmp/f.mp4\"}}]}",
+    "chain --steps {\"steps\":[{\"agent\":\"generator.svg\",\"as\":\"v\",\"with\":{\"concept\":\"柴犬宇航员\",\"voice\":\"edge-moe\"}},{\"agent\":\"post.fx\",\"as\":\"g\",\"with\":{\"video\":\"${v.video}\",\"effect\":\"glitch\"}},{\"agent\":\"post.pip\",\"with\":{\"video\":\"${v.video}\",\"overlay\":\"${g.video}\"}}]}"
    ]
   }
  ],

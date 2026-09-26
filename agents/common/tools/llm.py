@@ -39,10 +39,40 @@ class LLMClient:
         self.api_key = llm_cfg['api_key']
         self.models = llm_cfg['models']
 
+    def _refresh(self):
+        """config.json 被手改/面板切换后自动重读（mtime 变化才读盘）。"""
+        try:
+            import os
+            path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.dirname(os.path.abspath(__file__))))), 'config', 'config.json')
+            mt = os.path.getmtime(path)
+            if getattr(self, '_cfg_mt', None) != mt:
+                self.config = load_config()
+                llm_cfg = self.config['llm']
+                self.base_url, self.api_key = llm_cfg['base_url'], llm_cfg['api_key']
+                self.models = llm_cfg['models']
+                self._cfg_mt = mt
+        except Exception:
+            pass
+
+    def _resolve(self, model):
+        """模型名可为 'provider_id:模型名' 前缀 → 路由到对应自定义 API。返回(url,key,model)。"""
+        if model and ':' in model and not model.startswith('http'):
+            pid, mname = model.split(':', 1)
+            for cp in (self.config.get('model_providers', {}) or {}).get('custom_providers', []):
+                if cp.get('id') == pid and cp.get('api_key'):
+                    base = cp.get('base_url', '').rstrip('/')
+                    if base and not base.endswith('/v1'):
+                        base += '/v1'
+                    return base, cp['api_key'], mname or 'default'
+        return self.base_url, self.api_key, model
+
     def chat(self, messages: list, model: str = None, temperature: float = 0.7,
              max_tokens: int = 4096, timeout: int = 300, retries: int = 2) -> str:
         """调用 LLM 文本对话，返回 assistant 回复文本（超时自动重试）"""
+        self._refresh()
         model = model or self.models['script']
+        base_url, api_key, model = self._resolve(model)
         payload = {
             'model': model,
             'messages': messages,
@@ -53,11 +83,11 @@ class LLMClient:
         last_err = None
         for attempt in range(retries + 1):
             req = urllib.request.Request(
-                f'{self.base_url}/chat/completions',
+                f'{base_url}/chat/completions',
                 data=data,
                 headers={
                     'Content-Type': 'application/json',
-                    'Authorization': f'Bearer {self.api_key}',
+                    'Authorization': f'Bearer {api_key}',
                 },
             )
             try:

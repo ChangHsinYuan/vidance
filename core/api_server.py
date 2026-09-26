@@ -33,6 +33,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket
+from fastapi.responses import StreamingResponse
 from fastapi.responses import HTMLResponse, FileResponse, Response
 from pydantic import BaseModel
 from typing import Optional
@@ -928,6 +929,19 @@ def _parse_repeated(argstr: str, repeat_keys: set) -> dict:
     return {'pos': pos, 'rep': rep, 'flags': flags}
 
 
+def _agent_log(tid, *lines):
+    """agent 运行日志落 output/{tid}/agent.log，与任务日志面板同体系。"""
+    import datetime
+    try:
+        d = os.path.join(load_config().get('output_dir', 'output'), tid)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, 'agent.log'), 'a', encoding='utf-8') as f:
+            for s in lines:
+                f.write('[%s] %s\n' % (datetime.datetime.now().strftime('%H:%M:%S'), s))
+    except OSError:
+        pass
+
+
 def _v13_board():
     from agents.blackboard import AgentBoard
     return AgentBoard()
@@ -1211,6 +1225,7 @@ def tool_dispatch(name: str, req: ToolRequest):
     if name == 'agent':
         import json as _json
         import shlex as _shq
+        import time as _time
         from agents.runtime import load_all, run_chain
         from agents.base import run_agent as _ra, REGISTRY
         load_all()
@@ -1240,18 +1255,32 @@ def tool_dispatch(name: str, req: ToolRequest):
             agen = pos[1]
             if agen not in REGISTRY:
                 raise HTTPException(status_code=404, detail='unknown agent: %s' % agen)
-            pj = _greedy('with') or flags.get('with') or flags.get('w') or '{}'
+            pj = _greedy('with') or flags.get('with') or flags.get('w')
+            if not pj:
+                a2 = req.args or ''
+                k = a2.find('{')
+                pj = a2[k:] if k >= 0 else '{}'
             try:
                 params = _json.loads(pj) if isinstance(pj, str) else pj
             except ValueError as e:
                 raise HTTPException(status_code=400, detail='--with 非法 JSON: %s' % e)
-            res = _ra(agen, params, board=_v13_board(), task_id='ui')
+            tid = 'agent_' + _time.strftime('%Y%m%d_%H%M%S') + '_run'
+            _agent_log(tid, '▶ run %s %s' % (
+                agen, _json.dumps(params, ensure_ascii=False, default=str)[:300]))
+            res = _ra(agen, params, board=_v13_board(), task_id=tid)
+            _agent_log(tid, ('✓ 完成 产物: ' if res.ok else '✗ 失败: %s 产物: ' % res.error)
+                       + ', '.join(str(p) for p in list(res.artifacts.values())[:3]))
             dd = res.to_dict()
+            dd['task_id'] = tid
             dd['message'] = ('✓ %s 完成' % agen) if res.ok else ('✗ %s 失败' % agen)
             return dd
         if sub == 'chain':
-            raw = (_greedy('steps') or flags.get('steps') or flags.get('f')
-                   or (' '.join(pos[1:]) if len(pos) > 1 else ''))
+            raw = _greedy('steps') or flags.get('steps') or flags.get('f')
+            if not raw:
+                a = req.args or ''
+                cuts = [j for j in (a.find('['), a.find('{')) if j >= 0]
+                raw = a[min(cuts):] if cuts else (
+                    ' '.join(pos[1:]) if len(pos) > 1 else '')
             if not raw:
                 raise HTTPException(status_code=400,
                                     detail='用法: /agent chain --steps \'{"steps":[...]}\'')
@@ -1260,8 +1289,21 @@ def tool_dispatch(name: str, req: ToolRequest):
             except ValueError as e:
                 raise HTTPException(status_code=400, detail='steps 非法 JSON: %s' % e)
             steps = data.get('steps', data.get('chain', data)) if isinstance(data, dict) else data
+            tid = 'agent_' + _time.strftime('%Y%m%d_%H%M%S') + '_chain'
+
+            def _log_ev(e, _tid=tid):
+                if e['event'] == 'start':
+                    _agent_log(_tid, '▶ chain %d 步' % e['total'])
+                elif e['event'] == 'step':
+                    _agent_log(_tid, '⏳ [%d] %s %s' % (e['i'] + 1, e['name'], (e.get('args') or '')[:200]))
+                elif e['event'] == 'done':
+                    _agent_log(_tid, '%s [%d] %s %.1fs %s' % (
+                        '✓' if e['ok'] else '✗ %s' % e.get('error'), e['i'] + 1, e['name'],
+                        e['secs'], (e.get('arts') or {}).get('video') or (e.get('arts') or {}).get('audio') or ''))
+
             out = run_chain(steps, ctx=data.get('ctx') if isinstance(data, dict) else None,
-                            task_id='ui', board=_v13_board())
+                            task_id=tid, board=_v13_board(), on_event=_log_ev)
+            _agent_log(tid, '■ 结束 ok=%s %.1fs' % (out['ok'], out['t_dur']))
             out['message'] = ('✓ 链完成（%d 步，%.1fs）' % (len(out['steps']), out['t_dur'])
                               if out['ok'] else '✗ 链中断')
             out.pop('ctx', None)
@@ -1530,11 +1572,48 @@ def remove_provider(provider_id: str):
     return {'message': f'已删除: {provider_id}'}
 
 
+class ImportProvidersReq(BaseModel):
+    path: str = None
+    text: str = None
+    overwrite_llm: bool = False
+
+
+@app.post('/api/model-providers/import')
+def import_model_providers(req: ImportProvidersReq):
+    """从本地/他机拷来的 config.json 一键导入模型配置。"""
+    from utils.model_router import ModelRouter
+    return ModelRouter().import_from_config(path=req.path, text=req.text,
+                                            overwrite_llm=req.overwrite_llm)
+
+
 @app.post('/api/model-providers/discover')
 def discover_models(req: DiscoverModels):
     from utils.model_router import ModelRouter
     result = ModelRouter.discover_models(req.base_url, req.api_key)
     return result
+
+
+@app.get('/api/model-providers/health')
+def model_providers_health():
+    """全部提供商连通性探测（ComfyUI 探实例，API 探 /models）。"""
+    from utils.model_router import ModelRouter
+    return {'providers': ModelRouter().health()}
+
+
+class ModelChatReq(BaseModel):
+    messages: list
+    model: str = None
+    temperature: float = 0.7
+    max_tokens: int = 1024
+
+
+@app.post('/api/model/chat')
+def model_chat(req: ModelChatReq):
+    """OpenAI 兼容 chat，按候选顺序自动轮换（一个不通自动切下一个）。"""
+    from utils.model_router import ModelRouter
+    return ModelRouter().chat_api(req.messages, model=req.model,
+                                  temperature=req.temperature,
+                                  max_tokens=req.max_tokens)
 
 
 # ══ ComfyUI 节点画布反向代理 (/ui_comfyui) ══
@@ -1689,6 +1768,111 @@ def list_agents_api():
         for a in sorted(reg.values(), key=lambda x: (x['layer'], x['name']))]}
 
 
+class AgentStreamReq(BaseModel):
+    command: str
+
+
+@app.post('/api/agent/stream')
+def agent_stream(req: AgentStreamReq):
+    """打字机式流式执行 /agent run|chain（SSE 事件流）。"""
+    import json as _json
+    import queue
+    import re as _re
+    import threading
+    import uuid as _uuid
+    from agents.runtime import load_all, run_chain
+    load_all()
+    cmd = (req.command or '').strip()
+    if cmd.startswith('/agent'):
+        cmd = cmd[len('/agent'):].strip()
+    m = _re.match(r'(run|chain)\s+([\s\S]*)', cmd)
+    if not m:
+        raise HTTPException(status_code=400, detail='用法: /agent chain [ … ] 或 /agent run <name> { … }')
+    sub, rest = m.group(1), m.group(2).strip()
+
+    def _unq(s):
+        return s[1:-1].replace('\\"', '"') if len(s) > 1 and s[0] in '\"\'' and s[0] == s[-1] else s
+
+    if sub == 'chain':
+        if rest.startswith('--steps'):
+            rest = rest[7:].strip()
+        try:
+            data = _json.loads(_unq(rest))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail='steps 非法 JSON: %s' % e)
+        steps = data.get('steps', data.get('chain', data)) if isinstance(data, dict) else data
+        ctx0 = data.get('ctx') if isinstance(data, dict) else None
+    else:
+        parts = rest.split(None, 1)
+        if not parts:
+            raise HTTPException(status_code=400, detail='用法: /agent run <name> --with { … }')
+        agen, rj = parts[0], (parts[1] if len(parts) > 1 else '{}')
+        if rj.startswith('--with'):
+            rj = rj[6:].strip()
+        k = rj.find('{')
+        if k < 0:
+            rj = '{}'
+        elif k > 0:
+            rj = rj[k:]
+        try:
+            params = _json.loads(_unq(rj))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail='--with 非法 JSON: %s' % e)
+        steps, ctx0 = [{'agent': agen, 'with': params}], None
+    if not isinstance(steps, list) or not steps:
+        raise HTTPException(status_code=400, detail='steps 为空')
+
+    q = queue.Queue()
+    tid = 'agent_' + time.strftime('%Y%m%d_%H%M%S') + '_chain'
+
+    def _fwd(e):
+        q.put(e)
+        if e.get('event') == 'start':
+            _agent_log(tid, '▶ chain(stream) %d 步' % e['total'])
+        elif e.get('event') == 'step':
+            _agent_log(tid, '⏳ [%d] %s %s' % (e['i'] + 1, e['name'], (e.get('args') or '')[:200]))
+        elif e.get('event') == 'done':
+            _agent_log(tid, '%s [%d] %s %.1fs %s' % (
+                '✓' if e['ok'] else '✗ %s' % e.get('error'), e['i'] + 1, e['name'],
+                e['secs'], (e.get('arts') or {}).get('video') or (e.get('arts') or {}).get('audio') or ''))
+
+    def worker():
+        try:
+            out = run_chain(steps, ctx=ctx0, task_id=tid, board=_v13_board(),
+                            on_event=_fwd)
+            ctx = out['ctx']
+            last_arts = (out['steps'][-1].get('artifacts') or {}) if out['steps'] else {}
+            fin = next((last_arts[k] for k in ('video', 'audio', 'glb_path', 'ply_path',
+                                               'wav_path') if last_arts.get(k)),
+                       next((ctx[k] for k in ('video', 'glb_path', 'ply_path')
+                             if ctx.get(k)), None))
+            q.put({'event': 'final', 'ok': out['ok'], 'secs': out['t_dur'],
+                   'final': fin, 'task_id': tid})
+            _agent_log(tid, '■ 结束 ok=%s %.1fs' % (out['ok'], out['t_dur']))
+        except Exception as e:
+            q.put({'event': 'error', 'msg': str(e)[:200]})
+            _agent_log(tid, '✗ 异常: %s' % str(e)[:200])
+        finally:
+            q.put({'event': '__end__'})
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    def gen():
+        yield 'data: %s\n\n' % _json.dumps({'event': 'task', 'task_id': tid})
+        while True:
+            try:
+                e = q.get(timeout=2.5)
+            except queue.Empty:
+                yield ': ping\n\n'
+                continue
+            if e.get('event') == '__end__':
+                break
+            yield 'data: %s\n\n' % _json.dumps(e, ensure_ascii=False, default=str)
+
+    return StreamingResponse(gen(), media_type='text/event-stream',
+                             headers={'Cache-Control': 'no-cache',
+                                      'X-Accel-Buffering': 'no'})
+
 @app.post('/api/agents/{name}/run')
 def run_agent_api(name: str, req: AgentRunReq):
     """同步运行单个 Agent（重活建议走 chain 或任务队列）。"""
@@ -1734,6 +1918,15 @@ _UI_DIR = os.path.join(os.path.dirname(__file__), '..', 'ui')
 if os.path.isdir(_UI_DIR):
     from fastapi.staticfiles import StaticFiles
     app.mount('/ui', StaticFiles(directory=_UI_DIR, html=True), name='ui')
+
+
+
+@app.middleware('http')
+async def _ui_no_cache(request, call_next):
+    resp = await call_next(request)
+    if request.url.path in ('/ui', '/ui/', '/ui/index.html', '/api/tools', '/api/commands'):
+        resp.headers['Cache-Control'] = 'no-store'
+    return resp
 
 
 @app.get('/ui')

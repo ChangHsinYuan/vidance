@@ -69,7 +69,7 @@ def _resolve(v, ctx):
     return v
 
 
-def run_chain(steps, ctx=None, task_id='', board=None):
+def run_chain(steps, ctx=None, task_id='', board=None, on_event=None):
     """steps: [{agent, with?, as?, optional?}] → {ok, steps, ctx}"""
     load_all()
     from agents.blackboard import AgentBoard
@@ -79,6 +79,8 @@ def run_chain(steps, ctx=None, task_id='', board=None):
     results = []
     ok_all = True
     t0 = time.time()
+    ev = (lambda **kw: on_event(kw)) if on_event else (lambda **kw: None)
+    ev(event='start', total=len(steps))
     for i, step in enumerate(steps):
         name = step['agent']
         try:
@@ -86,7 +88,13 @@ def run_chain(steps, ctx=None, task_id='', board=None):
         except KeyError as e:
             res = TaskResult(agent=name, ok=False, error=str(e))
         else:
+            ev(event='step', i=i, name=name,
+               args=json.dumps(step.get('with', {}), ensure_ascii=False, default=str)[:200])
+            t1 = time.time()
             res = run_agent(name, params, board=board, task_id=task_id)
+            ev(event='done', i=i, name=name, ok=res.ok,
+               secs=round(time.time() - t1, 1), error=res.error or None,
+               arts={k: str(v) for k, v in res.artifacts.items()})
         key = step.get('as') or name
         results.append({'i': i, 'key': key, **res.to_dict()})
         if res.ok:

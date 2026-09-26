@@ -74,6 +74,28 @@
   .progress-bar { height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
   .progress-bar > div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); width: 0; transition: width .5s; }
   .card .meta { font-size: 12px; color: var(--fg-dim); }
+  .vuni { width: 100%; border-radius: 8px; margin-top: 10px; max-height: 320px; background: #000; }
+  #task-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 8px 16px 0; flex: none; }
+  .stream-log { font-size: 12.5px; line-height: 1.9; }
+  .stream-log .args { color: var(--fg-dim); font-size: 11px; margin-left: 6px; word-break: break-all; }
+  .stream-log .tm { color: var(--fg-dim); font-size: 11px; margin-left: 6px; }
+  #task-tabs:empty { display: none; }
+  .ttab { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; font-size: 12px;
+    background: var(--bg3, #1b2330); border: 1px solid var(--border, #2d3a4f); border-radius: 8px 8px 0 0;
+    cursor: pointer; white-space: nowrap; color: var(--fg, #dfe4ee); }
+  .ttab:hover { border-color: var(--accent); }
+  .ttab b { color: var(--fg-dim); font-weight: 400; padding: 0 2px; }
+  .ttab b:hover { color: var(--err, #f66); }
+  .tdot { width: 8px; height: 8px; border-radius: 50%; background: #888; flex: none; }
+  .tdot.running { background: var(--accent); animation: blink 1s infinite alternate; }
+  .tdot.completed { background: var(--ok); } .tdot.failed { background: #f66; }
+  @keyframes blink { from { opacity: 1; } to { opacity: .3; } }
+  #task-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none;
+    align-items: flex-start; justify-content: center; z-index: 90; overflow-y: auto; padding: 40px 16px; }
+  #task-overlay .ov-box { background: var(--bg2, #141b26); border: 1px solid var(--border, #2d3a4f);
+    border-radius: 12px; max-width: 760px; width: 100%; padding: 18px 20px; }
+  #task-overlay .ov-log { background: #0a0e14; color: #9fd6a8; font-size: 11px; white-space: pre-wrap;
+    max-height: 260px; overflow-y: auto; padding: 10px; border-radius: 8px; margin-top: 10px; }
   .card video { width: 100%; border-radius: 8px; margin-top: 10px; max-height: 320px; background: #000; }
   .card .cand, .msg.bot .cand { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; font-size: 13px; }
   .card .score, .msg.bot .score { color: var(--ok); font-weight: 700; min-width: 24px; }
@@ -279,10 +301,10 @@
 <div id="app">
   <div id="topbar">
     <button id="btn-menu" onclick="toggleSidebar()">☰</button>
-    <span class="brand">Vidance</span>
+    <span class="brand">Vidance</span><span id="ui-ver" style="font-size:10px;color:var(--fg-dim)">v13.3.2</span>
     <span class="title" id="session-title">新会话</span>
     <button id="btn-comfyui" onclick="openComfyUI()" title="ComfyUI 节点画布" style="background:none;border:none;color:var(--fg-dim);font-size:14px;cursor:pointer;padding:4px 8px;">🎨</button>
-    <button id="btn-log" onclick="toggleLog()" title="详细日志">📋</button>
+    <button id="btn-log" onclick="toggleLog()" title="详细日志">📋</button><button id="btn-log" style="margin-left:2px" onclick="newChat()" title="新建对话">＋</button><button id="btn-log" style="margin-left:2px" onclick="showSessions()" title="历史会话">🗂</button>
     <button id="btn-settings" onclick="openModelModal()" title="模型设置">⚙</button>
     <button id="btn-new" onclick="newSession()">＋ 新建</button>
   </div>
@@ -294,6 +316,7 @@
       </section>
     </div>
     <div id="canvas">
+      <div id="task-tabs"></div>
       <div id="messages">
         <div class="empty-hint" id="empty-hint">
           <h1>Vidance</h1>
@@ -313,7 +336,10 @@
       </div>
     </div>
   </div>
-  <div id="log-panel">
+  <div id="sess-pop" style="display:none;position:fixed;right:14px;top:46px;width:320px;max-height:60vh;overflow-y:auto;z-index:1200;background:var(--bg2);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.5);padding:8px">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 6px 8px;font-size:12px;color:var(--fg-dim)"><b>历史会话</b><span style="cursor:pointer" onclick="document.getElementById('sess-pop').style.display='none'">✕</span></div>
+  <div id="sess-list"></div></div>
+<div id="log-panel">
     <div id="log-head">
       <span>📋 详细日志</span>
       <span id="log-task" class="log-task">—</span>
@@ -327,11 +353,19 @@
       <h3>模型提供商</h3>
       <div class="section">
         <h4>任务分配</h4>
-        <div id="ta***REMOVED***"></div>
+        <div id="ta***REMOVED***"></div><div id="switch-status" style="font-size:11px;color:#e5534b;margin:2px 2px 6px"></div>
       </div>
       <div class="section">
         <h4>已配置提供商</h4>
         <div id="provider-list"></div>
+        <div style="display:flex;gap:6px;margin-top:8px"><button class="btn-secondary btn-sm" style="flex:1" onclick="probeProviders()">连通性探测</button><button class="btn-secondary btn-sm" style="flex:1" onclick="testChatRotate()">测试故障切换</button></div><div id="chat-rotate-status" style="font-size:11px;color:var(--fg-dim);margin-top:4px"></div><div style="display:flex;gap:6px;margin-top:6px">
+        <button class="btn-secondary btn-sm" style="flex:1" onclick="importFromConfig()">⤓ 从本地 config 一键导入</button>
+        <button class="btn-secondary btn-sm" onclick="$('#import-cfg-box').style.display='block'" style="flex:none">粘贴他机 config…</button></div>
+        <div id="import-cfg-box" style="display:none;margin-top:6px">
+          <textarea id="import-cfg-text" rows="5" style="width:100%;font-size:11px" placeholder="粘贴对方 config.json 全文（含 model_providers / llm 段）"></textarea>
+          <label style="font-size:11px;color:var(--fg-dim)"><input type="checkbox" id="import-overwrite-llm"> 同时覆盖本机上网关(base_url/key/models)</label>
+          <button class="btn-primary btn-sm" onclick="importFromConfig(true)">导入</button></div>
+        <div id="import-cfg-status" style="font-size:11px;color:var(--fg-dim);margin-top:4px"></div>
         <button class="btn-secondary" onclick="toggleAddForm()" style="margin-top:8px;width:100%;">＋ 添加提供商</button>
         <div id="add-form" class="add-form">
           <div class="field"><label>名称</label><input id="af-name" placeholder="例：我的 Replicate"></div>
@@ -425,7 +459,7 @@ function watchTask(taskId) {
 
 /* ── 消息渲染 ── */
 function addUser(text) {
-  hideEmpty();
+  hideEmpty(); pushChat({ r: 0, t: text });
   const div = document.createElement('div');
   div.className = 'msg user';
   div.textContent = text;
@@ -433,7 +467,7 @@ function addUser(text) {
   scrollBottom();
 }
 function addBot(html) {
-  hideEmpty();
+  hideEmpty(); pushChat({ r: 1, h: html });
   const div = document.createElement('div');
   div.className = 'msg bot';
   div.innerHTML = html;
@@ -441,6 +475,58 @@ function addBot(html) {
   scrollBottom();
   return div;
 }
+let chats = [], curId = null;
+try { chats = JSON.parse(localStorage.getItem('vidance_chats') || '[]') } catch (e) { chats = [] }
+function saveChats() {
+  localStorage.setItem('vidance_chats', JSON.stringify(chats.slice(0, 30)));
+  localStorage.setItem('vidance_chat_cur', curId || '');
+}
+function curChat() { return chats.find(c => c.id === curId); }
+function mkChat(title) {
+  const c = { id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+              ts: Date.now(), title: title || '', msgs: [] };
+  chats.unshift(c); if (chats.length > 30) chats.pop(); curId = c.id; saveChats();
+  return c;
+}
+function newChat() { mkChat(); renderChat(); }
+function pushChat(m) {
+  let c = curChat();
+  if (!c) c = mkChat();
+  c.msgs.push(m); if (c.msgs.length > 200) c.msgs.splice(0, c.msgs.length - 200);
+  if (m.r === 0 && !c.title) c.title = String(m.t).slice(0, 24);
+  saveChats();
+}
+function renderChat() {
+  messages.innerHTML = '';
+  const c = curChat(); if (!c) return;
+  for (const m of c.msgs) {
+    const div = document.createElement('div');
+    div.className = 'msg ' + (m.r ? 'bot' : 'user');
+    if (m.r) div.innerHTML = m.h; else div.textContent = m.t;
+    messages.appendChild(div);
+  }
+  scrollBottom();
+}
+function migrateChat() {
+  let oldm = []; try { oldm = JSON.parse(localStorage.getItem('vidance_chat') || '[]') } catch (e) {}
+  if (oldm.length) {
+    const c = { id: 's-migrated', ts: Date.now(), title: ((oldm.find(m => !m.r) || {}).t || '历史会话').slice(0, 24), msgs: oldm };
+    if (!chats.some(x => x.id === c.id)) chats.push(c);
+    localStorage.removeItem('vidance_chat'); saveChats();
+  }
+  curId = localStorage.getItem('vidance_chat_cur') || (chats[0] && chats[0].id) || null;
+  if (!curId || !chats.some(c => c.id === curId)) { mkChat(); }
+}
+function showSessions() {
+  const pop = $('#sess-pop');
+  $('#sess-list').innerHTML = chats.map(c =>
+    `<div style="padding:8px;border-bottom:1px solid var(--border);cursor:pointer" onclick="loadSession('${c.id}')">
+      <div style="font-size:12.5px">${escapeHtml(c.title || '（空会话）')}${c.id === curId ? ' <span style="color:var(--accent)">●</span>' : ''}</div>
+      <div style="font-size:11px;color:var(--fg-dim);margin-top:2px">${new Date(c.ts).toLocaleString()} · ${c.msgs.length} 条</div>
+    </div>`).join('') || '<div style="padding:12px;color:var(--fg-dim);font-size:12px">暂无会话</div>';
+  pop.style.display = pop.style.display === 'none' ? 'block' : 'none';
+}
+function loadSession(id) { curId = id; saveChats(); renderChat(); $('#sess-pop').style.display = 'none'; }
 function hideEmpty() { const e = $('#empty-hint'); if (e) e.remove(); }
 function scrollBottom() { messages.scrollTop = messages.scrollHeight; }
 function escapeHtml(s) {
@@ -450,6 +536,7 @@ function escapeHtml(s) {
 /* ── 卡片 ── */
 function addTaskCard(t) {
   hideEmpty();
+  addTaskTab(t.task_id, t.concept || t.task_id);
   if (document.getElementById('card-' + t.task_id)) return updateTaskCard(t);
   const div = document.createElement('div');
   div.className = 'card'; div.id = 'card-' + t.task_id;
@@ -470,6 +557,7 @@ function updateTaskCard(t) {
   const bar = document.getElementById('bar-' + t.task_id);
   const meta = document.getElementById('meta-' + t.task_id);
   if (pill) { pill.textContent = t.status; pill.className = 'pill ' + t.status; }
+  updateTabDot(t.task_id, t.status);
   if (bar) bar.style.width = Math.round((t.progress || 0) * 100) + '%';
   if (meta) meta.textContent = '阶段: ' + (t.stage || t.status) + (t.error ? ' | 错误: ' + t.error : '');
   if (document.getElementById('trace-' + t.task_id) || (t.options && t.options.mode === 'chain')) {
@@ -562,14 +650,14 @@ function renderAgent(d) {
       agent: s.agent, layer: s.layer, ok: s.ok, score: s.score,
       t_dur: s.t_dur, error: s.error })));
     const head = `<b>${d.ok ? '✓' : '✗'} ${escapeHtml(d.message || '')}</b>`;
-    const vid = d.ctx && d.ctx.video ? `<video controls preload="metadata" src="/api/file?path=${encodeURIComponent(d.ctx.video)}"></video>` : '';
+    const vid = d.ctx && d.ctx.video ? `<video class="vuni" controls preload="metadata" src="/api/file?path=${encodeURIComponent(d.ctx.video)}"></video>` : '';
     return head + rows + vid;
   }
   const ok = d.ok !== false;
   const arts = Object.entries(d.artifacts || {}).map(([k, v]) =>
     `<span class="tl">${escapeHtml(k)}=${escapeHtml(String(v))}</span>`).join(' ');
   const vid = d.artifacts && d.artifacts.video
-    ? `<video controls preload="metadata" src="/api/file?path=${encodeURIComponent(d.artifacts.video)}"></video>` : '';
+    ? `<video class="vuni" controls preload="metadata" src="/api/file?path=${encodeURIComponent(d.artifacts.video)}"></video>` : '';
   return `<b>${ok ? '✓' : '✗'} ${escapeHtml(d.message || '')}</b> ` +
          `<span class="trace-dur">${(d.t_dur||0).toFixed(1)}s</span>` +
          (arts ? '<div style="margin-top:6px">' + arts + '</div>' : '') +
@@ -629,6 +717,72 @@ function startPolling(taskId) {
 }
 
 /* ── 发送 ── */
+
+/* ── /agent 流水线打字机（SSE） ── */
+async function streamAgent(argstr) {
+  const cur = curChat();
+  if (cur && cur.msgs.length) mkChat('⌁ ' + argstr.slice(0, 26).replace(/[{}"]/g, ''));
+  renderChat();
+  const bub = addBot('<div class="stream-log"><span class="think">⋯ 连接中…</span></div>');
+  const log = bub.querySelector('.stream-log');
+  const lineMap = {}; let total = 0;
+  const tick = setInterval(() => {
+    for (const l of Object.values(lineMap))
+      if (l.t0 && l.t1 == null) l.el.querySelector('.tm').textContent = Math.round((Date.now() - l.t0) / 1000) + 's…';
+  }, 1000);
+  const done = () => { clearInterval(tick); const c = curChat(); if (c && c.msgs.length) { c.msgs[c.msgs.length - 1].h = bub.innerHTML; saveChats(); } };
+  const line = (html) => { const d = document.createElement('div'); d.innerHTML = html; log.appendChild(d); scrollBottom(); return d; };
+  function handle(e) {
+    if (e.event === 'task') { setLogTask(e.task_id); }
+    else if (e.event === 'start') { total = e.total; line('▶ 流水线启动 · ' + e.total + ' 步'); }
+    else if (e.event === 'step') {
+      const d = line('⏳ [' + (e.i + 1) + '/' + total + '] <b>' + escapeHtml(e.name) + '</b>'
+        + '<span class="args">' + escapeHtml(e.args || '') + '</span><span class="tm"></span>');
+      lineMap[e.i] = { el: d, t0: Date.now() };
+    } else if (e.event === 'done') {
+      const l = lineMap[e.i]; if (!l) return; l.t1 = Date.now();
+      const art = Object.values(e.arts || {})[0];
+      l.el.innerHTML = (e.ok ? '<span style="color:var(--ok)">✓</span> ' : '<span style="color:#e5534b">✗</span> ')
+        + '[' + (e.i + 1) + '/' + total + '] <b>' + escapeHtml(e.name) + '</b> ' + e.secs + 's'
+        + (e.ok && art ? '<span class="args">' + escapeHtml(String(art).split('/').pop()) + '</span>' : '')
+        + (e.error ? '<span class="args">' + escapeHtml(e.name + ': ' + String(e.error).slice(0, 120)) + '</span>' : '');
+    } else if (e.event === 'final') {
+      line((e.ok ? '<span style="color:var(--ok)">■ 链完成</span>' : '<span style="color:#e5534b">■ 链中断</span>')
+        + ' · ' + e.secs + 's · <span class="args">台账 ' + e.task_id + '</span>');
+      if (e.final && /\.(mp4|mov|webm)$/i.test(e.final))
+        line('<video class="vuni" controls preload="metadata" src="/api/file?path=' + encodeURIComponent(e.final) + '"></video>'
+          + '<div class="args">' + escapeHtml(String(e.final).replace(/\//g, '/').split('/').slice(-2).join('/')) + '</div>');
+      else if (e.final) line('<span class="args">产物: ' + escapeHtml(String(e.final).split('/').pop()) + '</span>');
+    } else if (e.event === 'error') {
+      line('<span style="color:#e5534b">✗ ' + escapeHtml(e.msg) + '</span>');
+    }
+  }
+  try {
+    const resp = await fetch('/api/agent/stream', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: '/agent ' + argstr }) });
+    if (!resp.ok) {
+      const e = await resp.json().catch(() => ({}));
+      log.innerHTML = '<span style="color:#e5534b">✗ ' + escapeHtml(e.detail || resp.status) + '</span>';
+      done(); return;
+    }
+    const reader = resp.body.getReader(), dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { value, done: fin } = await reader.read(); if (fin) break;
+      buf += dec.decode(value, { stream: true });
+      let ix;
+      while ((ix = buf.indexOf('\n\n')) >= 0) {
+        const chunk = buf.slice(0, ix); buf = buf.slice(ix + 2);
+        for (const ln of chunk.split('\n')) {
+          if (!ln.startsWith('data:')) continue;
+          try { handle(JSON.parse(ln.slice(5).trim())); } catch (err) {}
+        }
+      }
+    }
+  } catch (err) { line('<span style="color:#e5534b">✗ 连接中断: ' + escapeHtml(String(err)) + '</span>'); }
+  done();
+}
+
 async function send() {
   const text = input.value.trim();
   if (!text) return;
@@ -656,6 +810,9 @@ async function dispatchSlash(text) {
   const m = text.match(/^\/(\w+)\s*([\s\S]*)$/);
   if (!m) { addBot('命令格式：/名称 参数，输入 / 查看全部'); return; }
   const [, name, rest] = m;
+  if (name === 'agent' && /^(chain|run)\b/.test(rest) && /[{[]/.test(rest)) {
+    await streamAgent(rest); return;
+  }
   const r = await fetch(`/api/tool/${name}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ args: rest }),
@@ -978,6 +1135,7 @@ let taskLabels = {};
 let discoveredModels = [];
 
 async function openModelModal() {
+  probeProviders();
   try {
     const r = await fetch('/api/model-providers');
     const d = await r.json();
@@ -1043,16 +1201,23 @@ function renderProviderList() {
     const meta = p.type === 'comfyui'
       ? `本地 ComfyUI · ${p.instance || ''}`
       : `${escapeHtml(p.base_url || '未配置 URL')}${p.has_api_key ? '' : ' · 未填 Key'}`;
-    const models = (p.models || []).map(m => typeof m === 'string' ? m : m.id);
+    const models = (p.models || []).map(m => typeof m === 'string' ? m : (m.for ? m.for + '=' + m.id : m.id));
     const modelsStr = models.length ? models.join(', ') : '';
+    const h = providerHealth[p.id] || {};
+    const fb = h.fallback !== false;
+    const dot = h.url === undefined
+      ? '<span class="tdot" title="未探测"></span>'
+      : `<span class="tdot ${h.online ? 'completed' : 'failed'}" title="${h.online ? '可达' + (h.latency_ms ? ' ' + h.latency_ms + 'ms' : '') : escapeHtml(h.error || '')}"></span>`;
     html += `<div class="prov-card">
       <div class="prov-info">
-        <div class="prov-name">${escapeHtml(p.name)} ${isBuiltin ? '<span style="font-size:10px;color:var(--fg-dim);">内置</span>' : ''}</div>
+        <div class="prov-name">${dot} ${escapeHtml(p.name)} ${isBuiltin ? '<span style="font-size:10px;color:var(--fg-dim);">内置</span>' : ''}</div>
         <div class="prov-meta">${meta}</div>
         ${modelsStr ? `<div class="prov-models">模型: ${escapeHtml(modelsStr)}</div>` : ''}
+        ${p.capabilities && p.capabilities.some(c => ['script','review','translate'].includes(c)) ? `<div class="prov-models"><input type="number" min="0" max="100" value="${h.weight ?? p.weight ?? 50}" style="width:46px" onchange="setWeight('${p.id}', this.value)" title="候选权重（故障互切排序）"> 权重</div>` : ''}
       </div>
       <div class="prov-actions">
-        ${isBuiltin ? '' : `<button class="danger" onclick="deleteProvider('${p.id}')">删除</button>`}
+        ${isBuiltin ? '' : `<label style="font-size:11px;color:var(--fg-dim)"><input type="checkbox" ${fb ? 'checked' : ''} onclick="toggleFallback('${p.id}', ${fb})"> 故障互切</label>
+        <button class="danger" onclick="deleteProvider('${p.id}')">删除</button>`}
       </div>
     </div>`;
   }
@@ -1063,13 +1228,14 @@ async function onTaskSwitch(sel) {
   const tt = sel.dataset.task;
   const pid = sel.value;
   if (!pid) return;
-  try {
-    await fetch('/api/model-providers/switch', {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task_type: tt, provider_id: pid }),
-    });
-    await refreshModalData();
-  } catch (e) {}
+  const st = $('#switch-status'); if (st) st.textContent = '';
+  const r = await fetch('/api/model-providers/switch', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task_type: tt, provider_id: pid }),
+  });
+  const d = await r.json();
+  if (!r.ok && st) st.textContent = '✗ ' + (d.detail || r.status);
+  await refreshModalData();
 }
 
 async function onModelSwitch(sel) {
@@ -1078,13 +1244,14 @@ async function onModelSwitch(sel) {
   const active = modelActive[tt] || {};
   const pid = typeof active === 'object' ? active.id : active;
   if (!pid || !model) return;
-  try {
-    await fetch('/api/model-providers/switch', {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task_type: tt, provider_id: pid, model }),
-    });
-    await refreshModalData();
-  } catch (e) {}
+  const st = $('#switch-status'); if (st) st.textContent = '';
+  const r = await fetch('/api/model-providers/switch', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task_type: tt, provider_id: pid, model }),
+  });
+  const d = await r.json();
+  if (!r.ok && st) st.textContent = '✗ ' + (d.detail || r.status);
+  await refreshModalData();
 }
 
 async function refreshModalData() {
@@ -1237,11 +1404,15 @@ function toggleLog() {
   btn.classList.toggle('on', open);
   if (open) {
     if (logTaskId) startLogPoll();
-    else if (TOOLS && refreshTasks) {
-      // 未指定任务时，自动跟踪最近一个任务
-      fetch('/api/tasks?limit=1').then(r => r.json()).then(d => {
-        if (d.tasks && d.tasks.length) { setLogTask(d.tasks[0].task_id); }
-        else { $('#log-body').textContent = '（暂无任务）'; }
+    else {
+      // 未指定任务时：优先跟踪最近一次 agent 运行（台账 task_id 有日志目录），否则普通任务
+      fetch('/api/agents/board?limit=8').then(r => r.json()).then(b => {
+        const hit = (b.runs || []).find(x => x.task_id && /^agent_/.test(x.task_id));
+        if (hit) { setLogTask(hit.task_id); return; }
+        return fetch('/api/tasks?limit=1').then(r => r.json()).then(d => {
+          if (d.tasks && d.tasks.length) setLogTask(d.tasks[0].task_id);
+          else $('#log-body').textContent = '（暂无任务）';
+        });
       }).catch(() => {});
     }
   } else {
@@ -1283,6 +1454,127 @@ function startLogPoll() {
 }
 function stopLogPoll() { if (logTimer) { clearInterval(logTimer); logTimer = null; } }
 
+
+/* ── 任务 tab（累加/持久化/详情含日志） ── */
+let taskTabs = []; try { taskTabs = JSON.parse(localStorage.getItem('vidance_tabs') || '[]') } catch (e) {}
+let ovTimer = null;
+function saveTabs() { localStorage.setItem('vidance_tabs', JSON.stringify(taskTabs.slice(0, 12))) }
+function addTaskTab(id, title) {
+  if (!id || taskTabs.some(t => t.id === id)) return;
+  taskTabs.unshift({ id, title: (title || id).slice(0, 16), status: 'queued' });
+  if (taskTabs.length > 12) taskTabs.pop();
+  saveTabs(); renderTaskTabs();
+}
+function updateTabDot(id, status) {
+  const t = taskTabs.find(x => x.id === id);
+  if (t && t.status !== status) { t.status = status; saveTabs(); renderTaskTabs(); }
+}
+function closeTaskTab(id, ev) {
+  if (ev) ev.stopPropagation();
+  taskTabs = taskTabs.filter(t => t.id !== id); saveTabs(); renderTaskTabs();
+}
+function renderTaskTabs() {
+  const bar = $('#task-tabs'); if (!bar) return;
+  bar.innerHTML = taskTabs.map(t =>
+    `<span class="ttab" onclick="openTaskOverlay('${t.id}')">` +
+    `<i class="tdot ${t.status || 'queued'}"></i>${escapeHtml(t.title)}` +
+    `<b onclick="closeTaskTab('${t.id}', event)">×</b></span>`).join('');
+}
+async function openTaskOverlay(id) {
+  let ov = $('#task-overlay');
+  if (!ov) {
+    ov = document.createElement('div'); ov.id = 'task-overlay';
+    ov.innerHTML = '<div class="ov-box" id="ov-box"></div>';
+    ov.addEventListener('click', e => { if (e.target === ov) closeTaskOverlay(); });
+    document.body.appendChild(ov);
+  }
+  ov.style.display = 'flex';
+  const draw = async () => {
+    try {
+      const t = await (await fetch('/api/tasks/' + id)).json();
+      updateTabDot(id, t.status);
+      let tr = '';
+      try {
+        const td = await (await fetch(`/api/tasks/${id}/trace`)).json();
+        if ((td.runs || []).length) tr = '<h4 style="margin:10px 0 4px">运行台账</h4>' + traceRows(td.runs.slice().reverse());
+      } catch (e) {}
+      const vid = t.status === 'completed'
+        ? `<video class="vuni" controls preload="metadata" src="/api/video/${id}"></video>` : '';
+      let log = '—';
+      try {
+        const ld = await (await fetch(`/api/tasks/${id}/log?tail=200`)).json();
+        log = ld.log !== undefined ? ld.log : (ld.detail || '日志不可用');
+      } catch (e) {}
+      $('#ov-box').innerHTML =
+        `<div style="display:flex;justify-content:space-between;align-items:center">
+           <h3 style="margin:0"><span class="pill ${t.status}">${t.status}</span> ${escapeHtml((t.concept||id).slice(0,40))}</h3>
+           <button class="log-x" onclick="closeTaskOverlay()">✕</button></div>
+         <div class="meta" style="margin:6px 0">阶段: ${escapeHtml(t.stage||'')}　进度: ${Math.round((t.progress||0)*100)}%${t.error?'　错误: '+escapeHtml(t.error):''}</div>
+         <div class="meta">${escapeHtml(id)}</div>${vid}${tr}
+         <h4 style="margin:12px 0 0">详细日志</h4><pre class="ov-log" id="ov-log-pre">${escapeHtml(String(log).slice(-6000))}</pre>`;
+      const pre = document.getElementById('ov-log-pre');
+      if (pre && $('#log-follow') && $('#log-follow').checked) pre.scrollTop = pre.scrollHeight;
+      if (['completed','failed'].includes(t.status) && ovTimer) { clearInterval(ovTimer); ovTimer = null; }
+    } catch (e) {}
+  };
+  await draw();
+  if (ovTimer) clearInterval(ovTimer);
+  ovTimer = setInterval(draw, 2500);
+}
+function closeTaskOverlay() {
+  const ov = $('#task-overlay'); if (ov) ov.style.display = 'none';
+  if (ovTimer) { clearInterval(ovTimer); ovTimer = null; }
+}
+renderTaskTabs();
+
+/* ── 模型提供商：连通灯 + 故障互切候选 ── */
+let providerHealth = {};
+async function probeProviders() {
+  try {
+    const d = await (await fetch('/api/model-providers/health')).json();
+    providerHealth = {};
+    (d.providers || []).forEach(p => providerHealth[p.id] = p);
+    renderProviderList();
+  } catch (e) {}
+}
+async function setWeight(id, w) {
+  await fetch('/api/model-providers/' + id, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ weight: parseInt(w) || 0 }) });
+}
+async function toggleFallback(id, cur) {
+  await fetch('/api/model-providers/' + id, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fallback: !cur }) });
+  await refreshModalData(); probeProviders();
+}
+async function testChatRotate() {
+  const el = $('#chat-rotate-status'); el.textContent = '测试中…';
+  const d = await (await fetch('/api/model/chat', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: [{ role: 'user', content: '回复"通"一个字' }], max_tokens: 8 })
+  })).json();
+  el.textContent = d.ok ? `✓ ${d.provider_name} 响应（候选链: ${d.tried.join(' → ')}）`
+    : '✗ 全候选失败: ' + (d.errors || []).map(e => e.error).join(' | ').slice(0, 120);
+}
+
+async function importFromConfig(useText) {
+  const st = $('#import-cfg-status'); st.textContent = '导入中…';
+  const body = {};
+  if (useText) {
+    body.text = $('#import-cfg-text').value.trim();
+    body.overwrite_llm = $('#import-overwrite-llm').checked;
+    if (!body.text) { st.textContent = '请先粘贴 config 文本'; return; }
+  }
+  const d = await (await fetch('/api/model-providers/import', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body) })).json();
+  st.textContent = `导入完成：${(d.imported||[]).join(', ') || '无新提供商'}${d.llm==='overwritten'?' + 网关已覆盖':''}${(d.errors||[]).length?' 错误: '+d.errors.join('; '):''}`;
+  await refreshModalData(); probeProviders();
+}
+
+migrateChat();
+renderChat();
 init();
 </script>
 </body>

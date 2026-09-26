@@ -257,6 +257,30 @@ class PostProcessor:
 
         temp = video_path.replace('.mp4', '_nobgm.mp4')
         shutil.move(video_path, temp)
+        _ffprobe = shutil.which('ffprobe') or FFMPEG.replace('ffmpeg', 'ffprobe')
+        has_audio = subprocess.run(
+            [_ffprobe, '-v', 'error', '-select_streams', 'a', '-show_entries',
+             'stream=index', '-of', 'csv=p=0', temp],
+            capture_output=True, timeout=30).stdout.strip()
+        if not has_audio:
+            silent_cmd = [
+                FFMPEG, '-y', '-i', temp, '-i', bgm_path,
+                '-filter_complex',
+                f'[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,'
+                f'volume={volume}[a]',
+                '-map', '0:v', '-map', '[a]', '-c:v', 'copy',
+                '-c:a', 'aac', '-b:a', '192k', '-shortest', video_path]
+            try:
+                subprocess.run(silent_cmd, capture_output=True, timeout=600)
+                if _valid_video(video_path):
+                    os.remove(temp)
+                    return True
+            except Exception:
+                pass
+            if os.path.isfile(video_path):
+                os.remove(video_path)
+            shutil.move(temp, video_path)
+            return False
         cmd = [
             FFMPEG, '-y', '-i', temp, '-i', bgm_path,
             '-filter_complex',

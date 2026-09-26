@@ -311,6 +311,8 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 **v13.2 闭环（2026-09-26）**：pipeline 审片重试接入 `review_ensemble`（config `review.ensemble` 开关，默认关，失败回退单票）；GPU Agent 注册 `h3shot/splat/mesh` + `post.pip` 画中画（28 个，splat 实测出 PLY、pip 实测出片）；`run_agent` 自举 load_all。
 
+**v13.3 归仓（2026-09-26）**：产出目录统一 `default_out()`（`output/agent_{ts}_{name}/`，杜绝 cwd/tmp 散写）；UI 任务 tab 条（累加/持久化/详情浮层含日志与 trace，board 弹层播放器与成片卡片统一）；模型面板连通灯 + 自定义 API 故障互切（`/api/model-providers/health`、`POST /api/model/chat` 候选轮换）。
+
 **后续（v13.x backlog）**：/ui 链 DAG 视图、h3shot 实卡长测、v11 队友网关对接 agent API、chain 并联分支/断点续跑。
 
 ### v14 — 长视频质量（🎯 待开发）

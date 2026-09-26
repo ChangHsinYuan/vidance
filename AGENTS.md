@@ -382,6 +382,8 @@ curl -X POST http://127.0.0.1:8894/api/clone_voice \
 
 ## 关键约定
 
+0. **统一产出目录**：一切成片/音频/GLB 等产物落 `output/{时间戳…}/`（任务=`output/{task_id}/`，Agent 缺省=`output/agent_{ts}_{agent名}/`，svg=`output/svg{ts}/`；config `output_dir` 为唯一根）。`/tmp` 只放临时中间文件。Agent 缺省路径由 `agents/base.py::default_out()` 统一实现
+
 1. **随机 seed**：每次 T2V/I2V 生成必须用随机 seed（ComfyUI 缓存命中问题）
 2. **每镜 ≤5s**：Wan 单次上限 121 帧≈5s@24fps
 3. **旁白字数**：duration × 4 字（中文约 4 字/秒）

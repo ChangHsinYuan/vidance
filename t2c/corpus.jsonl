@@ -1,0 +1,45 @@
+{"text": "帮我用auto模式生成一个城市夜景的视频", "command": "python core/vidance.py auto \"城市夜景\"", "tag": "auto"}
+{"text": "完整流程做一个雪山上小狐狸冒险的短片，要有配音和字幕", "command": "python core/vidance.py auto \"雪山上的小狐狸冒险\" --voice edge-moe --stt", "tag": "auto"}
+{"text": "用flux角色模式生成一条深海探险的视频，冷色调加神秘配乐", "command": "python core/vidance.py auto \"深海探险\" --character \"蓝色水母\" --character-mode flux --lut cool --bgm mysterious", "tag": "auto"}
+{"text": "拍一个六十秒的长片，主题是星际旅行", "command": "python core/vidance.py auto \"星际旅行\" --duration 60", "tag": "auto"}
+{"text": "统一入口生成，导演用llm生成器用svg", "command": "python core/vidance.py make \"概念\" --director llm --generator svg", "tag": "make"}
+{"text": "快一点出一条营销号视频，讲讲深夜灯塔的故事，三段就行", "command": "python core/vidance.py fast \"深夜灯塔的故事\" -n 3", "tag": "fast"}
+{"text": "快速出片，图用必应爬的，配音用说书人音色", "command": "python core/vidance.py fast \"概念\" -n 5 --images-source crawl --voice cosy-jieshuo1", "tag": "fast"}
+{"text": "给夜色城市霓虹配自动特效出个快片", "command": "python core/vidance.py fast \"夜色中城市霓虹与火光\" --effects auto", "tag": "fast"}
+{"text": "用flux逐段生图做视频，最后加两倍慢放和暖色", "command": "python core/vidance.py fast \"概念\" --images-source flux -n 5 --slowmo 2 --lut warm", "tag": "fast"}
+{"text": "先爬今天的热点再自动选题帮我出一期视频", "command": "python core/vidance.py hot -n 5 --account \"影视解说\"", "tag": "hot"}
+{"text": "做一条蹭热搜的视频，账号定位是知识科普", "command": "python core/vidance.py hot -n 4 --account \"知识科普\" --top-each 10", "tag": "hot"}
+{"text": "用svg方式给柴犬宇航员在月球喝咖啡做个动画，声音要萌一点", "command": "python core/vidance.py svg --concept \"一只柴犬宇航员在月球上喝咖啡\" --voice edge-moe", "tag": "svg"}
+{"text": "svg轻量出片讲一个鹈鹕骑自行车的动画", "command": "python core/vidance.py svg --concept \"鹈鹕骑自行车\"", "tag": "svg"}
+{"text": "把这三个视频拼起来，中间用交叉淡化", "command": "python core/vidance.py concat a.mp4 b.mp4 c.mp4 -o merged.mp4 --transition crossfade", "tag": "concat"}
+{"text": "几段素材硬接合并成一个视频", "command": "python core/vidance.py concat a.mp4 b.mp4 -o merged.mp4 --transition cut", "tag": "concat"}
+{"text": "参考这张图用custom模式生成，脚本在prompt1.txt", "command": "python core/vidance.py custom --ref input/doubao.jpg --script input/prompt1.txt", "tag": "custom"}
+{"text": "拿这张角色参考图走H3完整出片，加电影调色和紧张配乐", "command": "python core/vidance.py custom --ref input/doubao.jpg --script input/prompt1.txt --lut cinematic --bgm dramatic --stt", "tag": "custom"}
+{"text": "纯文生视频来一镜，一只猫在月球上跳舞，别的都不要", "command": "python core/vidance.py quick \"一只猫在月球上跳舞\"", "tag": "quick"}
+{"text": "这个想法信息不全，你来追问帮我把需求问清楚：深海探险", "command": "python core/vidance.py ask \"深海探险\"", "tag": "ask"}
+{"text": "时间线拼接，用我写好的timeline.json出片", "command": "python core/vidance.py compose timeline.json -o final.mp4", "tag": "compose"}
+{"text": "这段长音频只要讲龙的句子，剪出来", "command": "python utils/funclip.py smart long.wav -i \"只要讲龙的部分\" -o dragon.wav", "tag": "clip"}
+{"text": "看看今天有什么热点选题可以做", "command": "python core/vidance.py scout", "tag": "scout"}
+{"text": "只爬热点列表不选题", "command": "python core/vidance.py trends --top 20", "tag": "trends"}
+{"text": "有哪些音色可以用", "command": "python core/vidance.py voices", "tag": "voices"}
+{"text": "列出可用的调色风格", "command": "python core/vidance.py luts", "tag": "luts"}
+{"text": "列出可用的配乐风格", "command": "python core/vidance.py moods", "tag": "moods"}
+{"text": "看下任务队列跑到哪了", "command": "python core/vidance.py tasks", "tag": "tasks"}
+{"text": "看一下服务都在线吗", "command": "python core/vidance.py status", "tag": "status"}
+{"text": "清理一下旧的成片，保留最近十条", "command": "python core/vidance.py clean --keep 10", "tag": "clean"}
+{"text": "看看有哪些agent可以用", "command": "python core/vidance.py agent list", "tag": "agent"}
+{"text": "给一段视频加放大推近的特效", "command": "python core/vidance.py agent run post.fx --with '{\"video\":\"a.mp4\",\"effect\":\"zoom\"}'", "tag": "agent"}
+{"text": "用edge萌系音色给这段配个音", "command": "python core/vidance.py agent run post.tts --with '{\"text\":\"文案\",\"voice\":\"edge-moe\"}'", "tag": "agent"}
+{"text": "跑一条链，先svg出片再加故障特效最后右下角画中画", "command": "python core/vidance.py agent chain --steps '{\"steps\":[{\"agent\":\"generator.svg\",\"as\":\"v\",\"with\":{\"concept\":\"柴犬宇航员\",\"voice\":\"edge-moe\"}},{\"agent\":\"post.fx\",\"as\":\"g\",\"with\":{\"video\":\"${v.video}\",\"effect\":\"glitch\"}},{\"agent\":\"post.pip\",\"with\":{\"video\":\"${v.video}\",\"overlay\":\"${g.video}\",\"position\":\"br\",\"scale\":0.33}}]}'", "tag": "agent-chain"}
+{"text": "先写剧本再用fast出片", "command": "python core/vidance.py agent chain --steps '{\"steps\":[{\"agent\":\"director.script\",\"as\":\"s\",\"with\":{\"concept\":\"深夜灯塔\"}},{\"agent\":\"generator.fast\",\"with\":{\"concept\":\"${s.concept}\"}}]}'", "tag": "agent-chain"}
+{"text": "用三张参考图让h3生成一镜有声视频", "command": "python core/vidance.py agent run generator.h3shot --with '{\"prompt\":\"分镜描述\",\"refs\":[\"a.jpg\",\"b.jpg\"],\"seconds\":5}'", "tag": "agent"}
+{"text": "把这张图变成三百d立体模型glb", "command": "python core/vidance.py agent run generator.mesh --with '{\"image\":\"input/doubao.jpg\"}'", "tag": "agent"}
+{"text": "这张图转成三dgs点云ply", "command": "python core/vidance.py agent run generator.splat --with '{\"image\":\"input/doubao.jpg\"}'", "tag": "agent"}
+{"text": "这张图爬几张相关的参考图回来", "command": "python core/vidance.py agent run generator.artist --with '{\"concept\":\"雪山日出\",\"source\":\"crawl\"}'", "tag": "agent"}
+{"text": "查看最近的运行台账", "command": "python core/vidance.py agent board --n 20", "tag": "agent"}
+{"text": "看看刚才那条链每一步的结果", "command": "python core/vidance.py agent board --n 30 --task 任务ID", "tag": "agent"}
+{"text": "画一下系统的架构分层图", "command": "python core/vidance.py arch", "tag": "arch"}
+{"text": "现在整个系统有哪些板块和模型服务", "command": "python core/vidance.py arch", "tag": "arch"}
+{"text": "对这条成片做多模型会审打分", "command": "python core/vidance.py agent run audit.review_ensemble --with '{\"video\":\"final.mp4\",\"models\":[\"qwen3.8-chat\"]}'", "tag": "agent"}
+{"text": "把两个视频加滑动转场接起来", "command": "python core/vidance.py agent run post.transition --with '{\"a\":\"a.mp4\",\"b\":\"b.mp4\",\"kind\":\"slide\"}'", "tag": "agent"}
+{"text": "给成片套一个电影感lut", "command": "python core/vidance.py agent run post.lut --with '{\"video\":\"a.mp4\",\"style\":\"cinematic\"}'", "tag": "agent"}

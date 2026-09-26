@@ -8,7 +8,7 @@ for _ in range(3):
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from agents.base import TaskResult, register
+from agents.base import TaskResult, default_out, register
 
 
 @register(name='generator.svg', layer='generator', needs_gpu=False,
@@ -100,8 +100,7 @@ def h3shot(p):
         return TaskResult(ok=False, error='需 prompt + refs')
     seconds = float(p.get('seconds', 5))
     length = int(min(max(seconds, 2), 15) * 24) + 1
-    out = p.get('out_path') or os.path.join(
-        os.getcwd(), 'h3shot_%d.mp4' % abs(hash(p['prompt']) % 10 ** 8))
+    out = p.get('out_path') or default_out('generator.h3shot', 'shot')
     try:
         client = ComfyClient(instance='h3')
         r = client.generate_h3_ref2v(p['prompt'], refs, length=length,
@@ -118,8 +117,7 @@ def h3shot(p):
           inputs='{image, out_path?}')
 def splat(p):
     from agents.generator.tools.comfy_api import ComfyClient
-    out = p.get('out_path') or os.path.join(
-        os.getcwd(), 'splat_%d.ply' % abs(hash(p['image']) % 10 ** 8))
+    out = p.get('out_path') or default_out('generator.splat', 'splat', 'ply')
     try:
         client = ComfyClient(instance='flux')
         r = client.generate_tripsplat(p['image'], output_path=out)
@@ -134,8 +132,7 @@ def splat(p):
           inputs='{image | images={front,left,back}, out_path?, preview?}')
 def mesh(p):
     from agents.generator.tools.hunyuan3d import Hunyuan3DClient
-    out = p.get('out_path') or os.path.join(
-        os.getcwd(), 'mesh_%d.glb' % abs(hash(str(p.get('image') or p.get('images'))) % 10 ** 8))
+    out = p.get('out_path') or default_out('generator.mesh', 'model', 'glb')
     client = Hunyuan3DClient()
     try:
         imgs = p.get('images')

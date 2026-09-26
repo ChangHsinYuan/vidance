@@ -66,6 +66,17 @@ def list_agents():
     return sorted(REGISTRY.values(), key=lambda a: (a['layer'], a['name']))
 
 
+def default_out(name, stem='out', ext='mp4'):
+    """缺省产出路径：{output_dir}/agent_{时间戳}_{agent短名}/stem.ext（成片不落 tmp/cwd）。"""
+    import time
+    from agents.common.tools.config_loader import load_config
+    root = load_config().get('output_dir', 'output')
+    d = os.path.join(root, 'agent_%s_%s' % (time.strftime('%Y%m%d_%H%M%S'),
+                                            name.split('.')[-1]))
+    os.makedirs(d, exist_ok=True)
+    return os.path.join(d, '%s.%s' % (stem, ext))
+
+
 def run_agent(name, params, board=None, task_id=''):
     """统一入口：计时 + trace + 黑板落盘 + 异常兜底。未加载时自举 load_all。"""
     spec = REGISTRY.get(name)
