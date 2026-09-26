@@ -106,6 +106,60 @@ class LLMClient:
                     time.sleep(3)
         raise last_err
 
+    def chat_stream(self, messages: list, model: str = None, temperature: float = 0.7,
+                    max_tokens: int = 4096, timeout: int = 300, on_chunk=None) -> str:
+        """流式调用 LLM（OpenAI SSE），逐 delta 回调 on_chunk(delta)；返回完整文本。
+
+        失败自动回退非流式 chat。
+        """
+        self._refresh()
+        model = model or self.models['script']
+        base_url, api_key, model = self._resolve(model)
+        payload = {
+            'model': model,
+            'messages': messages,
+            'temperature': temperature,
+            'max_tokens': max_tokens,
+            'stream': True,
+        }
+        data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+        req = urllib.request.Request(
+            f'{base_url}/chat/completions',
+            data=data,
+            headers={
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {api_key}',
+            },
+        )
+        out = []
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                for raw in resp:
+                    line = raw.decode('utf-8', 'ignore').strip()
+                    if not line.startswith('data:'):
+                        continue
+                    body = line[5:].strip()
+                    if body == '[DONE]':
+                        break
+                    try:
+                        delta = json.loads(body)['choices'][0]['delta'].get('content')
+                    except Exception:
+                        continue
+                    if delta:
+                        out.append(delta)
+                        if on_chunk:
+                            try:
+                                on_chunk(delta)
+                            except Exception:
+                                pass
+            text = ''.join(out)
+            if text:
+                return text
+        except Exception:
+            pass
+        return self.chat(messages, model=model, temperature=temperature,
+                         max_tokens=max_tokens, timeout=timeout)
+
     def chat_json(self, messages: list, model: str = None,
                   temperature: float = 0.7, timeout: int = 300, retries: int = 0) -> dict:
         """调用 LLM 并解析 JSON 结果（提取 ```json 代码块或直接解析）"""

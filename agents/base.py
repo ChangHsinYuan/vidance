@@ -77,8 +77,11 @@ def default_out(name, stem='out', ext='mp4'):
     return os.path.join(d, '%s.%s' % (stem, ext))
 
 
-def run_agent(name, params, board=None, task_id=''):
-    """统一入口：计时 + trace + 黑板落盘 + 异常兜底。未加载时自举 load_all。"""
+def run_agent(name, params, board=None, task_id='', on_chunk=None):
+    """统一入口：计时 + trace + 黑板落盘 + 异常兜底。未加载时自举 load_all。
+
+    on_chunk: LLM 流式 delta 回调（仅声明 on_chunk 形参的 agent 支持，如 director.brain）。
+    """
     spec = REGISTRY.get(name)
     if spec is None:
         try:
@@ -96,7 +99,11 @@ def run_agent(name, params, board=None, task_id=''):
     except Exception:
         pass
     try:
-        res = spec['fn'](params or {})
+        import inspect as _inspect
+        if on_chunk is not None and 'on_chunk' in _inspect.signature(spec['fn']).parameters:
+            res = spec['fn'](params or {}, on_chunk=on_chunk)
+        else:
+            res = spec['fn'](params or {})
         if not isinstance(res, TaskResult):
             res = TaskResult(agent=name, ok=True,
                             artifacts=res if isinstance(res, dict) else {'out': res})

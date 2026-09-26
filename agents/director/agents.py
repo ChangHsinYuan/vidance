@@ -73,7 +73,7 @@ def select_effects(p):
 @register(name='director.brain', layer='director',
           desc='智囊：任意 LLM API 一问一答（model 可换，剧本/文案/决策通用）',
           inputs='{prompt|question, system?, model?, temperature?, json?}')
-def brain(p):
+def brain(p, on_chunk=None):
     from agents.common.tools.llm import LLMClient
     from agents.common.tools.config_loader import load_config
     llm = LLMClient(load_config())
@@ -86,6 +86,8 @@ def brain(p):
     try:
         if p.get('json'):
             ans = llm.chat_json(msgs, **kw)
+        elif on_chunk is not None:
+            ans = llm.chat_stream(msgs, on_chunk=on_chunk, **kw)
         else:
             ans = llm.chat(msgs, **kw)
         if not ans:

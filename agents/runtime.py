@@ -91,7 +91,8 @@ def run_chain(steps, ctx=None, task_id='', board=None, on_event=None):
             ev(event='step', i=i, name=name,
                args=json.dumps(step.get('with', {}), ensure_ascii=False, default=str)[:200])
             t1 = time.time()
-            res = run_agent(name, params, board=board, task_id=task_id)
+            chunk_cb = (lambda delta, _i=i: ev(event='chunk', i=_i, delta=delta))
+            res = run_agent(name, params, board=board, task_id=task_id, on_chunk=chunk_cb)
             ev(event='done', i=i, name=name, ok=res.ok,
                secs=round(time.time() - t1, 1), error=res.error or None,
                arts={k: str(v) for k, v in res.artifacts.items()})
