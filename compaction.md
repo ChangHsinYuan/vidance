@@ -1,84 +1,100 @@
-Goal
-- 完成 Vidance 流水线 v4(M6 快速营销号链路)+v5(剪辑特效)+v6(prompt 多轮核实) 实现与文档；细化 v7(仿豆包 agent WebUI)、v8(一镜到底)、v9(机器人网关多 IM) 文档；当前收尾 v6 M3/M4 并同步文档
-Constraints & Preferences
-- 代码在 /mnt/disk_sdb/zxy/vidance；输出走 config output_dir=/mnt/dataset/zxy/vidance/output
-- 视频编码必须 yuv420p h264；单镜 ≤5s（Wan 121 帧上限）
-- 仓库编号统一（v4/v5/v6/v7/v8/v9），已删除所有“用户编号”对照行
-- README.md 禁 AI 改；aluupy 训练不能动；Qwen 8000 不需要；验证要老实、不空转、不编造
-- BGM 用 incompetech CC BY（bgm/{mood}.wav custom_dir 优先，已含 epic）
+# Vidance Compaction（2026-09-26 晚）
+
+## Goal
+- 本轮完成：全库版本号重排（已完成块前移 v11/v12/v13）+ usage/design 系文档审计补缺（6 处修复 + 新建 usage-v11.md）
+- 当前状态：**只收尾不开工**——4 个文档改动待提交（一条 commit），之后今天到此为止
+- 下次开工已定路线：打磨快赢 → v15 开源整合 → v16 长视频；v14 社交媒体已交队友并行
+
+## Constraints & Preferences
+- 代码在 /mnt/disk_sdb/zxy/vidance；重启 api / 长耗时 GPU 测试用户自己跑；README.md 禁 AI 改
+- /tmp/opencode 为唯一预授权外部目录；output 相对/绝对路径一律尊重不改写，仅 /tmp 越界改写；**厌恶软链**（final 并入链目录用真文件复制）
+- 跑链期间禁止重启 api（daemon 随进程死）；不用 wan 测 agent（用 svg/fast/artist 快链）；命令里别带 out_path
+- 一命令=一会话内积累（不另开新会话）、会话/记录命名=概念前 10 字、顶栏不加新按钮
 - 不自动发布：成片人工精挑细选手动上传（发布模块已删）
-- 前端零 npm 自包含 HTML+vanilla JS；v7 仿豆包/智象未来（左栏+顶部画布+右下发框+/斜杠命令调 tool）；v9 机器人网关多 IM（企微/飞书/钉钉/Slack/Telegram，个人微信不做）
-- 用户要爬图（不要纯 FLUX），要图对题、快、数量 ≤5、去重、带 BGM；FLUX 仅辅助补帧/兜底
-- 用户不接受空转/长时间无产物；“继续”时须直接出结果
+- 前端零 npm 自包含 HTML+vanilla JS
+- 验证要老实、不空转、不编造；误删用户文件是大忌（16:27 事故已道歉，流程已改）
 
+## 编号映射表（全库同步唯一依据）
+| 原号 | 新号 | 内容 |
+|------|------|------|
+| v13 | **v11** | 多智能体（M0-M4 完成 + v11.1/v11.2 前端闭环） |
+| v17 | **v12** | 三排正交（make 统一入口，M1-M2 完成） |
+| v15 | **v13** | 轻量化/SVG 流水线（S1-S5 已实现） |
+| v11 | **v14** | 接入社交媒体（notify/，🎯 队友并行中） |
+| v12 | **v15** | 整合开源仓库（断点续跑/RAG，🎯 待开发） |
+| v14 | **v16** | 长视频质量/一镜到底（🎯 待开发，用户拍板放后面——较难） |
+| v16 | **v17** | 视频链接二创（🎯 backlog） |
+| v0-v10/v2.5/t2c/v18 | 不变 | 已完成块 + 交付形态 |
 
-Progress
+## Progress
 
+### Done（本轮）
+- **roadmap 重排全部收尾**：git mv v13-design→v11-design、v17-modules→v12-modules（留史）；§4 节序重排+17 处（原 vN）标注；头部摘要/v18 依赖/部署分档/仓库表同步；§5-§10 整块重复两份 → 删重复（671→549 行）；§8 目录树旧号改新号+补 agents/ 行+v0-v18
+- **代码注释版本号全同步**：core×4 + agents×3 + tools 层 + utils 24 个门面薄壳 docstring，全库 py_compile 通过，零逻辑改动
+- **grep 复验零残留**：docs/ AGENTS.md commands.json 旧号链接全清（v13-design/v17-modules 引用归零）
+- **usage/design 系文档审计补缺（6 处）**：
+  1. roadmap §5-§10 重复块删除（结构性 bug）
+  2. **新建 docs/usage-v11.md**（多智能体此前无 usage 文档）：CLI agent list/run/chain、7 API 端点、chain 步骤语法 ${ctx.key}、代表 Agent 表、WebUI /arch/流式、注意事项
+  3. usage.md「四种子命令」5 行 → 「子命令」12 行总览（补 fast/hot/svg/compose/h3shot/ask/agent）
+  4. roadmap §8 目录树旧号+缺 agents/ 目录 → 全部修正
+  5. roadmap §4 v8/v9/v10/v11/v13 五节补 `**详细设计**：[...]` 链接
+  6. v11-design.md §6「注册 Agent 清单（24）」→ 28（实际 post 10/G 7/D 6/V 5）
+- **无缺口确认**：usage-v4 已含 M6 fast/hot；usage-v0/v1/v2/v3/v6/v7/v10/v-svg 健在；v5 无 usage 属历史刻意省略；v8/v9 design 存在（规划版，已被吸收，有标注）
 
-Done
-- v4 M6 快速营销号链路 ✅：utils/fastline.py（FastLine：plan_narration LLM 拆 N 段旁白+运镜 pan/zoom-in/zoom-out → collect_images → _kenburns ffmpeg zoompan 伪动态 → 逐段 TTS → crossfade 拼接 → LUT/BGM/STT 复用 PostProcessor）+ vidance.py fast/hot 子命令；--slowmo N 另出 final_slow.mp4（原片保留）；--source-topic/--trend-date 写 meta+顶部 drawtext 角标（不占字幕时间轴）；hot=爬热点→scout 自动选题→fast 一步到位；FLUX 生图质量门（optimize_fastline_prompt 中文旁白→英文 prompt + assess_image_relevance 审核不过重生成≤2）；P 模式修复（_image_to_base64 支持 RGBA/P/LA/PA→RGB）
-- 图源根治 ✅：必应 images（murl=来源页配图无关、CDN 缩略图杂，实测命中率 0-25%，混入泰姬陵/日本出生率/雪山）→ 改 Pexels 图库 API（config.json pexels.api_key=***REMOVED*** 用户自供）；中文自动 LLM 英译（_en_translate）；search_images Pexels 首选必应兜底；collect_images crawl 直取 n 张（≤5，md5 去重，去掉逐张慢速多模态校验→19s 出片）
-- v5 剪辑特效 ✅ M1-M4：utils/effects.py（8 特效 flash/punch_in/glitch/grain_vignette/speed_ramp/freeze_zoom/wipe/zoom + transition()+concat_with_transitions() 链式 xfade 30+ 种）+ llm.select_effects() + fast/hot --effects auto；修 flash/glitch/wipe 滤镜语法；端到端验证（4 镜 glitch/grain_vignette/speed_ramp/freeze_zoom 33s 出片）
-- v6 M1-M4 全部完成 ✅：M1 llm.assess_completeness()（6 维主体/场景/情绪/风格/时长/镜头感）；M2 utils/dialog.py（DialogManager 状态机 OPEN/COLLECTING/COMPLETE/LOCKED，≤3 轮，SQLite output/tasks.sqlite dialogs 表）；M3 vidance.py ask 子命令（交互多轮→增强概念，测试通过）；M4 api_server.py 三端点 POST /api/dialog/start+GET /api/dialog/{id}+POST /api/dialog/{id}/reply（curl 实测 start 返回 missing/questions，端口 8994 测试通过）；reply 已改为每轮返回增强 concept
-- 文档全部同步 ✅：docs/v5-design.md~v9-design.md 全写（v5 状态✅M1-M4；v6 状态🚧M1-M2 行待改✅）；v7-design.md 仿豆包 webUI（布局图+slash 命令表+/api/tools+POST /api/tool/{name}）；v9-design.md 多网关（Notifier 抽象+wecom/feishu/dingtalk/slack/telegram+factory 多通道+回调网关）；roadmap.md（v5✅、v6🚧M1-M2、v7 细化、v9 段+目录树）；AGENTS.md（状态行、目录树加 dialog.py/notify/、asset_crawler 描述改 Pexels）；usage-v4.md（M6 章节+参数表）
-- 成片验证：output/fvquick（19.4s 爬图+特效）、fvbgm（BGM calm）、fvfx2（4 镜 12.7s 四种特效 33s）、fvdemo、fhot_v2 等均在 /mnt/dataset/zxy/vidance/output/
+### Done（本轮之前，摘要）
+- multiagent v11（原 v13）全闭环：28 Agent/chain/SSE/`${ctx}` 引用/并行轻度审片/明细日志/内嵌预览/三源历史
+- LLM 真流式全链：chat_stream（SSE 逐 delta）→ brain on_chunk → run_agent inspect 分发 → run_chain chunk 事件 → 前端流式打字
+- UI：📋 日志面板 7 tab（/api/logs/tail）、pipe-bar 置顶条、streamAgent 重写（概念前 10 字命名）、live 转圈圈
+- records 扫描重写：三类目录 + meta.json/agent.log 双源 + `'■' in last` 判定 + 第三根 /mnt/dataset 树
+- _vault_final 链目录归并（output 内但不在 {tid} → 复制 final.ext 进链目录，真文件非软链）
+- fast out_path 别名 bug 修复；output 架构还原（软链拆净）；fast 链端到端验证 194.9s ok
 
+### In Progress
+- **提交 4 个文档改动**（一条 commit）：docs/roadmap.md + docs/usage.md + docs/v11-design.md 修改 + docs/usage-v11.md 新建
+  - 建议消息：`docs:usage-v11 usage总览补全 + roadmap去重/目录树同步`
 
-In Progress
-- v6 收尾文档：v6-design.md 状态头改✅M1-M4（正要编辑时空转被打断）；AGENTS.md/roadmap.md v6 状态 M1-M2→M1-M4 完成；AGENTS 命令区加 ask 示例
-- 清理 tools/src_probe.py、tools/sm_probe.py 临时探测脚本（可留作诊断工具）
-
-
-Blocked
+### Blocked
 - (none)
 
-- v3 headless mesh 渲染方案待验证
+## Key Decisions
+- 编号映射表（见上）为全库唯一依据；重排必须带（原 vN）括号标注——方便对照旧 commit 回退（用户拍板）
+- v14 社交媒体**孤立性强 → 交队友并行做**（这几天应该会做好）
+- v16 长视频**较难 → 放后面**；顺序定为：打磨快赢 → v15 → v16
+- 今天只收尾不开工（用户拍板）
+- 一命令=一会话 + 概念前 10 字命名；records 三类目录全扫 + final 真文件并入链目录
+- light/none 强制 max_retries=0（30 分钟灾难根因）
 
+## Next Steps
+1. **提交 4 个文档改动**（见 In Progress；commit 前先 git status/diff 复核）
+2. 下次开工选项（已定优先序）：
+   - **打磨快赢**：fast 爬图提速（~160s→~60s，多模态相关性校验 120s 逐张串行 → 并发/批量）+ api 日志轮转（start_services `>` 截断+/tmp 无轮转）+ llm 健康灯（前端顶栏 LLM 可用状态）
+   - **v15 开源整合**：M1 断点续跑（挂 v11 黑板）+ JSON 容错 → M2 五维提示词+RAG（2-3 天）
+   - **v16 长视频**：M0 spike 末帧回灌验证（Wan I2V 连续 3-5 段抽末帧回灌，实测漂移 SSIM）→ M2 oneshot.py + `--oneshot --duration N` → M1 关键帧/M3 层级一致性/M4 长文本
+   - v14 队友做完后 review 接入
 
-Key Decisions
-- 图源：必应废弃（返回杂图不可救），Pexels 为准（英文库需中文先 LLM 英译），FLUX 仅兜底补帧
-- 爬图去掉逐张多模态相关性校验（Pexels 本身精准）→ 解决慢；FLUX 生图保留审核门（重生成≤2）
-- 执行顺序：v4→v5→v6（M1-M4 完成）→v7（前端，依赖 v6 API 已就绪）→v8（一镜到底）→v9（机器人网关）
-- v9 统一 Notifier 抽象+factory 多通道（一次推多个 IM），回调复用 v7 /api/tool/{name}，M4 依赖 v7
-- 版本编号统一仓库口径，用户确认“以后统一按你这个编号来”
+## Critical Context
+- git HEAD：`56c8b92 docs:roadmap:change version orders`（重排主体已提交）；本轮 4 文件改动未提交
+- output/ 已空（只剩 19:42 的 0 字节 tasks.sqlite，旧测试记录全没）——**重跑废链的事已作废**；若非用户所清需确认
+- 服务状态：h3(8188)/wan(8189)/flux(8192)/tts(9880)/api(8894) 全 UP；hunyuan(8190)+h3d(8193) DOWN 不影响 fast/生图/svg
+- 服务日志 /tmp/comfyui_{8188,8189,8190,8192,8193}.log、/tmp/tts_9880.log、/tmp/api_8894.log；start_services `>` 每次截断
+- fastline 爬图链 ~160s（Pexels 41s + 多模态校验 120s 逐张）；flux 生图 30-60s；svg 10-30s
+- agent.log 行格式 `[HH:MM:SS] ▶/⏳/✓/■`；status 判定必须 `'■' in last` 非 startswith
+- agent 总数 28（post 10/generator 7/director 6/audit 5）；v11-design §6 数字已改 28
+- whisper 模型路径需带 snapshots/ 子目录；TestClient/stream 超时会杀 daemon 线程（长链验证给足 timeout 或查盘）
+- fastline 图源：Pexels 首选（中文 keyword 必须 LLM 英译），必应兜底；FLUX 仅补足+兜底
+- Pexels key 在 config.json pexels.api_key；USTC LLM 双模型：deepseek-v4-flash（编剧/纯文本）、qwen3.8-chat（多模态审片）
+- 主 Python：/home/zxy/.conda/envs/comfyui/bin/python；TTS 环境 cosyvoice；4× RTX 4090
+- GPU 分配：h3 8188(GPU0)/h3d 8193(GPU1)/wan 8189(GPU2)/hunyuan 8190(GPU3)/flux 8192(GPU3 与 hunyuan 互斥)/tts 9880(GPU2)/api 8894(CPU)
 
-
-Next Steps
-1. v6-design.md 状态头改「✅ M1-M4 完成」+ AGENTS.md/roadmap.md v6 状态更新 + AGENTS 命令区加 ask 示例
-2. 向用户总结 v6 完成情况（ask 交互演示 + dialog API curl 证据）
-3. 按序实现 v7 前端（M1 骨架：静态服务+三栏+/api/tools+POST /api/tool/{name}；v6 dialog API 已就绪可接）
-4. 之后 v8 一镜到底、v9 机器人网关（需用户提供企微/飞书 webhook）
-
-
-
-Critical Context
-- Pexels key 在 config.json pexels.api_key；中文 keyword 直查 Pexels 会 0 结果（必须 _en_translate）；返回 large2x/medium
-- 必应坑（如复用）：murl=来源页配图常无关；turl+md5=CDN 缩略图仍杂；images/search 页 35 条 iusc（m="..." JSON）；async 接口时好时坏
-- hot 子命令无 --no-bgm/--no-color 参数（会 unrecognized arguments）；fast 有全套
-- dialog API 测试：POST /api/dialog/start {"concept":"深夜灯塔"} 返回 {"dialog_id":"dlg_...","status":"OPEN","dimensions":{...},"missing":["场景/环境","情绪基调"],"questions":[...]}
-- v5 修复：flash=fade=t=in纯色淡入；glitch 去 rgbashift（ffmpeg 无此滤镜）改 noise+hue；wipe/zoom 用 t/on 表达式
-- 后台长任务用 setsid bash -c '...' & disown；pgrep -f <name> 会误匹配自身查询命令（PID 每次变，用 ps aux | grep "[v]idance.py"）
-- FLUX 生成慢（每张 1-3 分钟）；hot -n 2 --images-source flux 约 200s；hot -n 3 会超 400s 工具超时
-- GPU：8188(H3 GPU0)/8189(Wan+RIFE GPU2)/8190(HunyuanVideo GPU3)/8192(FLUX+TripoSplat)/8193(Hunyuan3Dv2 GPU1)/9880(TTS GPU2)/8894(Vidance API)
-- USTC LLM ***REMOVED***（deepseek-v4-flash / qwen3.8-chat）；主 Python /home/zxy/.conda/envs/comfyui/bin/python；4× RTX 4090
-
-
-
-Relevant Files
-- /mnt/disk_sdb/zxy/vidance/utils/fastline.py — v4 M6 FastLine（collect_images/plan_narration/_kenburns/_gen_flux_images/run，effects 参数，_overlay_source）
-- /mnt/disk_sdb/zxy/vidance/utils/asset_crawler.py — Pexels 首选+必应兜底（_pexels_search/_en_translate/_search_bing/download_images）
-- /mnt/disk_sdb/zxy/vidance/utils/effects.py — v5 特效库（8 特效+transition/concat_with_transitions+CLI）
-- /mnt/disk_sdb/zxy/vidance/utils/dialog.py — v6 DialogManager（start/reply/get/locked_concept/list，reply 每轮返回 concept）
-- /mnt/disk_sdb/zxy/vidance/utils/llm.py — assess_completeness/select_effects/optimize_fastline_prompt/assess_image_relevance/_image_to_base64(P 模式修复)
-- /mnt/disk_sdb/zxy/vidance/core/vidance.py — auto/custom/quick/concat/hot/fast/ask 子命令
-- /mnt/disk_sdb/zxy/vidance/core/api_server.py — 已加 v6 dialog 三端点（start/get/reply）
-- /mnt/disk_sdb/zxy/vidance/config/config.json — pexels.api_key + llm/tts/comfyui
-- /mnt/disk_sdb/zxy/vidance/docs/v6-design.md — 状态头待改✅M1-M4（其余内容已齐）
-- /mnt/disk_sdb/zxy/vidance/docs/v7-design.md — 仿豆包 webUI 细化版（布局图+slash 命令表）
-- /mnt/disk_sdb/zxy/vidance/docs/v9-design.md — 多网关版（Notifier/wecom/feishu/dingtalk/factory）
-- /mnt/disk_sdb/zxy/vidance/docs/roadmap.md — v5✅/v6🚧(待改✅)/v7 细化/v8/v9 段+目录树
-- /mnt/disk_sdb/zxy/vidance/AGENTS.md — 状态行/目录树（dialog.py/notify/ 已加；v6 状态待改 M1-M4）
-- /mnt/disk_sdb/zxy/vidance/docs/usage-v4.md — M6 章节+参数表（--effects 行已加）
-- /mnt/disk_sdb/zxy/vidance/tools/src_probe.py、tools/sm_probe.py — 图源探测脚本（临时诊断用）
-- /mnt/dataset/zxy/vidance/output/fvquick|fvbgm|fvfx2|fvdemo|fhot_v2/ — 成片验证目录
-
+## Relevant Files
+- `/mnt/disk_sdb/zxy/vidance/docs/roadmap.md` — §4 新节序+（原 vN）标注+5 处设计链接+§8 目录树+去重后 549 行（**待提交**）
+- `/mnt/disk_sdb/zxy/vidance/docs/usage.md` — 子命令 12 行总览+文档地图+服务依赖补全（**待提交**）
+- `/mnt/disk_sdb/zxy/vidance/docs/v11-design.md` — §6 Agent 数 24→28（**待提交**）
+- `/mnt/disk_sdb/zxy/vidance/docs/usage-v11.md` — **新建**（多智能体 usage）（**待提交**）
+- `/mnt/disk_sdb/zxy/vidance/docs/v12-modules.md`（原 v17-modules，git mv）/`docs/v11-design.md`（原 v13-design）
+- `/mnt/disk_sdb/zxy/vidance/AGENTS.md` — 状态/路线/目录/命令注释全按新号（已随 56c8b92 提交）
+- `/mnt/disk_sdb/zxy/vidance/core/api_server.py` — agent_records/_vault_final/api/logs/tail/agent_stream
+- `/mnt/disk_sdb/zxy/vidance/agents/{base,runtime,blackboard}.py` + `core/{vidance,scheduler,narration}.py` — 注释已同步（已提交）
+- `/mnt/disk_sdb/zxy/vidance/utils/*.py` — 24 个门面薄壳 docstring 已同步（已提交）
+- `/mnt/disk_sdb/zxy/vidance/ui/index.html` — streamAgent/pipe-bar/日志 tab/conceptOf
+- `/mnt/disk_sdb/zxy/vidance/docs/instructions/commands.json` — v12-modules 链接已同步（已提交）
