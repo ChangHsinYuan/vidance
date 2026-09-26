@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""P0/P1 配音与字幕（v17 三排正交·后期层单一实现）
+"""P0/P1 配音与字幕（v12（原 v17）三排正交·后期层单一实现）
 
 fastline / svg_pipeline / pipeline 原各自维护一份"TTS+降级链+SRT"，本模块收口：
   - Narrator.say   逐段 TTS：目标音色重试 → cosy-default → 静音兜底（出片不崩）

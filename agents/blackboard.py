@@ -1,4 +1,4 @@
-"""v13 黑板：Agent 运行记录落 SQLite（复用 output/tasks.sqlite，新表 agent_runs）。"""
+"""v11（原 v13）黑板：Agent 运行记录落 SQLite（复用 output/tasks.sqlite，新表 agent_runs）。"""
 import os
 import sys
 import json

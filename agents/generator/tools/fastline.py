@@ -56,7 +56,7 @@ class FastLine:
         self.config = config or load_config()
         self.llm = llm or LLMClient(self.config)
         self.tts = TTSClient(self.config)
-        self.narr = Narrator(self.config)  # v17 M1：配音/字幕单一实现
+        self.narr = Narrator(self.config)  # v12（原 v17）M1：配音/字幕单一实现
         self.crawler = AssetCrawler()
         self.post = PostProcessor(self.config, llm=self.llm)
         self.output_dir = self.config['output_dir']
@@ -294,7 +294,7 @@ class FastLine:
     # ══ 4. 每段 TTS 旁白 ══
     def _tts_segment(self, text, out_path, voice, speed, fallback_seconds=3.0,
                      retries=3):
-        """TTS 合成（薄壳，统一走 core.narration.Narrator，v17 M1 收口冗余）。"""
+        """TTS 合成（薄壳，统一走 core.narration.Narrator，v12（原 v17）M1 收口冗余）。"""
         return self.narr.say(text, out_path, voice=voice, speed=speed,
                              fallback_seconds=fallback_seconds, retries=retries)
 

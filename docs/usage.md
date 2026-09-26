@@ -4,15 +4,15 @@
 >
 > 分版本文档：[usage-v0.md](./usage-v0.md)（有声短片 MVP/T2V/TTS）· [usage-v1.md](./usage-v1.md)（角色锚/3DGS）· [usage-v2.md](./usage-v2.md)（RIFE/LUT/BGM/ffmpeg/STT）· [usage-v3.md](./usage-v3.md)（mesh/资产库）· [usage-v4.md](./usage-v4.md)（爬虫/队列/声音克隆） · [usage-v6.md](./usage-v6.md)（prompt 多轮核实）· [usage-v7.md](./usage-v7.md)（前端 WebUI）· [usage-v10.md](./usage-v10.md)（时间线拼接与特效）· [usage-v-svg.md](./usage-v-svg.md)（SVG→mp4 流水线）
 >
-> 架构：[hierarchy.md](./hierarchy.md)（方法脉络图：视频模型/非视频模型 × 导演方式总览）· [v17-modules.md](./v17-modules.md)（三排正交统一入口）· [v13-design.md](./v13-design.md)（多智能体分层与 Agent 链）· [v-t2c.md](./v-t2c.md)（自然语言→命令翻译层）· [v-svg-pipeline.md](./v-svg-pipeline.md)（SVG 流水线设计）
+> 架构：[hierarchy.md](./hierarchy.md)（方法脉络图：视频模型/非视频模型 × 导演方式总览）· [v12-modules.md](./v12-modules.md)（三排正交统一入口）· [v11-design.md](./v11-design.md)（多智能体分层与 Agent 链）· [v-t2c.md](./v-t2c.md)（自然语言→命令翻译层）· [v-svg-pipeline.md](./v-svg-pipeline.md)（SVG 流水线设计）
 
 ## 文档地图
 
 | 类别 | 文件 | 内容 |
 |------|------|------|
 | **入口** | usage.md（本文）· [roadmap.md](./roadmap.md) | 使用总入口 · 总览与版本路线（状态权威来源） |
-| **脉络/架构** | hierarchy.md · v17-modules.md · v13-design.md · [deployed-models.md](./deployed-models.md) | 方法脉络图与 v17 流水线 · 三排正交模块契约 · 已部署模型清单 |
-| **设计** | v0 · v1 · v2 · [v2.5](./v2.5-design.md) · v3 · v4 · v5 · v6 · v7 · v8 · v9 · v10（各 `-design.md`） | 各版本设计文档（规划版 v8/v9 含被 v14/v11 吸收的原始设计） |
+| **脉络/架构** | hierarchy.md · v12-modules.md · v11-design.md · [deployed-models.md](./deployed-models.md) | 方法脉络图与 v12 流水线 · 三排正交模块契约 · 已部署模型清单 |
+| **设计** | v0 · v1 · v2 · [v2.5](./v2.5-design.md) · v3 · v4 · v5 · v6 · v7 · v8 · v9 · v10（各 `-design.md`） | 各版本设计文档（规划版 v8/v9 含被 v16/v14（原 v14/v11）吸收的原始设计） |
 | **专项设计** | v-t2c.md · v-svg-pipeline.md | 自然语言→命令 · SVG 流水线 |
 | **分版使用** | usage-v0/v1/v2/v3/v4/v6/v7/v10 · usage-v-svg.md | 各版本小工具用法速查 |
 | **指令库** | [instructions/commands.json](./instructions/commands.json)（22 命令）· [instructions/compose-commands.md](./instructions/compose-commands.md) + .json（43 条剪辑指令） | 前端 `/help` 数据源，t2c 重训数据源 |
@@ -27,7 +27,7 @@
 | `custom` | 参考图 + 预写脚本 | H3 ref2va | 三视图直接注入 | 可选 | 精确控制分镜、多角色 |
 | `quick` | 一句中文概念 | Wan T2V | 无 | 无 | 最快出片、无角色 |
 | `concat` | 多个视频文件 | — | — | — | 拼接已有素材 |
-| `make` (v17) | 概念 + 导演/生成器选择 | 任意组合 | 按导演层 | 通用后期 | **统一入口**：--director llm/manual/scout × --generator wan/fast/svg/h3，见 v17-modules.md |
+| `make` (v12) | 概念 + 导演/生成器选择 | 任意组合 | 按导演层 | 通用后期 | **统一入口**：--director llm/manual/scout × --generator wan/fast/svg/h3，见 v12-modules.md |
 
 ---
 

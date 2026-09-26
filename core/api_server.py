@@ -49,9 +49,9 @@ scheduler = None
 
 class TaskSubmit(BaseModel):
     concept: str
-    mode: str = 'auto'  # v7: auto|fast|hot；v13: chain（agent 链编排）
-    chain: Optional[list] = None   # v13: mode=chain 时的 agent 步骤 [{agent, with, as?, optional?}]
-    ctx: Optional[dict] = None     # v13: mode=chain 的初始上下文
+    mode: str = 'auto'  # v7: auto|fast|hot；v11（原 v13）: chain（agent 链编排）
+    chain: Optional[list] = None   # v11（原 v13）: mode=chain 时的 agent 步骤 [{agent, with, as?, optional?}]
+    ctx: Optional[dict] = None     # v11（原 v13）: mode=chain 的初始上下文
     character: Optional[str] = None
     character_mode: str = 'flux'
     voice: Optional[str] = None
@@ -802,7 +802,7 @@ TOOLS = [
          {'key': '--transition', 'type': 'choice', 'choices': ['cut', 'crossfade', 'rife'], 'desc': '转场方式'},
          {'key': '--crossfade-duration', 'type': 'number', 'desc': '交叉淡化时长（秒，默认 0.5）'},
      ]},
-    {'name': 'make', 'help': 'v17 统一入口：--director llm|manual|scout × --generator wan|fast|svg|h3 排列组合',
+    {'name': 'make', 'help': 'v12（原 v17）统一入口：--director llm|manual|scout × --generator wan|fast|svg|h3 排列组合',
      'params': [
          {'key': 'concept', 'type': 'text', 'required': True, 'desc': '概念（--director scout 时可省，自动选题）'},
          {'key': '--director', 'type': 'text', 'desc': '导演层：llm 自动 / manual 人肉 / scout 爬热点',
@@ -1210,7 +1210,7 @@ def tool_dispatch(name: str, req: ToolRequest):
                 'compose_output': out,
                 'video_url': ('/api/file?path=' + out) if out else ''}
 
-    # ── svg（v15 流水线：无声同步；--voice/--say 有声走异步 job，前端 pollH3 复用）──
+    # ── svg（v13（原 v15）流水线：无声同步；--voice/--say 有声走异步 job，前端 pollH3 复用）──
     if name == 'svg':
         from utils import svg_pipeline as _sp
         rr = _parse_repeated(req.args or '', {'say'})
@@ -1339,7 +1339,7 @@ def tool_dispatch(name: str, req: ToolRequest):
                 'entry': 'vidance.py agent {list|run|chain} · POST /api/agents/chain · '
                          "POST /api/tasks {mode:'chain'}"}
 
-    # ── agent（v13：子分发 list/run/chain）──
+    # ── agent（v11（原 v13）：子分发 list/run/chain）──
     if name == 'agent':
         import json as _json
         import shlex as _shq
@@ -1538,7 +1538,7 @@ def tool_dispatch(name: str, req: ToolRequest):
         threading.Thread(target=_run_clip, args=(job_id, req2), daemon=True).start()
         return {'message': '裁剪任务已提交（异步）', 'job_id': job_id, 'poll': f'/api/clip/{job_id}'}
 
-    # ── make（v17 M2：三排正交统一入口，归一后递归复用现有分发）──
+    # ── make（v12（原 v17）M2：三排正交统一入口，归一后递归复用现有分发）──
     if name == 'make':
         import shlex as _shq
         rr = _parse_repeated(req.args or '', {'say', 'ref'})
@@ -1894,7 +1894,7 @@ if _COMFYUI_PROXY_AVAILABLE:
             )
 
 
-# ── v13 多智能体 ──
+# ── v11 多智能体（原 v13）──
 class AgentRunReq(BaseModel):
     params: dict = {}
     task_id: str = 'api'
@@ -2060,7 +2060,7 @@ def run_chain_api(req: AgentChainReq):
 
 @app.get('/api/tasks/{task_id}/trace')
 def task_trace(task_id: str):
-    """v13：任务的 agent 链执行轨迹（黑板 agent_runs）。"""
+    """v11（原 v13）：任务的 agent 链执行轨迹（黑板 agent_runs）。"""
     from agents.blackboard import AgentBoard
     runs = AgentBoard().runs(task_id=task_id, limit=200)
     task = queue.get_task(task_id)

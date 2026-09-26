@@ -1,4 +1,4 @@
-"""v13 Agent 契约（薄包装）+ 全局注册表。
+"""v11（原 v13）Agent 契约（薄包装）+ 全局注册表。
 
 每个层目录下的 agents.py 用 @register 把已有能力包装成 Agent：
     @register(name="audit.review_shot", layer="audit", desc="大模型审片")

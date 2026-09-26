@@ -1,4 +1,4 @@
-"""v13 门面：真实实现已移至 agents.director.tools.dialog（原路径兼容转发）。"""
+"""v11（原 v13）门面：真实实现已移至 agents.director.tools.dialog（原路径兼容转发）。"""
 import importlib as _il, sys as _sys
 if __name__ == '__main__':
     import os as _os

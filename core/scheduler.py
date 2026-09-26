@@ -382,7 +382,7 @@ class Scheduler:
             print(f'  [scheduler] error: {task_id} — {e}')
 
     def _run_chain_task(self, task):
-        """v13 mode=chain：进程内运行 agent 链（agents.runtime.run_chain）。"""
+        """v11（原 v13）mode=chain：进程内运行 agent 链（agents.runtime.run_chain）。"""
         import io
         import json as _json
         from contextlib import redirect_stdout

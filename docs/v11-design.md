@@ -1,10 +1,10 @@
-# v13 设计 — 多智能体系统（薄包装版）
+# v11 设计 — 多智能体系统（薄包装版）（原 v11，2026-09-26 重编号）
 
-> 2026-09-26 定稿并实施（M0-M4 全部完成 + v13.1 前端 /arch 架构图与 chain trace 可视化）。roadmap 见 docs/roadmap.md v13 段。
+> 2026-09-26 定稿并实施（M0-M4 全部完成 + v11.1 前端 /arch 架构图与 chain trace 可视化）。roadmap 见 docs/roadmap.md v11 段（原 v11）。
 
 ## 1. 动机与定案
 
-v0-v10/v17 的能力都散在 `utils/` 平铺模块里，由 `core/pipeline.py` 等巨型编排器串死。v13 的目标**不是重写**，而是：
+v0-v10/v12 的能力都散在 `utils/` 平铺模块里，由 `core/pipeline.py` 等巨型编排器串死。v11 的目标**不是重写**，而是：
 
 1. **物理分层**——按 D(决策/编剧) / G(生成) / P(后期) / V(审核) + common 五目录归置代码，看清依赖方向（core → agents 层 → common）；
 2. **薄包装 Agent**——每个既有能力用 ~10 行包装成统一契约的 Agent，可被链/远程调用，不做自主 LLM 循环（拍板：薄包装，v14+ 再考虑自主性）；
@@ -106,7 +106,7 @@ def fx(params: dict) -> TaskResult: ...
 - 三步 LLM 链 61s 全通：编剧(柴犬的太空早餐) → LUT(cinematic) → 审片(score 2/10，正确识别静态图)
 - scheduler chain 任务：queued→completed，output 回写，scheduler.log 含 chain result JSON，`agent_runs` 落盘
 
-## 9. v13.1 前端可视化 + 角色包装（2026-09-26）
+## 9. v11.1 前端可视化 + 角色包装（2026-09-26）
 
 - **`/arch`**：`tool_dispatch('arch')` 返回分层骨架（core/D/G/P/V/common，每层含运行时注册 Agent + 实现模块清单），`ui/index.html renderArch()` 渲染彩色分层卡片（core 紫/D 橙/G 蓝/P 绿/V 红/common 灰，⚡=需 GPU）；数据实时取自注册表。
 - **chain trace**：任务卡检测 `options.mode==='chain'` → 卡片内 trace 子区，轮询时 `GET /api/tasks/{id}/trace` 渲染步骤时间线（`#步骤 层`徽章 + ✓/✗ + 评分 + 错误 + 耗时）；`/agent run|chain` 结果同用 `traceRows()` 渲染，产物含 video 自动内嵌播放。
@@ -115,7 +115,7 @@ def fx(params: dict) -> TaskResult: ...
 - **修复**：①`${ctx.key}` 与 `${key}` 双语法（runtime `_lookup`）；②P/G/D 层 `load_config` 误从 compose 导入（M0 迁移遗留，`_post()` 连带修复，post.lut 回归通过）；③`post.lut` 接受 `style` 别名；④`/arch` inputs 字符串渲染崩溃。
 - 快速用法：UI 直敲 `/agent chain --steps {"steps":[{"agent":"post.lut","as":"c","with":{"video":"/in.mp4","lut":"warm","out_path":"/tmp/l.mp4"}},{"agent":"post.fx","with":{"video":"${c.video}","effect":"zoom","out_path":"/tmp/f.mp4"}}]}`；排队异步 `POST /api/tasks {"mode":"chain","chain":[…],"ctx":{}}`。
 
-## 10. v13.2 闭环与 GPU 注册（2026-09-26）
+## 10. v11.2 闭环与 GPU 注册（2026-09-26）
 
 - **pipeline 审片接 ensemble**：`_safe_review_shot` 按 config `review.ensemble.{enabled, models}` 走 `audit.review_ensemble`（`run_agent` 落台账，task=pipeline），返回映射回 pipeline 口径（score×10、全票 pass、feedback 拼接）；全票失败/异常**自动回退单票**不崩。默认关。实测双票 (7✓,5✗)→score 6.0 pass=False。
 - **Agent 注册（24→28）**：`generator.h3shot`（prompt+refs→H3 有声单镜）、`generator.splat`（单图→3DGS PLY，实测 17.8MB）、`post.pip`（画中画 overlay，svg→glitch→pip 三连实测出片）、`generator.mesh`（图→GLB，Hunyuan3D 离线时干净报错）。

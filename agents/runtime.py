@@ -1,4 +1,4 @@
-"""v13 chain 运行器：按序执行 Agent，产物写入共享 ctx，支持 ${ctx.key} 模板引用。
+"""v11（原 v13）chain 运行器：按序执行 Agent，产物写入共享 ctx，支持 ${ctx.key} 模板引用。
 
 步骤格式：
     {"agent": "post.fx", "with": {"video": "${video}", "effect": "zoom"},

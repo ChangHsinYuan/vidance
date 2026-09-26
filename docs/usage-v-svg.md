@@ -1,4 +1,4 @@
-# usage-v-svg — SVG → MP4 流水线（v15 轻量化）
+# usage-v-svg — SVG → MP4 流水线（v13 轻量化，原 v15）
 
 纯 CPU、秒级出片：LLM 产出带 CSS/SMIL 动画的自包含 SVG → 无头浏览器确定性逐帧渲染 → ffmpeg 拼帧成 mp4。
 适合信息图 / 文字动画 / 数据可视化 / 科普短片。

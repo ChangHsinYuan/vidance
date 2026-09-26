@@ -1,7 +1,7 @@
 # Vidance 方法脉络图（Production Method Map）
 
-> 2026-09-26。全文梳理系统的全部出片方法：**是否用视频模型** × **谁当导演**；下半部为 v17 流水线图（模块串行、模块内并行）与游离审计层。
-> 相关：指令库 `instructions/commands.json`、路线 `roadmap.md`、t2c `v-t2c.md`、SVG `v-svg-pipeline.md`、三排正交 `v17-modules.md`。
+> 2026-09-26。全文梳理系统的全部出片方法：**是否用视频模型** × **谁当导演**；下半部为 v12 流水线图（模块串行、模块内并行）与游离审计层。
+> 相关：指令库 `instructions/commands.json`、路线 `roadmap.md`、t2c `v-t2c.md`、SVG `v-svg-pipeline.md`、三排正交 `v12-modules.md`。
 
 ## 总览
 
@@ -11,7 +11,7 @@
                          └─ B. 用视频模型 ──驱动方式─┬─ B1 人给素材（人导演）
                                                     ├─ B2 LLM 导演（全自动）
                                                     └─ B3 T2C（自然语言入口，路由到 A/B1/B2）
- 公共旁路：后处理(v2) · 特效(v5) · 拼接(v10) · 配音(TTS/克隆/FunClip) · 分发(v11 规划)
+ 公共旁路：后处理(v2) · 特效(v5) · 拼接(v10) · 配音(TTS/克隆/FunClip) · 分发(v14 规划，原 v11)
 ```
 
 ## A. 不用视频模型的出片法
@@ -76,7 +76,7 @@
 - 单镜试水 → **quick**；网页里说人话 → **B3 t2c**
 - 已有一堆成片要合并/加字幕特效 → **compose/concat**（不占生成资源）
 
-## v17 流水线图：模块串行 · 模块内并行 · 审计游离
+## v12 流水线图：模块串行 · 模块内并行 · 审计游离
 
 > `make` = 每一排各取其一（或开关）串成一条链。审计层 V 不占总线，挂在需要它的模块出口。
 
@@ -130,7 +130,7 @@
 | `qwen3.8-flash-next` / `-2` / `qwen-chat` | ✅ | 便宜快审档 |
 | `qwen3.8-reasoner` / `qwen-reasoner` / `smart/reasoning` | ✅ | 深审档（慢，值得用于终版复审） |
 | `glm-5.3-flash` | ✅ | 异构第三票 |
-| `unlimited-ocr` | ⚠️ OCR 专用 | 不收"看图问答"，走 OCR 管线——可用作 V5 字幕/角标 OCR 校验（v17 backlog：P4 烧字幕后 OCR 回读比对 SRT） |
+| `unlimited-ocr` | ⚠️ OCR 专用 | 不收"看图问答"，走 OCR 管线——可用作 V5 字幕/角标 OCR 校验（v12 backlog：P4 烧字幕后 OCR 回读比对 SRT） |
 | `smart/default` | — | 网关自动路由，未单测 |
 
 > ensemble 审计（多模型并行投票）是 V 层的"模块内并行"玩法：`review_shot_v2` 计划用 `qwen3.8-chat + deepseek-flash-2 + claude-haiku-4-5` 三路并发、多数决，压单模型抖动与 auto-pass 假通过。

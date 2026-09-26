@@ -7,8 +7,8 @@
   quick   纯 T2V，无角色锚无后处理
   concat  多视频拼接（硬切 / RIFE 过渡 / 交叉淡化）
   compose v10 时间线拼接（JSON 时间线：特效/转场/画中画/文字/混音）
-  svg     v15 SVG 流水线（概念→LLM 生成 SVG→逐帧渲染→mp4，纯 CPU）
-  make    v17 统一入口：--director llm|manual|scout × --generator wan|fast|svg|h3 排列组合
+  svg     v13（原 v15）SVG 流水线（概念→LLM 生成 SVG→逐帧渲染→mp4，纯 CPU）
+  make    v12（原 v17）统一入口：--director llm|manual|scout × --generator wan|fast|svg|h3 排列组合
 
 用法:
   python core/vidance.py auto "雪山日出：小狐狸的冒险" --character "红色小狐狸" --character-mode flux --stt
@@ -342,7 +342,7 @@ def cmd_compose(args):
 
 
 def cmd_svg(args):
-    """v15 SVG 流水线：概念 → LLM 生成 SVG → 无头浏览器逐帧渲染 → mp4（纯 CPU）"""
+    """v13（原 v15）SVG 流水线：概念 → LLM 生成 SVG → 无头浏览器逐帧渲染 → mp4（纯 CPU）"""
     import sys, os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from utils import svg_pipeline as sp
@@ -385,7 +385,7 @@ def cmd_svg(args):
 
 
 def cmd_make(args):
-    """v17 M2 统一入口：--director × --generator 排列组合路由到现有实现（子命令变别名）"""
+    """v12（原 v17）M2 统一入口：--director × --generator 排列组合路由到现有实现（子命令变别名）"""
     gen = args.generator or 'wan'
     director = args.director or ('manual' if (args.say or args.prompt or args.script) else 'llm')
     concept = args.concept or ''
@@ -491,7 +491,7 @@ def _ns(args, **over):
 
 
 def cmd_agent(args):
-    """agent 子命令（v13）：list / run / chain。"""
+    """agent 子命令（v11，原 v13）：list / run / chain。"""
     import json as _json
     from agents.runtime import load_all, run_chain
     reg = load_all()
@@ -693,9 +693,9 @@ def build_parser():
     p_compose.add_argument('--transition-duration', type=float, default=0.4)
     p_compose.set_defaults(func=cmd_compose)
 
-    # ── svg 子命令（v15 SVG 流水线，纯 CPU） ──
+    # ── svg 子命令（v13（原 v15）SVG 流水线，纯 CPU） ──
     p_svg = sub.add_parser('svg',
-        help='v15 SVG 流水线：概念→LLM 生成 SVG→逐帧渲染→mp4（纯 CPU，秒级）')
+        help='v13（原 v15）SVG 流水线：概念→LLM 生成 SVG→逐帧渲染→mp4（纯 CPU，秒级）')
     p_svg.add_argument('--concept', default=None, help='概念（一键：LLM 生成 SVG→mp4）')
     p_svg.add_argument('--svg', default=None, help='SVG 文件路径（渲染模式）')
     p_svg.add_argument('-o', '--output', default=None, help='输出 mp4 路径')
@@ -715,7 +715,7 @@ def build_parser():
     p_svg.add_argument('--bgm', default=None, help='S5：BGM mood')
     p_svg.set_defaults(func=cmd_svg)
 
-    # ── make 子命令（v17 M2 三排正交统一入口） ──
+    # ── make 子命令（v12（原 v17）M2 三排正交统一入口） ──
     p_make = sub.add_parser('make', parents=[output_parent, post_parent],
                             help='统一入口：--director llm|manual|scout × --generator wan|fast|svg|h3')
     p_make.add_argument('concept', nargs='?', default=None, help='概念（manual/scout 可省）')
@@ -737,8 +737,8 @@ def build_parser():
     p_make.add_argument('--account', default=None, help='scout 账号定位')
     p_make.set_defaults(func=cmd_make)
 
-    # ── agent（v13）──
-    p_agent = sub.add_parser('agent', help='v13 多智能体：list / run / chain')
+    # ── agent（v11，原 v13）──
+    p_agent = sub.add_parser('agent', help='v11（原 v13）多智能体：list / run / chain')
     agent_sub = p_agent.add_subparsers(dest='action', required=True)
     agent_sub.add_parser('list', help='列出已注册 Agent')
     p_arun = agent_sub.add_parser('run', help='运行单个 Agent')

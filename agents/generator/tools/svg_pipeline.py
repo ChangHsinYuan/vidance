@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SVG / HTML 动画 → MP4（无头浏览器逐帧渲染，纯 CPU，v15 轻量化）
+"""SVG / HTML 动画 → MP4（无头浏览器逐帧渲染，纯 CPU，v13（原 v15）轻量化）
 
 思路：LLM 产出带 CSS / SMIL 动画的自包含 SVG → 无头浏览器在**确定的时间点**逐帧截图
 → ffmpeg image2pipe 拼帧成 mp4。适合信息图 / 文字动画 / 数据可视化 / 科普短片，秒级出片。
@@ -248,7 +248,7 @@ def _probe_duration(path: str) -> float:
 class SvgLine:
     """S5：概念 → 分段旁白 → 逐段 TTS → 逐段 SVG 渲染 → crossfade 拼接 + 字幕 + 可选 LUT/BGM。
 
-    与 fastline 同构（图换成 SVG 动画）。配音/字幕复用 core.narration.Narrator（v17 单一实现），
+    与 fastline 同构（图换成 SVG 动画）。配音/字幕复用 core.narration.Narrator（v12（原 v17）单一实现），
     降级链：voice → cosy-default → 静音兜底（出片不崩）。
     """
 

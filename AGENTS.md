@@ -6,11 +6,11 @@
 
 Vidance 是一个基于 opencode agent 编排的本地视频生成系统。核心流程：中文概念→LLM编剧→Wan T2V生成→双引擎TTS配音→多模态审片→ffmpeg合成→有声短片。
 
-**统一入口**：`python core/vidance.py make`（v17：`--director llm|manual|scout × --generator wan|fast|svg|h3` 排列组合）或直用子命令 `{auto|custom|quick|fast|hot|svg|compose|concat|h3shot}` — auto 模式走 LLM 编剧+Wan/FLUX 生成，custom 模式走参考图+预写脚本+H3 ref2va 生成，quick 模式纯 T2V 无后处理。后处理（RIFE/LUT/BGM/STT）由 `core/postprocess.py` 共享模块提供。
+**统一入口**：`python core/vidance.py make`（v12（原 v17）：`--director llm|manual|scout × --generator wan|fast|svg|h3` 排列组合）或直用子命令 `{auto|custom|quick|fast|hot|svg|compose|concat|h3shot}` — auto 模式走 LLM 编剧+Wan/FLUX 生成，custom 模式走参考图+预写脚本+H3 ref2va 生成，quick 模式纯 T2V 无后处理。后处理（RIFE/LUT/BGM/STT）由 `core/postprocess.py` 共享模块提供。
 
-**当前状态：v0-v7 全部实现 + v10 时间线拼接（M1-M8）+ svg 有声流水线（S1-S5）+ t2c 自然语言→命令 + v17 make 统一入口（M1-M2）+ v13 多智能体（M0-M4 + v13.1 前端可视化，agents/ 目录，docs/v13-design.md）**（v2 长视频 + v2.1 backlog + v3 M0-M7 + v4 M1-M6 + v5 M1-M4 + v6 M1-M4 + v7 前端 M1-M4 + v10 + t2c），**v8-v15 规划就绪**（2026-09-23 重排；v13 已落地为薄包装版）。
+**当前状态：v0-v7 全部实现 + v10 时间线拼接（M1-M8）+ svg 有声流水线（S1-S5）+ t2c 自然语言→命令 + v12 make 统一入口（M1-M2，原 v17）+ v11 多智能体（M0-M4 + v11.1 前端可视化，原 v13，agents/ 目录，docs/v11-design.md）**（v2 长视频 + v2.1 backlog + v3 M0-M7 + v4 M1-M6 + v5 M1-M4 + v6 M1-M4 + v7 前端 M1-M4 + v10 + t2c），**待开发**：v14 社交媒体（原 v11）/ v15 开源整合（原 v12）/ v16 长视频质量（原 v14）/ v17 二创（原 v16）/ v18 交付形态（2026-09-26 重排，已完成块前移）。
 
-**版本路线**：v4 营销号流水线（fast/hot 爬图出片）→ v5 剪辑特效 → v6 prompt 多轮核实（ask + dialog API）→ v7 前端 agent WebUI（:8894/ui）→ **v8 前端增强**（资产库/分镜预览/进度可视化/时间线展示）→ **v9 API 标准化**（多 Vendor 适配/能力发现/用量限流/OpenAPI）→ **v10 拼接与特效**（OpenCut 时间线思路，后端 CLI 可被 LLM 调用）→ **v11 接入社交媒体**（发布渠道 + IM 机器人网关）→ **v12 整合开源仓库**（断点续跑/JSON 容错/RAG/五维提示词）→ **v13 多智能体**（三层 Agent 解耦）→ **v14 长视频质量**（关键帧驱动/一镜到底/层级一致性）→ **v15 轻量化**（纯 API 模式/无 GPU）。详见 docs/roadmap.md。
+**版本路线**：v4 营销号流水线（fast/hot 爬图出片）→ v5 剪辑特效 → v6 prompt 多轮核实（ask + dialog API）→ v7 前端 agent WebUI（:8894/ui）→ **v8 前端增强**（资产库/分镜预览/进度可视化/时间线展示）→ **v9 API 标准化**（多 Vendor 适配/能力发现/用量限流/OpenAPI）→ **v10 拼接与特效**（OpenCut 时间线思路，后端 CLI 可被 LLM 调用）→ **v11 多智能体**（三层 Agent 解耦，原 v13）→ **v12 三排正交**（make 统一入口，原 v17）→ **v13 轻量化**（SVG 流水线，原 v15）→ **v14 接入社交媒体**（发布渠道 + IM 机器人网关，原 v11）→ **v15 整合开源仓库**（断点续跑/JSON 容错/RAG/五维提示词，原 v12）→ **v16 长视频质量**（关键帧驱动/一镜到底/层级一致性，原 v14）→ **v17 二创**（视频链接二创，原 v16）。详见 docs/roadmap.md。
 
 v1 角色锚流程：FLUX 生角色图 → TripoSplat 重建 3DGS → 每镜 RenderSplat 按角度渲染参考帧 → Wan I2V 生成。
 
@@ -89,7 +89,7 @@ vidance/
 │   ├── pipeline.py            # auto 模式流水线主控（内部模块）
 │   ├── custom_gen.py          # custom 模式 H3 ref2va 生成（内部模块）
 │   ├── postprocess.py         # 共享后处理（RIFE/LUT/BGM/STT）
-│   ├── narration.py           # v17 配音/字幕单一实现（Narrator：TTS 三级降级+静音兜底+SRT）
+│   ├── narration.py           # v12（原 v17）配音/字幕单一实现（Narrator：TTS 三级降级+静音兜底+SRT）
 │   ├── scheduler.py           # v4 异步任务队列（TaskQueue SQLite + Scheduler 线程轮询）
 │   ├── api_server.py          # v4 FastAPI 服务（:8894，任务提交/查询/仪表盘/选题/克隆/裁剪）
 │   └── dashboard.py           # v4 HTML 仪表盘生成（队列统计+缩略图+选题批次）
@@ -116,11 +116,11 @@ vidance/
 │   ├── dialog.py              # v6 prompt 多轮核实状态机（DialogManager，SQLite，M1-M4 已实现）
 │   ├── compose.py             # v10 时间线拼接与特效（OpenCut 思路，后端 CLI；M1-M8 已实现：关键帧/掩码/贴纸轨/split）
 │   ├── t2c_server.py          # t2c 推理封装（translate(text)→command，进程内单例/可选 HTTP）
-│   ├── svg_llm.py             # v15 概念→LLM→动效 SVG（S1）
-│   ├── svg_pipeline.py        # v15 SVG→mp4（无头浏览器逐帧渲染，纯 CPU；S2 单帧/S3 抽帧/S4 成片）
+│   ├── svg_llm.py             # v13（原 v15）概念→LLM→动效 SVG（S1）
+│   ├── svg_pipeline.py        # v13（原 v15）SVG→mp4（无头浏览器逐帧渲染，纯 CPU；S2 单帧/S3 抽帧/S4 成片）
 │   ├── h3_prompt_video.py     # 整段式 prompt + 参考图 → H3 ref2va 单镜（原生音频直出）
-│   ├── oneshot.py             # v14 一镜到底（链式 I2V 末帧回灌 + 运镜脚本 + 漂移控制；🎯 待实现）
-│   ├── notify/                # v11 社交媒体/IM 网关（base/wecom/feishu/dingtalk/factory；🎯 待实现）
+│   ├── oneshot.py             # v16（原 v14）一镜到底（链式 I2V 末帧回灌 + 运镜脚本 + 漂移控制；🎯 待实现）
+│   ├── notify/                # v14（原 v11）社交媒体/IM 网关（base/wecom/feishu/dingtalk/factory；🎯 待实现）
 │   ├── luts/                  # v2 LUT 文件目录（cinematic/warm/cool/vintage/vivid/soft .cube）
 │   └── workflows/
 │       ├── wan_t2v.json       # Wan T2V workflow 模板
@@ -130,7 +130,7 @@ vidance/
 │       ├── rife_transition.json  # v2 RIFE 插帧 workflow（7 节点）
 │       ├── hunyuan3d_single.json  # v3 Hunyuan3Dv2 单图→mesh workflow（M1 验证）
 │       └── hunyuan3d_multiview.json  # v3 Hunyuan3Dv2 多视角→mesh workflow（M2 验证）
-├── agents/                    # v13 多智能体：D/G/P/V 物理分层 + 薄包装（docs/v13-design.md）
+├── agents/                    # v11 多智能体（原 v13）：D/G/P/V 物理分层 + 薄包装（docs/v11-design.md）
 │   ├── base.py                # TaskResult + @register 注册表 + run_agent（计时/兜底/落盘）
 │   ├── blackboard.py          # agent_runs 黑板（复用 output/tasks.sqlite）
 │   ├── runtime.py             # load_all + run_chain（${ctx.key} 引用产物）
@@ -147,7 +147,7 @@ vidance/
 ├── .opencode/
 │   ├── agents/{director,reviewer,asset,scout}.md
 │   └── skills/{scriptwriting,review,topic_scouting}/SKILL.md
-├── docs/                      # 设计文档（roadmap + hierarchy.md 方法脉络图 + v17-modules.md 三排正交 + v0-v17 design + deployed-models + instructions/ 命令库+剪辑指令库 + v-t2c.md；archive/ 历史稿）
+├── docs/                      # 设计文档（roadmap + hierarchy.md 方法脉络图 + v12-modules.md 三排正交 + v0-v18 design + deployed-models + instructions/ 命令库+剪辑指令库 + v-t2c.md；archive/ 历史稿）
 │   └── usage*.md              # 使用指南（usage.md 主入口 + usage-v0/v1/v2/v3/v4/v6/v7/v10/v-svg.md 分版本小工具）
 ├── voice_samples/ → /mnt/dataset/...  # 音色试听样本（软链）
 └── output/                    # 成片 + 元数据（真实目录，任务=output/{task_id}/，成片 final.mp4）
@@ -225,7 +225,7 @@ python core/vidance.py concat clip1.mp4 clip2.mp4 -o merged.mp4 --transition cro
 | `--no-rife` | ✓ | ✓ | — | — | 禁用 RIFE 过渡 |
 | `--stt` | ✓ | ✓ | — | — | STT 字幕对齐 |
 
-# ── svg：v15 SVG 流水线（概念→LLM 生成 SVG→逐帧渲染→mp4，纯 CPU）──
+# ── svg：v13（原 v15）SVG 流水线（概念→LLM 生成 SVG→逐帧渲染→mp4，纯 CPU）──
 python core/vidance.py svg --concept "鹈鹕骑自行车"                    # 一键
 python core/vidance.py svg --svg output/svg/pelican_bike.svg -o output/svg_demo/out.mp4 --duration 3
 python core/vidance.py svg --svg scene.svg --still --at 1.5           # 单帧调试
@@ -487,14 +487,14 @@ python core/vidance.py fast "概念" --images dir/ --effects auto       # LLM �
 python utils/effects.py apply in.mp4 --effect punch_in -o out.mp4     # 单片段特效
 python utils/effects.py transition a.mp4 b.mp4 --kind slide -o out.mp4 # xfade 双段拼接
 
-# v13 多智能体（薄包装 Agent + chain + 黑板）
+# v11 多智能体（原 v13；薄包装 Agent + chain + 黑板）
 python core/vidance.py agent list                                          # 28 个 Agent
 python core/vidance.py agent run post.fx --with '{"video":"a.mp4","effect":"zoom"}'
 curl http://127.0.0.1:8894/api/agents                                       # 注册表
 curl http://127.0.0.1:8894/api/tasks/{id}/trace                             # 链轨迹（agent_runs）
 # 排队链任务：POST /api/tasks {"mode":"chain","chain":[{"agent":"post.lut","with":{...}}],"ctx":{},"concept":"标签"}
 # chain 步骤支持 ${ctx.key}/$ {as.artifact} 引用上一步产物；POST /api/agents/chain 同步跑
-# v13.1 前端：/ui 里 /arch 画分层架构图（运行时点亮），/agent list|run|chain，chain 任务卡片内嵌 trace 时间线
+# v11.1 前端：/ui 里 /arch 画分层架构图（运行时点亮），/agent list|run|chain，chain 任务卡片内嵌 trace 时间线
 
 # v6 prompt 多轮核实（信息不全时追问，增强后概念可喂 auto/fast）
 python core/vidance.py ask "深海探险"                 # 交互多轮追问（≤3 轮），--out 存增强概念
@@ -514,9 +514,9 @@ curl -X POST http://127.0.0.1:8894/api/tool/fast -H 'Content-Type: application/j
 curl http://127.0.0.1:8894/api/video/{task_id} -o final.mp4   # 成片视频流
 
 # ── 已规划（🎯 待实现，见 docs/roadmap.md §4）──
-# v8 前端增强 / v9 API 标准化 / v10 拼接特效（后端 CLI）/ v11 社交媒体
-# v12 整合开源 / v13 多智能体 / v14 长视频质量（含一镜到底）/ v15 轻量化
+# v14 接入社交媒体（原 v11）
+# v15 整合开源（原 v12）/ v16 长视频质量含一镜到底（原 v14）/ v13 轻量化（原 v15）
 # v10 拼接命令示例（规划）：
 # python core/vidance.py compose timeline.json -o final.mp4
-# v14 一镜到底（规划）：
+# v16（原 v14）一镜到底（规划）：
 # python core/vidance.py auto "穿越隧道的光" --oneshot --duration 30

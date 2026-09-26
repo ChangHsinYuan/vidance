@@ -1,7 +1,7 @@
 # Vidance 总览与路线图
 
 > 视频生成 agent 系统：opencode 当"制片人"编排本地生图/生视频/生3D/语音引擎，从一句概念产出有声短片。
-> 原始规划稿见 `archive/roadmap_origin.md`。**已实现**：v0-v7 + v10 时间线拼接（M1-M8）+ v15 SVG 流水线（S1-S5）+ t2c + v17（M1-M2）；其余（v8/v9/v11-v14/v16、v17 M3-M4）为规划版本。
+> 原始规划稿见 `archive/roadmap_origin.md`。**已实现**：v0-v10 + t2c + v11 多智能体（原 v13）+ v12 三排正交 M1-M2（原 v17）+ v13 轻量化 S1-S5（原 v15）；**待开发**：v14 社交媒体（原 v11）/ v15 开源整合（原 v12）/ v16 长视频质量（原 v14）/ v17 二创（原 v16）/ v18 交付形态。（2026-09-26 重排：已完成块前移，未完成块后移，编号按新顺序，括号内为原号，方便对照旧 commit）
 
 ## 1. 定位
 
@@ -95,7 +95,6 @@
 > USTC API：`https://api.llm.ustc.edu.cn/v1`，key 存 `config/config.json`
 
 ---
-
 ## 4. 版本路线
 
 ### v0 — 有声短片 MVP ✅ 已完成
@@ -109,6 +108,8 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 ```
 **详细设计**：[v0-design.md](./v0-design.md)
 
+---
+
 ### v1 — 角色一致性 ✅ 已完成（含 v1.1）
 
 **目标**：同一角色跨镜头不漂移。
@@ -116,11 +117,15 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 **瓶颈**：3DGS 一致性仍受限；flux 侧面/背面可能走样。
 **详细设计**：[v1-design.md](./v1-design.md)
 
+---
+
 ### v2 — 长视频 + 完整后期 ✅ 已完成（v2.1 backlog 已接线）
 
 **目标**：超出单次生成上限的长片 + 完整后期。
 **状态**：2026-09-09 M1-M5 完成。RIFE 过渡 + 并行预取 + LUT 调色 + BGM ducking + STT 字幕全通。v2.1：`--duration N`、`--slowmo N`、per-shot 过渡、`concat` 子命令。
 **详细设计**：[v2-design.md](./v2-design.md)
+
+---
 
 ### v2.5 — 多入口架构 + H3 引擎接入 ✅ 已完成
 
@@ -130,11 +135,15 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 - H3 ref2va：`<Picture i>` 引用多角色，1344×768 + 原生音频，中文 prompt 直传
 **详细设计**：[v2.5-design.md](./v2.5-design.md)
 
+---
+
 ### v3 — 2D→3D→新视角 ✅ 已完成（M0-M7，M8 跳过）
 
 **目标**：从 2D 内容重建 3D，生成原视角没有的新角度视频。
 **进度**：M0 headless 渲染 ✅ / M1 Hunyuan3Dv2 mesh 重建 ✅ / M2 multiview ✅ / M3 mesh_render 封装 ✅ / M4 场景锚 ✅ / M5 角色双路径 ✅ / M6 资产库 ✅ / M7 端到端联调 ✅ / M8 跳过。
 **详细设计**：[v3-design.md](./v3-design.md)
+
+---
 
 ### v4 — 营销号流水线 ✅ 已完成（M1-M6；发布不做，人精选手动上传）
 
@@ -142,17 +151,23 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 **进度**：M1 爬虫+选题 ✅ / M2 异步任务队列 ✅ / M3 声音克隆生产化 ✅ / M4 FunClip 智能裁剪 ✅ / M5 素材爬取 ✅ / M6 快速营销号链路（fast/hot）✅。
 **详细设计**：[v4-design.md](./v4-design.md)
 
+---
+
 ### v5 — 剪辑特效包 ✅ 已完成（M1-M4）
 
 **目标**：丰富单镜头内/镜头间剪辑表现力。
 **进度**：M1 特效库（8 种）✅ / M2 xfade 转场（30+ 种）✅ / M3 LLM 自动选 ✅ / M4 端到端 ✅。
 **详细设计**：[v5-design.md](./v5-design.md)
 
+---
+
 ### v6 — prompt 多轮核实 ✅ 已完成（M1-M4）
 
 **目标**：prompt 信息不全时打回，多轮对话核实需求。
 **进度**：M1 完整度评估（6 维）✅ / M2 对话状态机 ✅ / M3 CLI `ask` ✅ / M4 API 三端点 ✅。修复：全 6 维齐才 COMPLETE，每轮批量问完合并 reply。
 **详细设计**：[v6-design.md](./v6-design.md)、[usage-v6.md](./usage-v6.md)
+
+---
 
 ### v7 — 前端 agent WebUI ✅ 代码完成（浏览器渲染待确认）
 
@@ -197,7 +212,6 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 （目前感觉我的目标就做到这种程度）
 
 以下仅作参考
-
 
 **目标**：对外暴露标准化 RESTful API，第三方/LLM 可编程调用 Vidance 全部能力。
 
@@ -254,45 +268,9 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v11 — 接入社交媒体（🎯 待开发）
+### v11 — 多智能体系统（原 v13）（✅ M0-M4 全部完成，2026-09-26）
 
-**目标**：把成片一键分发到社交平台 / IM，任务完成可推送通知、可在 IM 里用 `/` 命令触发。
-
-**范围**：
-- 发布渠道适配：抖音/B站/视频号/小红书（人工审核后发布，或开放平台 API）
-- IM 机器人网关：`utils/notify/`（`Notifier` 抽象 + 企业微信 / 飞书 / 钉钉 / Slack / Telegram + factory 多通道并发推送）
-- 任务完成 post-hook 接入 v4 scheduler
-- 回调网关 `POST /api/notify/{channel}/callback`（解密→文本→复用 v9 `/api/tool/{name}`）
-- 富媒体卡片：IM 中展示视频预览卡片、进度条、候选方案选择
-- config.json 加 `notify` 节；个人微信不做
-
-**里程碑**：M1 Notifier 抽象+企微 → M2 飞书/钉钉+factory → M3 任务完成自动通知 → M4 回调网关 + 至少一个发布渠道
-
-**参考**：`lark-oapi`（飞书官方 SDK）、wechaty；BigBanana 多候选决策点；原 v9-design.md。
-
----
-
-### v12 — 整合已有开源仓库（🎯 待开发）
-
-**目标**：吸收成熟开源项目的工程能力，不重复造轮子。
-
-**范围**：
-- 断点续跑机制：每步输出持久化，中断后可恢复（ViMax checkpoint/resume）
-- JSON 容错解析：LLM 输出不稳定时容错（TrailingCommaTolerantParser）
-- 结构化视频提示词模板：`[Visual]/[Motion]/[Camera]/[Audio]/[Narrative]` 五维
-- RAG 管线：FAISS + BGE Reranker，长文本输入处理
-- 结构化剧本拆解：非结构化文本→角色/场景/道具
-- 本地语义嵌入 ONNX（all-MiniLM-L6-v2）：资产匹配/场景关联
-- 重试标准化：tenacity 统一 API 重试
-- 候选整合对象：MoneyPrinterTurbo（架构参考）、ViMax、Toonflow、BigBanana、OpenCut
-
-**里程碑**：M1 断点续跑+JSON 容错 → M2 五维提示词模板+RAG → M3 剧本拆解 → M4 嵌入+重试标准化
-
-**参考**：ViMax、Toonflow、BigBanana、MoneyPrinterTurbo（本机 `/mnt/disk_sdb/zxy/MoneyPrinterTurbo/`）。
-
----
-
-### v13 — 多智能体系统（✅ M0-M4 全部完成，2026-09-26）
+（✅ M0-M4 全部完成，2026-09-26）
 
 **目标（定稿口径）**：物理分层 D/G/P/V + 薄包装 Agent + 黑板 + chain 编排，不改既有业务逻辑。
 
@@ -307,35 +285,29 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 **验证**：27 模块旧/新路径 import 同一性 + core 7 模块 + 壳 CLI（compose/llm/stt）+ 端到端 split；三步 LLM 链（编剧→选LUT→审片 score=2）；scheduler chain 任务 completed+黑板落盘。
 
-**v13.1 前端可视化（2026-09-26）**：`/arch` 命令（`tool_dispatch` + `ui renderArch()` 分层彩色卡片，运行时注册表点亮 24 Agent）；chain 任务卡片内嵌 trace 时间线（轮询 `/api/tasks/{id}/trace`，`#步骤 层`徽章+✓/✗+评分+耗时）；`/agent list|run|chain` 命令三端同源。
+**v11.1 前端可视化（2026-09-26）**：`/arch` 命令（`tool_dispatch` + `ui renderArch()` 分层彩色卡片，运行时注册表点亮 24 Agent）；chain 任务卡片内嵌 trace 时间线（轮询 `/api/tasks/{id}/trace`，`#步骤 层`徽章+✓/✗+评分+耗时）；`/agent list|run|chain` 命令三端同源。
 
-**v13.2 闭环（2026-09-26）**：pipeline 审片重试接入 `review_ensemble`（config `review.ensemble` 开关，默认关，失败回退单票）；GPU Agent 注册 `h3shot/splat/mesh` + `post.pip` 画中画（28 个，splat 实测出 PLY、pip 实测出片）；`run_agent` 自举 load_all。
+**v11.2 闭环（2026-09-26）**：pipeline 审片重试接入 `review_ensemble`（config `review.ensemble` 开关，默认关，失败回退单票）；GPU Agent 注册 `h3shot/splat/mesh` + `post.pip` 画中画（28 个，splat 实测出 PLY、pip 实测出片）；`run_agent` 自举 load_all。
 
-**v13.3 归仓（2026-09-26）**：产出目录统一 `default_out()`（`output/agent_{ts}_{name}/`，杜绝 cwd/tmp 散写）；UI 任务 tab 条（累加/持久化/详情浮层含日志与 trace，board 弹层播放器与成片卡片统一）；模型面板连通灯 + 自定义 API 故障互切（`/api/model-providers/health`、`POST /api/model/chat` 候选轮换）。
+**v11.3 归仓（2026-09-26）**：产出目录统一 `default_out()`（`output/agent_{ts}_{name}/`，杜绝 cwd/tmp 散写）；UI 任务 tab 条（累加/持久化/详情浮层含日志与 trace，board 弹层播放器与成片卡片统一）；模型面板连通灯 + 自定义 API 故障互切（`/api/model-providers/health`、`POST /api/model/chat` 候选轮换）。
 
-**后续（v13.x backlog）**：/ui 链 DAG 视图、h3shot 实卡长测、v11 队友网关对接 agent API、chain 并联分支/断点续跑。
-
-### v14 — 长视频质量（🎯 待开发）
-
-**目标**：提升长片（分钟级）的画面质量与跨镜一致性。
-
-**范围**：
-- 关键帧驱动生成：先生成首帧/尾帧，再插值生成中间视频
-- 一镜到底：链式 I2V（段 N 末帧→段 N+1 首帧条件，拼缝隐形）+ LLM 连续运镜脚本 + 漂移控制（每段重注入角色锚）+ `--oneshot --duration N`（原 v8-design.md 能力并入）
-- 分镜间一致性：上下文感知注入（当前场景/角色/服装参考）
-- clip 间过渡管理：情绪/色调/节奏连贯性
-- 层级角色一致性：Scene 级 → Event 级 → 全局角色注册表
-- 长文本处理管线：小说压缩 → 事件提取 → RAG 检索 → 场景分解
-- 世界观持久化：地图/区域/风格等全局上下文持续注入
-- 衍生资产系统：角色变身/场景时间变体自动生成
-
-**里程碑**：M1 关键帧驱动 → M2 一镜到底（末帧回灌+运镜脚本）→ M3 层级一致性 → M4 长文本管线+世界观
-
-**参考**：ViMax Novel2Movie、BigBanana 关键帧驱动、Toonflow 导演规划五步；原 v8-design.md。
+**后续（v11.x backlog）**：/ui 链 DAG 视图、h3shot 实卡长测、社交通知（原 v11，现 v14）网关对接 agent API、chain 并联分支/断点续跑。
 
 ---
 
-### v15 — 轻量化（无 GPU 优先）（🎯 待开发）
+### v12 — 三排正交模块化（原 v17）（🔄 M1-M2 已完成 2026-09-26，详见 [v12-modules.md](./v12-modules.md)）
+
+**目标**：导演层（人肉/LLM/热点/对话）× 生成层（H3/Wan/爬图生图/SVG/二创）× 后期层（配音/字幕/拼接/调色配乐/特效/时间线）三层彻底解耦，任意排列组合出一条完整链路，环节实现唯一无冗余。
+
+**里程碑**：
+- **M1 ✅**：`core/narration.py`（Narrator：say 含三级降级链 / silence / srt）；fastline `_tts_segment`/`_gen_silence`/`_build_srt`/`srt_time`/`_video_duration` 与 svg_pipeline `_tts_seg`/`_silence`/`_srt_time`/`_probe_duration` 全部改薄壳转发（删 ~80 行重复）；SVG S5 回归通过
+- M2 `vidance.py make --director --generator` 统一入口（现有子命令变别名）
+- M3 `utils/director.py` 合并三套编剧/旁白 prompt（pipeline/fastline/svg_llm）为统一 schema
+- M4 生成器契约统一，v16 二创作为 G5 即插即用
+
+---
+
+### v13 — 轻量化（无 GPU 优先）（原 v15）（🔄 S1-S5 已实现）
 
 **目标**：降低/消除本地 GPU 依赖，纯 API 也能跑。
 
@@ -358,7 +330,71 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v16 — 营销号 Plus：视频链接二创（🎯 待开发，backlog）
+<!-- ═══ 以下 🎯 待开发 ═══ -->
+
+### v14 — 接入社交媒体（原 v11）（🎯 待开发）
+
+**目标**：把成片一键分发到社交平台 / IM，任务完成可推送通知、可在 IM 里用 `/` 命令触发。
+
+**范围**：
+- 发布渠道适配：抖音/B站/视频号/小红书（人工审核后发布，或开放平台 API）
+- IM 机器人网关：`utils/notify/`（`Notifier` 抽象 + 企业微信 / 飞书 / 钉钉 / Slack / Telegram + factory 多通道并发推送）
+- 任务完成 post-hook 接入 v4 scheduler
+- 回调网关 `POST /api/notify/{channel}/callback`（解密→文本→复用 v9 `/api/tool/{name}`）
+- 富媒体卡片：IM 中展示视频预览卡片、进度条、候选方案选择
+- config.json 加 `notify` 节；个人微信不做
+
+**里程碑**：M1 Notifier 抽象+企微 → M2 飞书/钉钉+factory → M3 任务完成自动通知 → M4 回调网关 + 至少一个发布渠道
+
+**参考**：`lark-oapi`（飞书官方 SDK）、wechaty；BigBanana 多候选决策点；原 v9-design.md。
+
+---
+
+---
+
+### v15 — 整合已有开源仓库（原 v12）（🎯 待开发）
+
+**目标**：吸收成熟开源项目的工程能力，不重复造轮子。
+
+**范围**：
+- 断点续跑机制：每步输出持久化，中断后可恢复（ViMax checkpoint/resume）
+- JSON 容错解析：LLM 输出不稳定时容错（TrailingCommaTolerantParser）
+- 结构化视频提示词模板：`[Visual]/[Motion]/[Camera]/[Audio]/[Narrative]` 五维
+- RAG 管线：FAISS + BGE Reranker，长文本输入处理
+- 结构化剧本拆解：非结构化文本→角色/场景/道具
+- 本地语义嵌入 ONNX（all-MiniLM-L6-v2）：资产匹配/场景关联
+- 重试标准化：tenacity 统一 API 重试
+- 候选整合对象：MoneyPrinterTurbo（架构参考）、ViMax、Toonflow、BigBanana、OpenCut
+
+**里程碑**：M1 断点续跑+JSON 容错 → M2 五维提示词模板+RAG → M3 剧本拆解 → M4 嵌入+重试标准化
+
+**参考**：ViMax、Toonflow、BigBanana、MoneyPrinterTurbo（本机 `/mnt/disk_sdb/zxy/MoneyPrinterTurbo/`）。
+
+**依赖**：多智能体（v11，原 v13）黑板/chain 是断点续跑的挂载点。
+
+---
+
+### v16 — 长视频质量（原 v14）（🎯 待开发）
+
+**目标**：提升长片（分钟级）的画面质量与跨镜一致性。
+
+**范围**：
+- 关键帧驱动生成：先生成首帧/尾帧，再插值生成中间视频
+- 一镜到底：链式 I2V（段 N 末帧→段 N+1 首帧条件，拼缝隐形）+ LLM 连续运镜脚本 + 漂移控制（每段重注入角色锚）+ `--oneshot --duration N`（原 v8-design.md 能力并入）
+- 分镜间一致性：上下文感知注入（当前场景/角色/服装参考）
+- clip 间过渡管理：情绪/色调/节奏连贯性
+- 层级角色一致性：Scene 级 → Event 级 → 全局角色注册表
+- 长文本处理管线：小说压缩 → 事件提取 → RAG 检索 → 场景分解
+- 世界观持久化：地图/区域/风格等全局上下文持续注入
+- 衍生资产系统：角色变身/场景时间变体自动生成
+
+**里程碑**：M1 关键帧驱动 → M2 一镜到底（末帧回灌+运镜脚本）→ M3 层级一致性 → M4 长文本管线+世界观
+
+**参考**：ViMax Novel2Movie、BigBanana 关键帧驱动、Toonflow 导演规划五步；原 v8-design.md。
+
+---
+
+### v17 — 营销号 Plus：视频链接二创（原 v16）（🎯 待开发，backlog）
 
 **目标**：用户给一个**视频链接**（B站/抖音/YouTube 等），流水线自动二创出一条新视频，**保留原有全部功能**。
 
@@ -375,30 +411,18 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v17 — 三排正交模块化（🔄 M1-M2 已完成 2026-09-26，详见 [v17-modules.md](./v17-modules.md)）
-
-**目标**：导演层（人肉/LLM/热点/对话）× 生成层（H3/Wan/爬图生图/SVG/二创）× 后期层（配音/字幕/拼接/调色配乐/特效/时间线）三层彻底解耦，任意排列组合出一条完整链路，环节实现唯一无冗余。
-
-**里程碑**：
-- **M1 ✅**：`core/narration.py`（Narrator：say 含三级降级链 / silence / srt）；fastline `_tts_segment`/`_gen_silence`/`_build_srt`/`srt_time`/`_video_duration` 与 svg_pipeline `_tts_seg`/`_silence`/`_srt_time`/`_probe_duration` 全部改薄壳转发（删 ~80 行重复）；SVG S5 回归通过
-- M2 `vidance.py make --director --generator` 统一入口（现有子命令变别名）
-- M3 `utils/director.py` 合并三套编剧/旁白 prompt（pipeline/fastline/svg_llm）为统一 schema
-- M4 生成器契约统一，v16 二创作为 G5 即插即用
-
----
-
 ### v18 — 面向最终用户的交付形态（🎯 规划，2026-09-26 立项）
 
 **目标**：从"开发者本地系统"变成"用户可安装可运行的产品"——先探测本机资源，再按资源分发对应部署档，屏蔽底层细节。
 
 **里程碑草案**：
 - **M0 资源探测**：`core/doctor.py`（GPU 型号/显存/端口占用/conda 环境/磁盘/外网可达性）→ 输出 profile JSON，`vidance doctor` + `/api/doctor`；首次启动自动跑并推荐档
-- **M1 部署分档**：lite（无 GPU：v15 纯 API 模式 + edge-tts + SVG/crawl 图源，pip 即装）/ std（单卡：T2V+CosyVoice，官方镜像）/ full（多卡全家桶：docker-compose 编排 ComfyUI×N+TTS+API），对应 `deploy/{lite,std,full}` Dockerfile/compose 模板
+- **M1 部署分档**：lite（无 GPU：v13 轻量化（原 v15）纯 API 模式 + edge-tts + SVG/crawl 图源，pip 即装）/ std（单卡：T2V+CosyVoice，官方镜像）/ full（多卡全家桶：docker-compose 编排 ComfyUI×N+TTS+API），对应 `deploy/{lite,std,full}` Dockerfile/compose 模板
 - **M2 一键安装**：`install.sh` 按 M0 探测选档 → 拉镜像/建环境 → start_services 接管 → 冒烟自检（复用 start_services.sh test）
 - **M3 面向用户细节**：config 向导（首次填 LLM key/选端口）、失败自诊断提示（端口占用/显存不足/外网不通点名到人）、输出目录与清理策略 UI 化、版本更新通道
 - **M4 交付包装**：版本号语义化 + `vidance --version`、CHANGELOG、docs/usage.md 按档重写成用户手册
 
-**依赖**：v15 轻量化是 lite 档地基；v13 agent API 是网关/机器人接入面。
+**依赖**：v13 轻量化（原 v15）是 lite 档地基；v11 多智能体（原 v13）agent API 是网关/机器人接入面。
 
 ---
 
@@ -511,7 +535,129 @@ vidance/
 | CosyVoice (`/mnt/disk_sdb/zxy/CosyVoice/`) | TTS 引擎 |
 | MoneyPrinterTurbo | 架构参考（字幕双模式/VideoParams/skill） |
 | OpenCut | v10 拼接/时间线模型参考（仅后端思路） |
-| ViMax / Toonflow / BigBanana | v12/v13/v14 多智能体与长视频参考 |
+| ViMax / Toonflow / BigBanana | v11 多智能体 / v16 长视频（原 v13/v14）/ v15 开源整合参考 |
+
+---
+
+## 10. 部署记录
+
+各模型部署细节见 `/mnt/disk_sdb/zxy/` 下：
+- `MiniMax-H3-部署记录.md`、`Wan2.2-部署记录.md`、`HunyuanVideo-部署记录.md`、`SDXL-部署记录.md`、`FLUX-部署记录.md`
+- t2c（mt5-small 微调，自然语言→命令）见 v-t2c.md；模型与推理脚本随项目 `t2c/`
+- Hunyuan3Dv2 见 v3-design.md §13
+
+> 模型文件统一存 `/mnt/dataset/zxy/<Model>-ComfyUI/`，通过 `extra_model_paths.yaml` 映射到 ComfyUI。
+
+## 5. GPU 与端口分配
+
+| 服务 | 端口 | GPU | 环境 | 启动方式 |
+|------|------|-----|------|---------|
+| MiniMax-H3 ref2va (ComfyUI) | 8188 | GPU0 | comfyui | `./start_services.sh start h3` |
+| Wan T2V/I2V + RIFE (ComfyUI) | 8189 | GPU2 | comfyui | `./start_services.sh start wan` |
+| HunyuanVideo (ComfyUI) | 8190 | GPU3 | comfyui | `./start_services.sh start hunyuan` |
+| FLUX + TripoSplat (ComfyUI) | 8192 | GPU3 | comfyui | `./start_services.sh start flux` |
+| Hunyuan3Dv2 turbo (ComfyUI) | 8193 | GPU1 | comfyui | `./start_services.sh start h3d` |
+| TTS 双引擎 (edge-tts + CosyVoice) | 9880 | GPU2 | cosyvoice | `./start_services.sh start tts` |
+| Vidance API + WebUI | 8894 | — | comfyui | `./start_services.sh start api` |
+
+- **一键脚本** `start_services.sh`（start/stop/restart/status/test/logs），服务↔端口↔GPU 映射见脚本注释
+- ⚠️ ComfyUI 启动不能加 `--cuda-device`，会覆盖 `CUDA_VISIBLE_DEVICES`（main.py:87）
+- FLUX(8192) 与 HunyuanVideo(8190) 共用 GPU3，互斥
+- 模型按需加载；TTS 启动即加载 CosyVoice（约 28s）
+- edge-tts 在线引擎不占 GPU（需外网，偶发抖动）
+
+---
+
+## 6. LLM 与 API
+
+| 服务 | 用途 | 状态 |
+|------|------|------|
+| USTC deepseek-v4-flash | 编剧、prompt 优化、LUT/BGM/特效选择、完整度评估 | ✅ 免费 |
+| USTC qwen3.8-chat | 多模态审片 + 图片相关性审核 | ✅ 免费 |
+
+> USTC API：`https://api.llm.ustc.edu.cn/v1`，key 存 `config/config.json`（不入 git）
+
+---
+
+## 7. 关键技术决策
+
+1. **混合模式编排**：确定性流程硬编码，创意/判断交 agent
+2. **ComfyUI workflow JSON 模板 + 参数注入**：可视化调试
+3. **director + reviewer/asset/scout subagents**：opencode 原生，职责隔离
+4. **TTS 双引擎**：cosy-* 本地默认（规避 edge 外网抖动）+ edge-* 在线备选
+5. **字幕用 TTS 时间戳**，STT 兜底（`--stt`）
+6. **审片用 qwen3.8-chat**：支持视觉，180s timeout + 2 retries + safe fallback
+7. **每镜随机 seed**：防 ComfyUI 缓存命中
+8. **审片 3 次上限 + 最高分兜底**：防死循环
+9. **存储分层**：代码/配置/小素材放 sdb，模型/视频/产出放机械盘，软链统一访问
+10. **服务缺省兜底**：TTS 不可用→降级 cosy/default→静音；图源 crawl→FLUX→占位图，流程不崩
+11. **拼接/特效后端化**（v10）：只做可被 LLM 调用的 CLI/API，不做前端，参考 OpenCut 时间线模型
+12. **前端零 npm**：v7/v8 自包含 HTML+vanilla JS，FastAPI 静态服务
+
+---
+
+## 8. 目录结构
+
+```
+vidance/
+├── opencode.json              # opencode 配置：provider + agents + permissions
+├── AGENTS.md                  # 项目约定 + 命令（供 agent 读）
+├── start_services.sh          # 模型服务一键启停/自检脚本
+├── .opencode/
+│   ├── agents/                # director/reviewer/asset/scout.md
+│   └── skills/                # scriptwriting/review/topic_scouting
+├── config/config.json         # API key、引擎地址、模型名、音色配置
+├── core/                      # 编排层
+│   ├── vidance.py             # 统一 CLI（auto/custom/quick/concat/fast/hot/ask/compose）
+│   ├── pipeline.py            # auto 模式流水线主控
+│   ├── custom_gen.py          # custom 模式 H3 ref2va 生成
+│   ├── postprocess.py         # 共享后处理（RIFE/LUT/BGM/STT）
+│   ├── scheduler.py           # 异步任务队列（TaskQueue SQLite + Scheduler）
+│   ├── api_server.py          # FastAPI :8894（任务/dialog/tool/ui/…）
+│   └── dashboard.py           # HTML 仪表盘
+├── utils/                     # 工具层
+│   ├── comfy_api.py           # ComfyUI 客户端（T2V/I2V/TripoSplat/FLUX/H3）
+│   ├── llm.py                 # USTC LLM（文本+多模态）
+│   ├── tts.py / tts_server.py # TTS 客户端 + 双引擎服务
+│   ├── splat_renderer.py      # 3DGS 多角度渲染
+│   ├── mesh_render.py         # headless mesh 渲染（pyrender+EGL）
+│   ├── hunyuan3d.py           # Hunyuan3Dv2 重建客户端
+│   ├── asset_registry.py      # 资产库管理
+│   ├── crawler.py             # 热点爬虫
+│   ├── voice_clone.py         # 声音克隆生产化
+│   ├── funclip.py             # FunClip 智能裁剪
+│   ├── asset_crawler.py       # 素材爬取（Pexels 图源 + BGM）
+│   ├── fastline.py            # 快速营销号链路（图片+zoompan+TTS）
+│   ├── effects.py             # 剪辑特效（v5）
+│   ├── dialog.py              # prompt 多轮核实状态机（v6）
+│   ├── ffmpeg_tools.py        # 抽帧/拼接/字幕/合成
+│   ├── rife.py / gen_luts.py / music.py / stt.py
+│   ├── compose.py             # v10 时间线拼接（M1-M8 已实现）
+│   ├── svg_pipeline.py        # v15 SVG→mp4（逐帧渲染 + S5 有声流水线，已实现 S1-S5）
+│   ├── svg_llm.py             # v15 概念→LLM→动效 SVG
+│   ├── t2c_server.py          # t2c 自然语言→命令（translate，进程内/可选 HTTP）
+│   ├── h3_prompt_video.py     # 整段式 prompt + 参考图 → H3 ref2va 单镜（原生音频直出）
+│   ├── oneshot.py             # v14 一镜到底（🎯 待实现）
+│   ├── notify/                # v11 机器人网关（🎯 待实现）
+│   ├── luts/  bgm/  workflows/  voices/
+├── t2c/                       # t2c 模型（mt5-small 微调）+ 推理脚本 + README
+├── ui/                        # v7/v8 前端（index.html 自包含，:8894/ui）
+├── docs/                      # roadmap + v0-v15 design + usage*.md + instructions/ + v-t2c.md
+├── voice_samples/ → /mnt/dataset/...  # 音色试听样本（软链）
+└── output/ → /mnt/dataset/zxy/vidance/output/  # 成片（软链）
+```
+
+---
+
+## 9. 相关仓库与参考
+
+| 仓库 | 用途 |
+|------|------|
+| ComfyUI (`/mnt/disk_sdb/zxy/ComfyUI/`) | 共用推理引擎，多实例 |
+| CosyVoice (`/mnt/disk_sdb/zxy/CosyVoice/`) | TTS 引擎 |
+| MoneyPrinterTurbo | 架构参考（字幕双模式/VideoParams/skill） |
+| OpenCut | v10 拼接/时间线模型参考（仅后端思路） |
+| ViMax / Toonflow / BigBanana | v11 多智能体 / v16 长视频（原 v13/v14）/ v15 开源整合参考 |
 
 ---
 

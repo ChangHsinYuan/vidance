@@ -88,7 +88,7 @@
    "name": "make",
    "version": "v17",
    "brief": "统一入口：导演(llm/manual/scout) × 生成器(wan/fast/svg/h3) 排列组合",
-   "detail": "v17 三排正交统一入口。导演层：--director llm(LLM编脚本,默认)/manual(--say/--prompt)/scout(爬热点自动选题)；生成层：--generator wan(带--character走auto全管线,否则quick)/fast(爬图+生图营销号)/svg(矢量动画,--voice出有声)/h3(--prompt整段式+--ref,或--script走custom)。后期参数 --voice/--lut/--bgm/--stt 通用。见 docs/v17-modules.md。",
+   "detail": "v12（原 v17）三排正交统一入口。导演层：--director llm(LLM编脚本,默认)/manual(--say/--prompt)/scout(爬热点自动选题)；生成层：--generator wan(带--character走auto全管线,否则quick)/fast(爬图+生图营销号)/svg(矢量动画,--voice出有声)/h3(--prompt整段式+--ref,或--script走custom)。后期参数 --voice/--lut/--bgm/--stt 通用。见 docs/v12-modules.md。",
    "params": [
     {
      "key": "concept",
