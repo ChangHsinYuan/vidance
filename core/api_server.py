@@ -48,7 +48,9 @@ scheduler = None
 
 class TaskSubmit(BaseModel):
     concept: str
-    mode: str = 'auto'  # v7: auto|fast|hot（scheduler 分发 vidance.py 子命令）
+    mode: str = 'auto'  # v7: auto|fast|hot；v13: chain（agent 链编排）
+    chain: Optional[list] = None   # v13: mode=chain 时的 agent 步骤 [{agent, with, as?, optional?}]
+    ctx: Optional[dict] = None     # v13: mode=chain 的初始上下文
     character: Optional[str] = None
     character_mode: str = 'flux'
     voice: Optional[str] = None
@@ -1510,6 +1512,67 @@ if _COMFYUI_PROXY_AVAILABLE:
                 f'</div></body></html>',
                 status_code=502,
             )
+
+
+# ── v13 多智能体 ──
+class AgentRunReq(BaseModel):
+    params: dict = {}
+    task_id: str = 'api'
+
+
+class AgentChainReq(BaseModel):
+    steps: list
+    ctx: dict = {}
+    task_id: str = 'api'
+
+
+@app.get('/api/agents')
+def list_agents_api():
+    """列出已注册 Agent（D/G/P/V 各层薄包装）。"""
+    from agents.runtime import load_all
+    reg = load_all()
+    return {'agents': [
+        {k: v for k, v in a.items() if k != 'fn'}
+        for a in sorted(reg.values(), key=lambda x: (x['layer'], x['name']))]}
+
+
+@app.post('/api/agents/{name}/run')
+def run_agent_api(name: str, req: AgentRunReq):
+    """同步运行单个 Agent（重活建议走 chain 或任务队列）。"""
+    from agents.runtime import load_all
+    from agents.base import run_agent
+    from agents.blackboard import AgentBoard
+    load_all()
+    if name not in __import__('agents.base', fromlist=['REGISTRY']).REGISTRY:
+        raise HTTPException(status_code=404, detail='unknown agent: %s' % name)
+    res = run_agent(name, req.params, board=AgentBoard(), task_id=req.task_id)
+    return res.to_dict()
+
+
+@app.post('/api/agents/chain')
+def run_chain_api(req: AgentChainReq):
+    """按序运行 Agent 链，支持 ${ctx.key} 引用上一步产物。"""
+    from agents.runtime import run_chain
+    return run_chain(req.steps, ctx=req.ctx, task_id=req.task_id)
+
+
+@app.get('/api/tasks/{task_id}/trace')
+def task_trace(task_id: str):
+    """v13：任务的 agent 链执行轨迹（黑板 agent_runs）。"""
+    from agents.blackboard import AgentBoard
+    runs = AgentBoard().runs(task_id=task_id, limit=200)
+    task = queue.get_task(task_id)
+    return {'task_id': task_id,
+            'task': {k: task.get(k) for k in ('status', 'stage', 'output', 'error')}
+                    if task else None,
+            'runs': runs}
+
+
+@app.get('/api/agents/board')
+def agents_board(task_id: str = '', limit: int = Query(50, ge=1, le=500)):
+    """黑板记录：agent_runs 表（谁跑了、产物、评分、耗时）。"""
+    from agents.blackboard import AgentBoard
+    return {'runs': AgentBoard().runs(task_id=task_id or None, limit=limit)}
 
 
 # ── 静态前端 /ui ──

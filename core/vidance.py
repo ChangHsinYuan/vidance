@@ -490,6 +490,37 @@ def _ns(args, **over):
     return argparse.Namespace(**d)
 
 
+def cmd_agent(args):
+    """agent 子命令（v13）：list / run / chain。"""
+    import json as _json
+    from agents.runtime import load_all, run_chain
+    reg = load_all()
+    if args.action == 'list':
+        for a in sorted(reg.values(), key=lambda x: (x['layer'], x['name'])):
+            print('%-28s [%s]%s %s' % (a['name'], a['layer'],
+                                       ' [GPU]' if a['needs_gpu'] else '', a['desc']))
+        return
+    if args.action == 'run':
+        from agents.base import run_agent
+        from agents.blackboard import AgentBoard
+        res = run_agent(args.name, _json.loads(args.with_json),
+                        board=AgentBoard(), task_id=args.task_id)
+        print(_json.dumps(res.to_dict(), ensure_ascii=False, indent=2, default=str))
+        if not res.ok:
+            sys.exit(1)
+        return
+    if args.action == 'chain':
+        steps = args.steps
+        if os.path.isfile(steps):
+            steps = open(steps, encoding='utf-8').read()
+        data = _json.loads(steps)
+        steps = data.get('steps', data.get('chain', data))
+        out = run_chain(steps, ctx=data.get('ctx'), task_id=args.task_id)
+        print(_json.dumps(out, ensure_ascii=False, indent=2, default=str))
+        if not out['ok']:
+            sys.exit(1)
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         prog='vidance',
@@ -705,6 +736,20 @@ def build_parser():
                         choices=['crawl', 'flux'], help='fast 图源')
     p_make.add_argument('--account', default=None, help='scout 账号定位')
     p_make.set_defaults(func=cmd_make)
+
+    # ── agent（v13）──
+    p_agent = sub.add_parser('agent', help='v13 多智能体：list / run / chain')
+    agent_sub = p_agent.add_subparsers(dest='action', required=True)
+    agent_sub.add_parser('list', help='列出已注册 Agent')
+    p_arun = agent_sub.add_parser('run', help='运行单个 Agent')
+    p_arun.add_argument('name')
+    p_arun.add_argument('--with', dest='with_json', default='{}',
+                        help='参数 JSON，如 \'{"concept":"猫"}\'')
+    p_arun.add_argument('--task-id', default='cli')
+    p_achain = agent_sub.add_parser('chain', help='运行 Agent 链')
+    p_achain.add_argument('steps', help='steps JSON（字符串或 .json 文件路径）')
+    p_achain.add_argument('--task-id', default='cli')
+    p_agent.set_defaults(func=cmd_agent)
 
     return parser
 

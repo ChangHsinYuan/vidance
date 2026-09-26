@@ -1,5 +1,5 @@
 {
- "version": "v0-v10",
+ "version": "v0-v13",
  "title": "Vidance 命令指令库",
  "overview_hint": "输入 /help 看全部命令一句话说明；输入 /help 命令名 看该命令的详细参数与示例。",
  "commands": [
@@ -664,6 +664,38 @@
    "examples": [
     "/help",
     "/help auto"
+   ]
+  },
+  {
+   "name": "agent",
+   "version": "v13",
+   "brief": "多智能体：list 列 Agent / run 单跑 / chain 声明式链（黑板 trace）",
+   "detail": "v13 薄包装 Agent 体系：D(编剧决策)/G(生成)/P(后期)/V(审核) 四层共 21 个 Agent，注册表统一分发，运行记录落 output/tasks.sqlite 的 agent_runs 表。chain 步骤 JSON 支持 ${ctx.key} 引用上一步产物（整体引用保类型）。API：GET /api/agents、POST /api/agents/{name}/run、POST /api/agents/chain、GET /api/agents/board、GET /api/tasks/{id}/trace；排队执行用 POST /api/tasks {mode:'chain'}。",
+   "params": [
+    {
+     "key": "list",
+     "desc": "列出全部已注册 Agent（层级/说明/是否需GPU）"
+    },
+    {
+     "key": "run <name> --with '<json>'",
+     "desc": "单独运行一个 Agent，如 run post.fx --with '{\"video\":\"a.mp4\",\"effect\":\"zoom\"}'",
+     "required": false
+    },
+    {
+     "key": "chain '<json|file>'",
+     "desc": "运行 Agent 链：{\"steps\":[{\"agent\":\"post.fx\",\"with\":{...},\"as\":\"fx1\"}, ...]}，${fx1.video} 引用产物",
+     "required": false
+    },
+    {
+     "key": "--task-id",
+     "desc": "黑板归属 task_id（默认 cli）"
+    }
+   ],
+   "examples": [
+    "python core/vidance.py agent list",
+    "python core/vidance.py agent run audit.review_shot --with '{\"scene_desc\":\"猫在月球\",\"frame_paths\":[\"/tmp/f.png\"]}'",
+    "python core/vidance.py agent chain '{\"steps\":[{\"agent\":\"post.fx\",\"with\":{\"video\":\"/tmp/a.mp4\",\"effect\":\"flash\"},\"as\":\"f1\"}]}'",
+    "curl -X POST http://127.0.0.1:8894/api/agents/post.lut/run -H 'Content-Type: application/json' -d '{\"params\":{\"video\":\"/tmp/a.mp4\",\"lut\":\"warm\"}}'"
    ]
   }
  ],

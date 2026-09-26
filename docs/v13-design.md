@@ -1,0 +1,108 @@
+# v13 设计 — 多智能体系统（薄包装版）
+
+> 2026-09-26 定稿并实施（M0-M4 全部完成）。roadmap 见 docs/roadmap.md v13 段。
+
+## 1. 动机与定案
+
+v0-v10/v17 的能力都散在 `utils/` 平铺模块里，由 `core/pipeline.py` 等巨型编排器串死。v13 的目标**不是重写**，而是：
+
+1. **物理分层**——按 D(决策/编剧) / G(生成) / P(后期) / V(审核) + common 五目录归置代码，看清依赖方向（core → agents 层 → common）；
+2. **薄包装 Agent**——每个既有能力用 ~10 行包装成统一契约的 Agent，可被链/远程调用，不做自主 LLM 循环（拍板：薄包装，v14+ 再考虑自主性）；
+3. **黑板**——所有 Agent 运行记录进 SQLite 一张表，trace 可查；
+4. **chain 编排**——声明式 JSON 步骤链，产物经 `${ctx.key}` 传递；
+5. **ensemble**——审核层多模型投票基础设施，默认单票（可扩）。
+
+## 2. 目录布局
+
+```
+agents/
+├── base.py                # TaskResult + @register + REGISTRY + run_agent(计时/兜底/落盘)
+├── blackboard.py          # AgentBoard: output/tasks.sqlite 的 agent_runs 表
+├── runtime.py             # load_all() + run_chain(steps, ctx) + $() 模板解析
+├── director/{__init__.py, agents.py, tools/dialog.py}
+├── generator/{__init__.py, agents.py, tools/{comfy_api,rife,mesh_render,hunyuan3d,
+│              splat_renderer,vendor,model_router,fastline,svg_llm,svg_pipeline,
+│              h3_prompt_video}.py}
+├── post/{__init__.py, agents.py, tools/{effects,compose,ffmpeg_tools,music,
+│         gen_luts,stt,funclip}.py}
+├── audit/{__init__.py, agents.py, tools/}          # V 包装 llm 审片方法，tools 暂空
+└── common/{__init__.py, tools/{llm,tts,config_loader,crawler,asset_crawler,
+           asset_registry,voice_clone,t2c_server}.py}   # 共享基础设施（无 agents.py）
+```
+
+- **迁移机制**：`utils/<x>.py` 原路径保留**薄壳**（`sys.modules[__name__] = importlib.import_module('agents.……')`；`__main__` 时 runpy 转发并补 sys.path）→ 旧 import、旧 CLI、api_server 全部零破坏。
+- **不迁移**：`utils/tts_server.py`（start_services 按路径启动）、`utils/{workflows,luts}`、`bgm/` 数据目录——迁移文件内 `__file__` 根路径统一改 4 级 `dirname`：
+
+```python
+_ROOT = os.path.abspath(__file__)
+for _ in range(4): _ROOT = os.path.dirname(_ROOT)   # agents/X/tools/f.py → 项目根
+```
+
+## 3. Agent 契约
+
+```python
+from agents.base import TaskResult, register
+
+@register(name='post.fx', layer='post', desc='…', inputs='{video, effect, …}',
+          needs_gpu=False)
+def fx(params: dict) -> TaskResult: ...
+```
+
+- `TaskResult{agent, ok, artifacts:{k:v}, trace:[{step,…}], score|None, error}`
+- `run_agent(name, params, board, task_id)`：注册表分发 + 计时 + 异常兜底 + 黑板落盘（黑板失败不影响主流程）。
+- 链不回环：重试闭环留在原模块内部（pipeline 审片重试不受影响）。
+
+## 4. 黑板（`agent_runs` 表，复用 tasks.sqlite）
+
+| 列 | 说明 |
+|---|---|
+| task_id / agent / layer | 归属 |
+| ok / score / error | 结果（score 归一 0-1） |
+| artifacts_json | 产物（视频路径、脚本 dict、votes…） |
+| t_start / t_dur | 时间 |
+
+查询：`GET /api/agents/board`、`GET /api/tasks/{id}/trace`。
+
+## 5. chain 运行器
+
+```json
+{"task_id": "demo", "ctx": {},
+ "steps": [
+   {"agent": "director.scriptwrite", "with": {"concept": "柴犬做早餐", "target_duration": 12}, "as": "sw"},
+   {"agent": "director.select_lut",  "with": {"script": "${sw.script}"}},
+   {"agent": "post.compose",         "with": {"timeline": "${tl}"}, "optional": true}
+ ]}
+```
+
+- `"${key}"` 整体引用 → 原物传参（dict/list 保类型）；字符串内嵌 `${key}` → 文本替换。
+- 产物以 `as.artifact` 和裸 `artifact` 双键并入 ctx；步骤失败即停（`optional:true` 跳过继续）。
+- 入口三件套：`python -m agents.runtime '{…}'`、`vidance.py agent chain steps.json`、`POST /api/agents/chain`；scheduler `mode='chain'` 走队列（进程内执行）。
+
+## 6. 注册 Agent 清单（21）
+
+| 层 | Agent | 包装对象 |
+|---|---|---|
+| D | director.scriptwrite | llm.script_write |
+| D | director.scout | crawler.fetch_hot_topics + llm.scout_topics |
+| D | director.select_lut / select_bgm / select_effects | llm 三选 |
+| G | generator.svg / fast / wan_t2v | SvgLine.run / FastLine.run / Pipeline(quick 语义) |
+| P | post.tts / compose / lut / bgm / subtitle_burn / stt / fx / transition | Narrator / run_timeline / PostProcessor / effects / stt |
+| V | audit.review_shot / review_character / relevance / describe_character / **review_ensemble** | llm 审片系 / 多票投票 |
+
+## 7. API
+
+- `GET /api/agents` — 注册表
+- `POST /api/agents/{name}/run` `{params, task_id}` — 单跑
+- `POST /api/agents/chain` `{steps, ctx, task_id}` — 链
+- `GET /api/agents/board?task_id&limit`、`GET /api/tasks/{id}/trace`
+- `POST /api/tasks` `{mode:'chain', chain:[…], ctx:{…}, concept:'标签'}` — 排队链任务
+
+## 8. 验证记录（2026-09-26）
+
+- 27 模块旧/新别名同一性；core 7 模块 import；壳 CLI（compose/llm/stt）；端到端 `split --precise`
+- 三步 LLM 链 61s 全通：编剧(柴犬的太空早餐) → LUT(cinematic) → 审片(score 2/10，正确识别静态图)
+- scheduler chain 任务：queued→completed，output 回写，scheduler.log 含 chain result JSON，`agent_runs` 落盘
+
+## 9. Backlog
+
+pipeline 审片重试接 review_ensemble；/ui 链 trace 可视化；h3shot/mesh/splat GPU Agent；v11 网关复用 agent API。

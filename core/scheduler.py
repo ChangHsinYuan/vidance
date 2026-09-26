@@ -265,6 +265,8 @@ class Scheduler:
         opts = task['options']
         concept = task['concept']
         mode = opts.get('mode', 'auto')
+        if mode == 'chain':
+            return self._run_chain_task(task)
         if mode not in ('auto', 'fast', 'hot', 'quick'):
             mode = 'auto'
 
@@ -378,6 +380,54 @@ class Scheduler:
                 error=str(e), completed_at=now,
             )
             print(f'  [scheduler] error: {task_id} — {e}')
+
+    def _run_chain_task(self, task):
+        """v13 mode=chain：进程内运行 agent 链（agents.runtime.run_chain）。"""
+        import io
+        import json as _json
+        from contextlib import redirect_stdout
+        task_id = task['task_id']
+        opts = task['options']
+        steps = opts.get('chain') or []
+        ctx = opts.get('ctx') or {}
+        log_path = os.path.join(self.config['output_dir'], task_id, 'scheduler.log')
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+        self.queue.update_task(task_id, status='running', stage='chain',
+                               progress=0.0, started_at=now)
+        try:
+            from agents.runtime import run_chain
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                out = run_chain(steps, ctx=ctx, task_id=task_id,
+                                board=_board())
+            with open(log_path, 'w') as f:
+                f.write(buf.getvalue())
+                f.write('\n===== chain result =====\n')
+                f.write(_json.dumps({k: v for k, v in out.items() if k != 'ctx'},
+                                    ensure_ascii=False, indent=2, default=str))
+            video = out.get('ctx', {}).get('video')
+            now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+            if out.get('ok'):
+                self.queue.update_task(task_id, status='completed', stage='completed',
+                                       progress=1.0, output=video, completed_at=now)
+                print(f'  [scheduler] chain completed: {task_id} — {video}')
+            else:
+                err = next((s.get('error') for s in out.get('steps', [])
+                            if not s.get('ok')), 'chain failed')
+                self.queue.update_task(task_id, status='failed', stage='failed',
+                                       error=err, completed_at=now)
+                print(f'  [scheduler] chain failed: {task_id} — {err}')
+        except Exception as e:
+            now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+            self.queue.update_task(task_id, status='failed', stage='failed',
+                                   error=str(e), completed_at=now)
+            print(f'  [scheduler] chain error: {task_id} — {e}')
+
+
+def _board():
+    from agents.blackboard import AgentBoard
+    return AgentBoard()
 
 
 if __name__ == '__main__':

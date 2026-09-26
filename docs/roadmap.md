@@ -292,25 +292,22 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v13 — 多智能体系统（🎯 待开发）
+### v13 — 多智能体系统（✅ M0-M4 全部完成，2026-09-26）
 
-**目标**：从单 pipeline 串行升级为三层 Agent 解耦架构。
+**目标（定稿口径）**：物理分层 D/G/P/V + 薄包装 Agent + 黑板 + chain 编排，不改既有业务逻辑。
 
-**范围**：
-- 三层架构：决策层（编排，对应 scheduler 升级）→ 执行层（各工具 Agent）→ 监督层（审核 Agent，只提问不改）
-- **编剧 Agent**：故事生成/剧本拆解/分镜规划
-- **审核 Agent**：多模态审核（画面质量/一致性/内容安全）
-- **美术 Agent**：角色定妆照/场景概念图/道具设计
-- **演员 Agent**：关键帧生成 + 视频生成
-- **剪辑 Agent**：自动拼接+转场+节奏控制（对接 v10）
-- **配音配乐 Agent**：TTS + BGM 选择 + 音效
-- Agent 间通信协议 + 状态管理
+**落地形态**（与最初"六 Agent 大重构"规划不同，按 2026-09-26 拍板的薄包装方案执行）：
+- **物理分层**：`agents/{director,generator,post,audit,common}/`，各层 `tools/` 存放从 utils/ 迁入的 27 个实现模块（`utils/` 原路径全部保留薄壳转发，旧 import/CLI 零破坏）；`core/`（CLI+api+scheduler=决策层宿主）与 `core/tts_server 启动链路` 不动
+- **Agent 契约（薄包装）**：`agents/base.py` — `@register(name, layer, desc, inputs, needs_gpu)` + `TaskResult{ok, artifacts, trace, score, error}` + `run_agent()`（计时/异常兜底/黑板落盘）；各层 `agents.py` 把既有能力包装成 21 个 Agent（D×5：scriptwrite/scout/select_lut/select_bgm/select_effects；G×3：svg/fast/wan_t2v；P×8：tts/compose/lut/bgm/subtitle_burn/stt/fx/transition；V×5：review_shot/review_character/relevance/describe_character/review_ensemble）
+- **黑板**：`agents/blackboard.py` `agent_runs` 表（task_id/agent/layer/ok/score/artifacts_json/error/耗时），复用 `output/tasks.sqlite`，dashboard/trace 统一数据源
+- **chain 运行器**：`agents/runtime.py` `run_chain(steps, ctx)`，`${ctx.key}` 引用上一步产物（整体引用保类型/内嵌替换成字符串），产物双键回写（`as.artifact` + 裸 artifact），optional 步骤失败续跑
+- **ensemble 审核**：`audit.review_ensemble` 多模型投票基础设施，默认单票 `models=['qwen3.8-chat']`，评分归一 0-1、全票 pass
+- **统一入口**：CLI `python core/vidance.py agent {list|run|chain}`；API `GET /api/agents`、`POST /api/agents/{name}/run`、`POST /api/agents/chain`、`GET /api/agents/board`、`GET /api/tasks/{id}/trace`
+- **scheduler 编排**：`TaskSubmit.mode='chain'` + `chain/ctx` 字段 → 进程内 `run_chain`，产物回写 task.output，trace 走 `/api/tasks/{id}/trace`
 
-**里程碑**：M1 角色定义+编排骨架 → M2 编剧+审核 Agent → M3 美术+演员 Agent → M4 剪辑+配音 Agent + 三层落地
+**验证**：27 模块旧/新路径 import 同一性 + core 7 模块 + 壳 CLI（compose/llm/stt）+ 端到端 split；三步 LLM 链（编剧→选LUT→审片 score=2）；scheduler chain 任务 completed+黑板落盘。
 
-**参考**：ViMax 14 Agent 分工、Toonflow 三层解耦、BigBanana 资产驱动。
-
----
+**后续（v13.x backlog）**：audit 接入 pipeline 重试闭环（review_ensemble 替换单票）、/ui 画布展示 agent trace、更多 GPU Agent（h3shot/mesh/splat）、v11 队友网关对接 agent API。
 
 ### v14 — 长视频质量（🎯 待开发）
 
