@@ -123,3 +123,12 @@
 面向**开发者**：docs下面有。参考roadmap和usage那些
 面向**用户**：webUI（v7）、微信/飞书机器人（v9）
 
+## 4、tmp：最新测试命令
+
+/agent run generator.fast {"concept":"深夜便利店的一只橘猫","n":1}
+/agent run generator.fast {"concept":"深夜便利店的一只橘猫","n":1,"images_source":"flux"}
+/agent run generator.svg {"concept":"鹈鹕骑自行车"}
+/agent run generator.artist {"prompt":"a cyberpunk city at night with neon lights"}
+
+/agent run generator.wan_t2v {"concept":"一只猫在月球上跳舞"}
+/agent chain {"steps":[{"agent":"generator.artist","with":{"prompt":"a lighthouse in stormy night"},"as":"im"},{"agent":"director.brain","with":{"prompt":"用一句话形容这张图 ${im.image}"}},{"agent":"post.tts","with":{"text":"${b.answer}"}}]}
