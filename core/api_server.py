@@ -2070,6 +2070,30 @@ def task_trace(task_id: str):
             'runs': runs}
 
 
+@app.get('/api/logs/tail')
+def logs_tail(name: str = Query('wan'), n: int = Query(200, ge=1, le=800)):
+    """tail 服务日志（start_services 写 /tmp）：wan/flux/tts/api/h3/h3d/hunyuan。"""
+    _map = {'wan': '/tmp/comfyui_8189.log', 'h3': '/tmp/comfyui_8188.log',
+            'flux': '/tmp/comfyui_8192.log', 'hunyuan': '/tmp/comfyui_8190.log',
+            'h3d': '/tmp/comfyui_8193.log', 'tts': '/tmp/tts_9880.log',
+            'api': '/tmp/api_8894.log'}
+    p = _map.get(name)
+    if not p:
+        raise HTTPException(status_code=400,
+                            detail='用法: /api/logs/tail?name=wan|flux|tts|api|h3|h3d|hunyuan&n=200')
+    if not os.path.isfile(p):
+        return {'log': f'（{p} 不存在——服务可能未用 start_services 启动）', 'path': p}
+    try:
+        with open(p, 'rb') as f:
+            f.seek(0, 2)
+            sz = f.tell()
+            f.seek(max(0, sz - 400_000))
+            data = f.read().decode('utf-8', 'ignore')
+        return {'log': '\n'.join(data.splitlines()[-n:]), 'path': p}
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get('/api/agents/records')
 def agent_records(limit: int = Query(40, ge=1, le=200)):
     """扫描 output 下现存运行目录（agent.log 或 meta.json），历史记录不依赖浏览器存储。
@@ -2132,15 +2156,18 @@ def agent_records(limit: int = Query(40, ge=1, le=200)):
                 except OSError:
                     lines = []
                 n_lines = len(lines)
-                if lines:
-                    start = next((l for l in lines if '▶' in l), lines[0])
-                    title = start[:60]
-                    last = lines[-1]
-                    status = 'run'
-                    if '■' in last:
-                        status = 'ok' if ' ok=True' in last else 'fail'
-                    elif '✗' in last:
-                        status = 'fail'
+            if lines:
+                start = next((l for l in lines if '▶' in l), lines[0])
+                title = start[:60]
+                mc = re.search(r'"(?:concept|prompt)"\s*:\s*"([^"]+)"', '\n'.join(lines))
+                if mc:
+                    title = mc.group(1)[:10]
+                last = lines[-1]
+                status = 'run'
+                if '■' in last:
+                    status = 'ok' if ' ok=True' in last else 'fail'
+                elif '✗' in last:
+                    status = 'fail'
             if status == 'done' and not _find_final(d):
                 continue
             if meta.get('concept') and title == name:
