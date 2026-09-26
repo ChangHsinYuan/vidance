@@ -148,3 +148,16 @@ def voice(p):
         except Exception as e:
             last_err = str(e)[:200]
     return TaskResult(ok=False, error='配音全部降级失败: %s' % last_err)
+
+
+@register(name='post.pip', layer='post',
+          desc='画中画：第二段视频等比缩小叠到主画面角上（可定时窗）',
+          inputs='{video, overlay, out_path?, position?=br|bl|tr|tl|c, scale?=0.35, t0?, dur?}')
+def pip(p):
+    from agents.post.tools.effects import pip as _pip
+    out = p.get('out_path') or (os.path.splitext(p['video'])[0] + '_pip.mp4')
+    ok = _pip(p['video'], p['overlay'], out,
+              position=p.get('position', 'br'), scale=float(p.get('scale', 0.35)),
+              t0=float(p.get('t0', 0)), dur=p.get('dur'))
+    return TaskResult(ok=bool(ok), artifacts={'video': out},
+                      error='' if ok else 'pip 输出失败')

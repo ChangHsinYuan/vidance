@@ -20,7 +20,7 @@ def svg(p):
                                 'height', 'fps', 'bg', 'model', 'lut', 'bgm')
               if k in p}
     meta = SvgLine().run(p['concept'], **kwargs)
-    video = meta.get('video') or meta.get('out_path')
+    video = meta.get('video') or meta.get('output') or meta.get('out_path')
     return TaskResult(ok=bool(video), artifacts={'video': video, 'meta': meta},
                       trace=[{'step': 'svgline', 'video': video}])
 
@@ -33,7 +33,7 @@ def fast(p):
     kwargs = {k: p[k] for k in ('images_dir', 'n', 'motion', 'output_path')
               if k in p}
     meta = FastLine().run(p['concept'], **kwargs)
-    video = meta.get('video') or meta.get('output_path') if isinstance(meta, dict) else meta
+    video = (meta.get('video') or meta.get('output') or meta.get('output_path')) if isinstance(meta, dict) else meta
     return TaskResult(ok=bool(video), artifacts={'video': video, 'meta': meta},
                       trace=[{'step': 'fastline', 'video': video}])
 

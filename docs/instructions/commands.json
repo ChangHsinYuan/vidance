@@ -678,7 +678,7 @@
   {
    "name": "agent",
    "brief": "Agent：list 注册表 / run 单跑 / chain 链式 / board 查台账",
-   "detail": "Agent 体系（薄包装）四层共 24 个 Agent，运行记录落台账（output/tasks.sqlite 的 agent_runs 表）。四个子命令：list 注册表；run <name> --with '<参数JSON>' 单跑；chain --steps '<JSON>' 链式跑（steps:[{agent,with,as?,optional?}]，${别名.产物} 引用上一步输出，整体引用保类型）；board 查运行台账（--n 条数 --task 任务id）。${} 引用也支持 ${key} 与 ${ctx.key} 两种写法。",
+   "detail": "Agent 体系（薄包装）四层共 28 个 Agent，运行记录落台账（output/tasks.sqlite 的 agent_runs 表）。四个子命令：list 注册表；run <name> --with '<参数JSON>' 单跑；chain --steps '<JSON>' 链式跑（steps:[{agent,with,as?,optional?}]，${别名.产物} 引用上一步输出，整体引用保类型）；board 查运行台账（--n 条数 --task 任务id）。${} 引用也支持 ${key} 与 ${ctx.key} 两种写法。",
    "params": [
     {
      "key": "list",

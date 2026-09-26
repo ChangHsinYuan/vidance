@@ -118,7 +118,7 @@ def fx(params: dict) -> TaskResult: ...
 ## 10. v13.2 闭环与 GPU 注册（2026-09-26）
 
 - **pipeline 审片接 ensemble**：`_safe_review_shot` 按 config `review.ensemble.{enabled, models}` 走 `audit.review_ensemble`（`run_agent` 落台账，task=pipeline），返回映射回 pipeline 口径（score×10、全票 pass、feedback 拼接）；全票失败/异常**自动回退单票**不崩。默认关。实测双票 (7✓,5✗)→score 6.0 pass=False。
-- **GPU Agent 注册（24→27）**：`generator.h3shot`（prompt+refs→H3 有声单镜）、`generator.splat`（单图→3DGS PLY，实测 17.8MB）、`generator.mesh`（图→GLB，Hunyuan3D 离线时干净报错）。
+- **Agent 注册（24→28）**：`generator.h3shot`（prompt+refs→H3 有声单镜）、`generator.splat`（单图→3DGS PLY，实测 17.8MB）、`post.pip`（画中画 overlay，svg→glitch→pip 三连实测出片）、`generator.mesh`（图→GLB，Hunyuan3D 离线时干净报错）。
 - **根治**：`run_agent` 未注册名自举 `load_all()`（此前 host 不调 load_all 会得到 unknown agent）。
 
 ## 11. Backlog

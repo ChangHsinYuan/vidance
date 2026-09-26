@@ -486,7 +486,7 @@ python utils/effects.py apply in.mp4 --effect punch_in -o out.mp4     # 单片�
 python utils/effects.py transition a.mp4 b.mp4 --kind slide -o out.mp4 # xfade 双段拼接
 
 # v13 多智能体（薄包装 Agent + chain + 黑板）
-python core/vidance.py agent list                                          # 27 个 Agent
+python core/vidance.py agent list                                          # 28 个 Agent
 python core/vidance.py agent run post.fx --with '{"video":"a.mp4","effect":"zoom"}'
 curl http://127.0.0.1:8894/api/agents                                       # 注册表
 curl http://127.0.0.1:8894/api/tasks/{id}/trace                             # 链轨迹（agent_runs）

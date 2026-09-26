@@ -310,3 +310,29 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+def pip(base_path, overlay_path, out_path, position='br', scale=0.35,
+        t0=0.0, dur=None, margin=24, border=True):
+    """画中画：overlay 缩放到 scale 比例贴在 base 角上（纯 ffmpeg overlay）。"""
+    bw, bh = _ffprobe_size(base_path)
+    ow, oh = _ffprobe_size(overlay_path)
+    tw, th = max(2, int(bw * scale) // 2 * 2), max(2, int(bw * scale * oh / ow) // 2 * 2)
+    pos_xy = {'br': (f'W-w-{margin}', f'H-h-{margin}'),
+              'bl': (f'{margin}', f'H-h-{margin}'),
+              'tr': (f'W-w-{margin}', f'{margin}'),
+              'tl': (f'{margin}', f'{margin}'),
+              'c':  (f'(W-w)/2', f'(H-h)/2')}
+    if position not in pos_xy:
+        raise ValueError(f'position 可选 {list(pos_xy)}')
+    t_end = (t0 + dur) if dur else 1e9
+    chain = f'[1:v]scale={tw}:{th}'
+    if border:
+        chain += f',pad={tw + 4}:{th + 4}:2:2:white'
+    chain += f"[pip];[0:v][pip]overlay={pos_xy[position][0]}:{pos_xy[position][1]}:enable='between(t,{t0},{t_end})'"
+    cmd = [FFMPEG, '-y', '-i', base_path, '-i', overlay_path,
+           '-filter_complex', chain, '-c:a', 'copy',
+           '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
+           '-pix_fmt', 'yuv420p', out_path]
+    subprocess.run(cmd, capture_output=True, timeout=600)
+    return out_path if os.path.isfile(out_path) and os.path.getsize(out_path) > 500 else None
