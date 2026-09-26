@@ -1,6 +1,6 @@
 # v13 设计 — 多智能体系统（薄包装版）
 
-> 2026-09-26 定稿并实施（M0-M4 全部完成）。roadmap 见 docs/roadmap.md v13 段。
+> 2026-09-26 定稿并实施（M0-M4 全部完成 + v13.1 前端 /arch 架构图与 chain trace 可视化）。roadmap 见 docs/roadmap.md v13 段。
 
 ## 1. 动机与定案
 
@@ -78,15 +78,18 @@ def fx(params: dict) -> TaskResult: ...
 - 产物以 `as.artifact` 和裸 `artifact` 双键并入 ctx；步骤失败即停（`optional:true` 跳过继续）。
 - 入口三件套：`python -m agents.runtime '{…}'`、`vidance.py agent chain steps.json`、`POST /api/agents/chain`；scheduler `mode='chain'` 走队列（进程内执行）。
 
-## 6. 注册 Agent 清单（21）
+## 6. 注册 Agent 清单（24）
 
 | 层 | Agent | 包装对象 |
 |---|---|---|
 | D | director.scriptwrite | llm.script_write |
 | D | director.scout | crawler.fetch_hot_topics + llm.scout_topics |
 | D | director.select_lut / select_bgm / select_effects | llm 三选 |
+| D | **director.brain**（智囊） | llm.chat / chat_json（model 可换任意 LLM） |
 | G | generator.svg / fast / wan_t2v | SvgLine.run / FastLine.run / Pipeline(quick 语义) |
+| G | **generator.artist**（美术师） | comfy flux/sdxl t2i + AssetCrawler 爬图互备 |
 | P | post.tts / compose / lut / bgm / subtitle_burn / stt / fx / transition | Narrator / run_timeline / PostProcessor / effects / stt |
+| P | **post.voice**（配音师） | TTSClient 多引擎（edge/cosy/克隆）+ 音色降级链 |
 | V | audit.review_shot / review_character / relevance / describe_character / **review_ensemble** | llm 审片系 / 多票投票 |
 
 ## 7. API
@@ -103,6 +106,15 @@ def fx(params: dict) -> TaskResult: ...
 - 三步 LLM 链 61s 全通：编剧(柴犬的太空早餐) → LUT(cinematic) → 审片(score 2/10，正确识别静态图)
 - scheduler chain 任务：queued→completed，output 回写，scheduler.log 含 chain result JSON，`agent_runs` 落盘
 
-## 9. Backlog
+## 9. v13.1 前端可视化 + 角色包装（2026-09-26）
 
-pipeline 审片重试接 review_ensemble；/ui 链 trace 可视化；h3shot/mesh/splat GPU Agent；v11 网关复用 agent API。
+- **`/arch`**：`tool_dispatch('arch')` 返回分层骨架（core/D/G/P/V/common，每层含运行时注册 Agent + 实现模块清单），`ui/index.html renderArch()` 渲染彩色分层卡片（core 紫/D 橙/G 蓝/P 绿/V 红/common 灰，⚡=需 GPU）；数据实时取自注册表。
+- **chain trace**：任务卡检测 `options.mode==='chain'` → 卡片内 trace 子区，轮询时 `GET /api/tasks/{id}/trace` 渲染步骤时间线（`#步骤 层`徽章 + ✓/✗ + 评分 + 错误 + 耗时）；`/agent run|chain` 结果同用 `traceRows()` 渲染，产物含 video 自动内嵌播放。
+- `/agent` 命令：`list` 注册表 / `run <name> --with '<json>'` / `chain --steps '<json>'`（CLI/API/UI 三端同源）；`--with/--steps` **贪婪捕获**到行尾（UI 里 JSON 不带引号、含空格也不会被 shlex 切碎）。
+- **角色包装 Agent（21→24）**：`generator.artist` 美术师（`engine: flux|sdxl|crawl` 生图/爬图拿原材料，爬落兜 FLUX）；`post.voice` 配音师（多引擎+音色降级链 edge/cosy/克隆）；`director.brain` 智囊（`{prompt, model?, json?}` 任意 LLM 一问一答）。
+- **修复**：①`${ctx.key}` 与 `${key}` 双语法（runtime `_lookup`）；②P/G/D 层 `load_config` 误从 compose 导入（M0 迁移遗留，`_post()` 连带修复，post.lut 回归通过）；③`post.lut` 接受 `style` 别名；④`/arch` inputs 字符串渲染崩溃。
+- 快速用法：UI 直敲 `/agent chain --steps {"steps":[{"agent":"post.lut","as":"c","with":{"video":"/in.mp4","lut":"warm","out_path":"/tmp/l.mp4"}},{"agent":"post.fx","with":{"video":"${c.video}","effect":"zoom","out_path":"/tmp/f.mp4"}}]}`；排队异步 `POST /api/tasks {"mode":"chain","chain":[…],"ctx":{}}`。
+
+## 10. Backlog
+
+pipeline 审片重试接 review_ensemble；/ui 链视图（DAG 图）；h3shot/mesh/splat GPU Agent；v11 网关复用 agent API。

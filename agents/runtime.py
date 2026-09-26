@@ -42,14 +42,26 @@ def load_all():
 _REF = re.compile(r'\$\{([\w.]+)\}')
 
 
+def _lookup(key, ctx):
+    if key not in ctx and key.startswith('ctx.'):
+        key = key[4:]
+    return ctx.get(key, _MISS)
+
+
+_MISS = object()
+
+
 def _resolve(v, ctx):
     if isinstance(v, str):
         m = _REF.fullmatch(v.strip())
         if m:
-            if m.group(1) not in ctx:
+            val = _lookup(m.group(1), ctx)
+            if val is _MISS:
                 raise KeyError('chain: ${%s} 不在上下文中' % m.group(1))
-            return ctx[m.group(1)]
-        return _REF.sub(lambda mm: str(ctx.get(mm.group(1), mm.group(0))), v)
+            return val
+        return _REF.sub(lambda mm: str(_lookup(mm.group(1), ctx)
+                                      if _lookup(mm.group(1), ctx) is not _MISS
+                                      else mm.group(0)), v)
     if isinstance(v, dict):
         return {k: _resolve(x, ctx) for k, x in v.items()}
     if isinstance(v, list):

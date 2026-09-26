@@ -54,3 +54,37 @@ def wan_t2v(p):
     return TaskResult(ok=bool(video) and os.path.isfile(video),
                       artifacts={'video': video, 'meta': meta},
                       trace=[{'step': 'quick', 'out': video}])
+
+
+@register(name='generator.artist', layer='generator', needs_gpu=True,
+          desc='美术师：文生图/爬图拿原材料（flux|sdxl|crawl）',
+          inputs='{prompt, engine?=flux|sdxl|crawl, out_path?, top?=1}')
+def artist(p):
+    engine = p.get('engine', 'flux')
+    prompt = p.get('prompt') or p.get('concept') or ''
+    from agents.common.tools.config_loader import load_config
+    out_dir = os.path.join(load_config().get('output_dir', 'output'), 'artist')
+    os.makedirs(out_dir, exist_ok=True)
+    if engine in ('crawl', 'bing', 'pexels'):
+        from agents.common.tools.asset_crawler import AssetCrawler
+        files = AssetCrawler().download_images(prompt, out_dir, top=int(p.get('top', 1)))
+        paths = [f['path'] if isinstance(f, dict) else f for f in files]
+        if not paths:
+            return TaskResult(ok=False, error='crawl 未下载到图')
+        return TaskResult(ok=True, artifacts={'image': paths[0], 'images': paths})
+    inst = 'sdxl' if engine == 'sdxl' else 'flux'
+    from agents.generator.tools.comfy_api import ComfyClient
+    out = p.get('out_path') or os.path.join(
+        out_dir, 'artist_%d.png' % abs(hash(prompt) % 10 ** 8))
+    try:
+        client = ComfyClient(instance=inst)
+        r = client.generate_flux_t2i(prompt, width=p.get('width', 1024),
+                                     height=p.get('height', 1024), output_path=out)
+        path = r.get('image_path') or out
+        if not os.path.isfile(path):
+            return TaskResult(ok=False, error='%s 生图失败' % inst)
+        return TaskResult(ok=True, artifacts={'image': path, 'engine': inst})
+    except Exception as e:
+        if engine == 'sdxl':  # sdxl 未起时兜底 flux
+            return artist({**p, 'engine': 'flux'})
+        return TaskResult(ok=False, error='artist %s: %s' % (inst, e))

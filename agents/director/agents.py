@@ -68,3 +68,30 @@ def select_effects(p):
     from agents.common.tools.llm import LLMClient
     picks = LLMClient().select_effects(p['script'], EFFECTS, TRANSITIONS)
     return TaskResult(ok=True, artifacts={'effect_picks': picks})
+
+
+@register(name='director.brain', layer='director',
+          desc='智囊：任意 LLM API 一问一答（model 可换，剧本/文案/决策通用）',
+          inputs='{prompt|question, system?, model?, temperature?, json?}')
+def brain(p):
+    from agents.common.tools.llm import LLMClient
+    from agents.common.tools.config_loader import load_config
+    llm = LLMClient(load_config())
+    msgs = []
+    if p.get('system'):
+        msgs.append({'role': 'system', 'content': p['system']})
+    msgs.append({'role': 'user', 'content': p.get('prompt') or p.get('question') or ''})
+    kw = {'model': p.get('model'), 'temperature': p.get('temperature', 0.7)}
+    kw = {k: v for k, v in kw.items() if v is not None}
+    try:
+        if p.get('json'):
+            ans = llm.chat_json(msgs, **kw)
+        else:
+            ans = llm.chat(msgs, **kw)
+        if not ans:
+            return TaskResult(ok=False, error='LLM 空回复')
+        import json as _json
+        return TaskResult(ok=True, artifacts={
+            'answer': _json.dumps(ans, ensure_ascii=False) if p.get('json') else ans})
+    except Exception as e:
+        return TaskResult(ok=False, error='brain: %s' % str(e)[:200])

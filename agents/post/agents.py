@@ -16,7 +16,7 @@ from agents.base import TaskResult, register
 def _post():
     from core.postprocess import PostProcessor
     from agents.common.tools.llm import LLMClient
-    from agents.post.tools.compose import load_config
+    from agents.common.tools.config_loader import load_config
     return PostProcessor(load_config(), llm=LLMClient())
 
 
@@ -47,7 +47,7 @@ def compose(p):
           inputs='{video, lut(cinematic|warm|cool|vintage|vivid|soft), out_path?}')
 def lut(p):
     from agents.post.tools.gen_luts import generate_cube
-    style = p['lut']
+    style = p.get('lut') or p.get('style')
     out = p.get('out_path') or p['video']
     if out != p['video']:
         shutil.copy(p['video'], out)
@@ -117,3 +117,34 @@ def transition(p):
     ok = tfade(p['clip_a'], p['clip_b'], out, kind=p.get('kind', 'fade'),
                duration=p.get('duration', 0.4))
     return TaskResult(ok=bool(ok), artifacts={'video': out})
+
+
+@register(name='post.voice', layer='post',
+          desc='配音师：多引擎配音（edge-*/cosy-*/克隆音色，失败自动降级）',
+          inputs='{text, out_path?, voice?, speed?, prompt_wav?, prompt_text?}')
+def voice(p):
+    from agents.common.tools.tts import TTSClient
+    from agents.common.tools.config_loader import load_config
+    cfg = load_config()
+    client = TTSClient(cfg)
+    out = p.get('out_path') or os.path.join(
+        os.getcwd(), 'voice_%d.wav' % abs(hash(p['text']) % 10 ** 8))
+    wanted = p.get('voice') or client.default_voice
+    chain = [wanted]
+    for fb in (cfg.get('tts', {}).get('fallback_voice'), 'cosy-default', 'edge-xiaoxiao'):
+        if fb and fb not in chain:
+            chain.append(fb)
+    last_err = ''
+    for v in chain:
+        try:
+            r = client.synthesize(p['text'], out, voice=v,
+                                  speed=p.get('speed', 1.0),
+                                  prompt_wav=p.get('prompt_wav'),
+                                  prompt_text=p.get('prompt_text'))
+            if r and os.path.isfile(out):
+                score = None
+                return TaskResult(ok=True, artifacts={'audio': out, 'voice': v})
+            last_err = 'synthesize 无产物'
+        except Exception as e:
+            last_err = str(e)[:200]
+    return TaskResult(ok=False, error='配音全部降级失败: %s' % last_err)

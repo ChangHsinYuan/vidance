@@ -695,6 +695,16 @@ TOOLS = [
          {'key': '--bgm', 'type': 'choice', 'choices': ['calm', 'uplifting', 'mysterious', 'dramatic', 'playful', 'epic'], 'desc': 'BGM mood'},
          {'key': '--slowmo', 'type': 'number', 'desc': '慢动作倍率'},
      ]},
+    {'name': 'arch', 'help': '架构总览：编排→D/G/P/V 四层 Agent + 服务在线状态',
+     'params': []},
+    {'name': 'agent', 'help': 'Agent：list 注册表 / run 单跑 / chain 链式（${} 引用产物）',
+     'params': [
+         {'key': 'sub', 'type': 'choice', 'choices': ['list', 'run', 'chain', 'board'],
+          'required': True, 'desc': '子命令'},
+         {'key': 'name/steps', 'type': 'text', 'desc': 'run: agent 名；chain: steps JSON'},
+         {'key': '--with', 'type': 'text', 'desc': "run 参数 JSON，如 '{\"video\":\"a.mp4\"}'"},
+         {'key': '--steps', 'type': 'text', 'desc': 'chain 步骤 JSON 或文件'},
+     ]},
     {'name': 'fast', 'help': '快速营销号链路：爬图+运镜+TTS（分钟级出片）',
      'params': [
          {'key': 'concept', 'type': 'text', 'required': True, 'desc': '热点概念/旁白主题（中文）'},
@@ -918,6 +928,11 @@ def _parse_repeated(argstr: str, repeat_keys: set) -> dict:
     return {'pos': pos, 'rep': rep, 'flags': flags}
 
 
+def _v13_board():
+    from agents.blackboard import AgentBoard
+    return AgentBoard()
+
+
 @app.post('/api/tool/{name}')
 def tool_dispatch(name: str, req: ToolRequest):
     """统一 / 命令分发：解析 args → 调对应后端 → {result, task_id?, message}"""
@@ -1121,6 +1136,142 @@ def tool_dispatch(name: str, req: ToolRequest):
                                 detail='concat 失败: ' + ((r.stderr or '') + (r.stdout or ''))[-400:])
         return {'message': '拼接完成', 'output': out, 'compose_output': out,
                 'video_url': '/api/file?path=' + out}
+
+    # ── arch（架构总览：层/Agent/服务 数据驱动 + 端口在线探测）──
+    if name == 'arch':
+        import socket
+        from agents.runtime import load_all
+        reg = load_all()
+        by_layer = {}
+        for a in reg.values():
+            by_layer.setdefault(a['layer'], []).append(
+                {'name': a['name'], 'desc': a['desc'], 'gpu': a['needs_gpu'],
+                 'inputs': a['inputs']})
+
+        def _up(port, host='127.0.0.1'):
+            try:
+                with socket.create_connection((host, port), timeout=0.3):
+                    return True
+            except OSError:
+                return False
+
+        services = [
+            {'name': 'ComfyUI · H3', 'port': 8188, 'gpu': 'GPU0', 'for': 'custom/H3 生成'},
+            {'name': 'ComfyUI · Wan+RIFE', 'port': 8189, 'gpu': 'GPU2', 'for': 'T2V/I2V/插帧'},
+            {'name': 'ComfyUI · FLUX', 'port': 8192, 'gpu': 'GPU3', 'for': '生图/美术师'},
+            {'name': 'ComfyUI · SDXL', 'port': 8191, 'gpu': '—', 'for': '生图备选'},
+            {'name': 'ComfyUI · Hunyuan3D', 'port': 8193, 'gpu': 'GPU1', 'for': '3D 重建'},
+            {'name': 'TTS 双引擎', 'port': 9880, 'gpu': 'GPU2', 'for': 'edge/CosyVoice/克隆'},
+            {'name': 'Vidance API · UI', 'port': 8894, 'gpu': 'CPU', 'for': '/ui /api /agent'},
+        ]
+        for s in services:
+            s['online'] = _up(s['port'])
+        skeleton = [
+            ('core', '编排宿主', 'core/',
+             'CLI vidance.py / FastAPI / scheduler 队列 / pipeline 主链', []),
+            ('director', 'D · 决策层', 'agents/director/',
+             '选题·编剧·风格/BGM/特效决策·智囊', ['dialog']),
+            ('generator', 'G · 生成层', 'agents/generator/',
+             '视频/图像/3D/SVG 生成与渲染', ['comfy_api', 'fastline', 'svg_pipeline',
+                                          'rife', 'mesh_render', 'vendor', 'model_router']),
+            ('post', 'P · 后期层', 'agents/post/',
+             '时间线拼接·调色·BGM·字幕·特效·配音', ['compose', 'effects', 'music',
+                                                 'stt', 'ffmpeg_tools']),
+            ('audit', 'V · 审核层', 'agents/audit/',
+             '多模态审片·ensemble 多票', []),
+            ('common', '共享基础设施', 'agents/common/',
+             'LLM·TTS·配置·爬虫·资产·声音克隆·t2c',
+             ['llm', 'tts', 'config_loader', 'crawler', 'asset_registry']),
+        ]
+        layers = []
+        for key, title, path, note, tools in skeleton:
+            item = {'layer': key, 'title': title, 'path': path, 'note': note,
+                    'tools': tools,
+                    'agents': sorted(by_layer.get(key, []), key=lambda x: x['name'])}
+            if key == 'common':
+                item['roles'] = [
+                    {'role': '🧠 智囊团', 'impl': 'llm', 'by': 'director.brain / 各层 LLM 决策'},
+                    {'role': '🎙️ 配音师', 'impl': 'tts + voice_clone', 'by': 'post.voice / post.tts'},
+                    {'role': '📡 情报员', 'impl': 'crawler + asset_crawler', 'by': 'director.scout / artist(crawl)'},
+                    {'role': '🗄️ 资产管家', 'impl': 'asset_registry', 'by': '角色/场景 3D 资产复用'},
+                    {'role': '🧰 勤务管家', 'impl': 'config_loader + t2c_server', 'by': '配置 / 自然语言→命令'},
+                ]
+            layers.append(item)
+        return {'message': 'Vidance 多智能体架构',
+                'flow': '概念 → D 决策 → G 生成 → P 后期 → V 审核（不过回 G 重做）→ 成片',
+                'layers': layers, 'services': services,
+                'board': '每张卡片/每次运行都记入台账（output/tasks.sqlite 的 agent_runs 表），'
+                         'chain 任务的时间线即从此读取',
+                'entry': 'vidance.py agent {list|run|chain} · POST /api/agents/chain · '
+                         "POST /api/tasks {mode:'chain'}"}
+
+    # ── agent（v13：子分发 list/run/chain）──
+    if name == 'agent':
+        import json as _json
+        import shlex as _shq
+        from agents.runtime import load_all, run_chain
+        from agents.base import run_agent as _ra, REGISTRY
+        load_all()
+        sub = pos[0] if pos else 'list'
+        if sub == 'list':
+            return {'message': f'共 {len(REGISTRY)} 个 Agent（D/G/P/V 四层薄包装）',
+                    'agents': [{k: v for k, v in a.items() if k != 'fn'}
+                               for a in sorted(REGISTRY.values(),
+                                               key=lambda x: (x['layer'], x['name']))]}
+        def _greedy(key):
+            """--steps/--with 贪婪捕获：JSON 含空格被 shlex 切碎时，取 flag 后整段。"""
+            a = req.args or ''
+            i = a.find('--' + key)
+            if i < 0:
+                return None
+            v = a[i + len(key) + 2:].lstrip()
+            if v[:1] in ('"', "'") and v[-1:] == v[:1]:
+                v = v[1:-1].replace('\\"', '"').replace("\\'", "'")
+            elif v[:1] in ('"', "'"):
+                v = v[1:]
+            return v
+
+        if sub == 'run':
+            if len(pos) < 2:
+                raise HTTPException(status_code=400,
+                                    detail='用法: /agent run <name> --with \'<参数JSON>\'')
+            agen = pos[1]
+            if agen not in REGISTRY:
+                raise HTTPException(status_code=404, detail='unknown agent: %s' % agen)
+            pj = _greedy('with') or flags.get('with') or flags.get('w') or '{}'
+            try:
+                params = _json.loads(pj) if isinstance(pj, str) else pj
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail='--with 非法 JSON: %s' % e)
+            res = _ra(agen, params, board=_v13_board(), task_id='ui')
+            dd = res.to_dict()
+            dd['message'] = ('✓ %s 完成' % agen) if res.ok else ('✗ %s 失败' % agen)
+            return dd
+        if sub == 'chain':
+            raw = (_greedy('steps') or flags.get('steps') or flags.get('f')
+                   or (' '.join(pos[1:]) if len(pos) > 1 else ''))
+            if not raw:
+                raise HTTPException(status_code=400,
+                                    detail='用法: /agent chain --steps \'{"steps":[...]}\'')
+            try:
+                data = _json.loads(raw)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail='steps 非法 JSON: %s' % e)
+            steps = data.get('steps', data.get('chain', data)) if isinstance(data, dict) else data
+            out = run_chain(steps, ctx=data.get('ctx') if isinstance(data, dict) else None,
+                            task_id='ui', board=_v13_board())
+            out['message'] = ('✓ 链完成（%d 步，%.1fs）' % (len(out['steps']), out['t_dur'])
+                              if out['ok'] else '✗ 链中断')
+            out.pop('ctx', None)
+            return out
+        if sub == 'board':
+            from agents.blackboard import AgentBoard
+            n = int(flags.get('n', 15))
+            tid = flags.get('task') or flags.get('t') or ''
+            runs = AgentBoard().runs(task_id=tid or None, limit=n)
+            return {'board': True, 'runs': runs,
+                    'message': '运行台账最近 %d 条%s' % (len(runs), ('（任务 %s）' % tid) if tid else '')}
+        raise HTTPException(status_code=400, detail='/agent 子命令: list | run | chain | board')
 
     # ── h3shot（整段式 prompt + 参考图 → H3 单镜，异步）──
     if name == 'h3shot':

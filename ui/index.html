@@ -121,6 +121,31 @@
   .slash-item:hover, .slash-item.active { background: var(--bg3); }
   .slash-item code { color: var(--accent); font-weight: 700; margin-right: 8px; }
   .slash-item .d { font-size: 12px; color: var(--fg-dim); }
+  /* arch + agent trace */
+  .arch-flow { font-size: 12px; color: var(--fg-dim); margin: 6px 0 2px; }
+  .arch-svcs { margin: 6px 0 4px; }
+  .svc { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-family: monospace;
+         border: 1px solid #2c2c4a; border-radius: 12px; padding: 1px 9px; margin: 2px 5px 0 0; color: var(--fg-dim); }
+  .svc i { width: 7px; height: 7px; border-radius: 50%; background: #555; display: inline-block; }
+  .svc.on i { background: #3ddc84; box-shadow: 0 0 5px #3ddc84; }
+  .svc.on { color: #cfd3ea; }
+  .arch-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin: 10px 0 6px; }
+  .arch-L { border: 1px solid; border-radius: 8px; padding: 9px 11px; background: var(--bg3); }
+  .arch-h { font-weight: 700; font-size: 13px; margin-bottom: 3px; }
+  .arch-p { font-weight: 400; font-size: 11px; color: var(--fg-dim); margin-left: 6px; font-family: monospace; }
+  .arch-n { font-size: 11px; color: var(--fg-dim); margin-bottom: 6px; }
+  .arch-L .ag { display: inline-block; font-size: 11px; background: #232342; border-radius: 10px; padding: 1px 8px; margin: 2px 3px 0 0; color: #cfd3ea; }
+  .arch-t { margin-top: 5px; }
+  .arch-L .tl { display: inline-block; font-size: 10px; color: var(--fg-dim); border: 1px solid #2c2c4a; border-radius: 3px; padding: 0 5px; margin: 2px 3px 0 0; font-family: monospace; }
+  .arch-sub { font-size: 11px; color: var(--fg-dim); margin-left: 8px; }
+  .arch-note { font-size: 11px; color: var(--fg-dim); margin-top: 4px; }
+  .trace-row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 4px 0; border-bottom: 1px dashed #232342; }
+  .trace-row:last-child { border-bottom: none; }
+  .trace-badge { font-family: monospace; font-size: 10px; border-radius: 3px; padding: 0 6px; border: 1px solid #2c2c4a; color: #9aa0c8; flex-shrink: 0; }
+  .trace-agg { white-space: nowrap; font-weight: 600; font-size: 12px; }
+  .trace-agg.ok { color: var(--ok); } .trace-agg.err { color: var(--err); }
+  .trace-score { color: #f6c85c; } .trace-dur { color: var(--fg-dim); margin-left: auto; font-size: 11px; flex-shrink: 0; }
+  .trace-err { color: var(--err); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* 模型设置弹层 */
   #model-modal {
@@ -428,13 +453,16 @@ function addTaskCard(t) {
   if (document.getElementById('card-' + t.task_id)) return updateTaskCard(t);
   const div = document.createElement('div');
   div.className = 'card'; div.id = 'card-' + t.task_id;
+  const chain = t.options && t.options.mode === 'chain';
   div.innerHTML = `
-    <h4><span class="pill ${t.status}" id="pill-${t.task_id}">${t.status}</span> 生成中</h4>
+    <h4><span class="pill ${t.status}" id="pill-${t.task_id}">${t.status}</span> ${chain ? 'Agent 链' : '生成中'}</h4>
     <div class="concept">${escapeHtml(t.concept)}</div>
     <div class="progress-bar"><div id="bar-${t.task_id}"></div></div>
-    <div class="meta" id="meta-${t.task_id}">阶段: ${t.stage || 'queued'}</div>`;
+    <div class="meta" id="meta-${t.task_id}">阶段: ${t.stage || 'queued'}</div>
+    ${chain ? '<div id="trace-' + t.task_id + '" style="margin-top:8px"></div>' : ''}`;
   messages.appendChild(div);
   scrollBottom();
+  if (chain) refreshTrace(t.task_id);
 }
 
 function updateTaskCard(t) {
@@ -444,6 +472,12 @@ function updateTaskCard(t) {
   if (pill) { pill.textContent = t.status; pill.className = 'pill ' + t.status; }
   if (bar) bar.style.width = Math.round((t.progress || 0) * 100) + '%';
   if (meta) meta.textContent = '阶段: ' + (t.stage || t.status) + (t.error ? ' | 错误: ' + t.error : '');
+  if (document.getElementById('trace-' + t.task_id) || (t.options && t.options.mode === 'chain')) {
+    const wrap = document.getElementById('card-' + t.task_id);
+    if (wrap && !document.getElementById('trace-' + t.task_id))
+      wrap.insertAdjacentHTML('beforeend', '<div id="trace-' + t.task_id + '" style="margin-top:8px"></div>');
+    refreshTrace(t.task_id);
+  }
   if ((t.status === 'completed' || t.status === 'failed') && pollers[t.task_id]) {
     clearInterval(pollers[t.task_id]); delete pollers[t.task_id];
     if (t.status === 'completed') addVideoCard(t);
@@ -472,6 +506,95 @@ function addVideoCard(t) {
     <video controls preload="metadata" src="/api/video/${t.task_id}"></video>`;
   messages.appendChild(div);
   scrollBottom();
+}
+
+/* ── 架构图 / agent / chain trace ── */
+const ARCH_COLORS = { core:'#8b7cf6', director:'#f6a35c', generator:'#5cc8f6',
+                      post:'#63e6a6', audit:'#f66c8b', common:'#9aa0b4' };
+function renderArch(d) {
+  const cards = (d.layers || []).map(L => {
+    const c = ARCH_COLORS[L.layer] || '#888';
+    const ags = (L.agents || []).map(a => {
+      const ins = Array.isArray(a.inputs) ? a.inputs.join(', ') : String(a.inputs || '');
+      return `<span class="ag" title="${escapeHtml(ins)}｜${escapeHtml(a.desc||'')}">${escapeHtml(a.name)}${a.gpu?' ⚡':''}</span>`;
+    }).join('');
+    const tls = (L.tools || []).map(t => `<span class="tl">${escapeHtml(t)}</span>`).join('');
+    const roles = (L.roles || []).map(r =>
+      `<span class="ag" title="实现: ${escapeHtml(r.impl)}｜入口: ${escapeHtml(r.by)}">${escapeHtml(r.role)}</span>`).join('');
+    return `<div class="arch-L" style="border-color:${c}">
+      <div class="arch-h" style="color:${c}">${escapeHtml(L.title)}<span class="arch-p">${escapeHtml(L.path)}</span></div>
+      <div class="arch-n">${escapeHtml(L.note)}</div>
+      ${roles ? '<div>' + roles + '</div><div class="arch-n" style="margin-top:4px">按角色拆分的共享服务，模块归各层 Agent 调用</div>' : ''}
+      ${ags ? '<div>' + ags + '</div>' : ''}
+      ${tls ? '<div class="arch-t">' + tls + '</div>' : ''}
+    </div>`;
+  }).join('');
+  const svcs = (d.services || []).map(s =>
+    `<span class="svc ${s.online?'on':'off'}" title="${escapeHtml(s.for||'')}">` +
+    `<i></i>${escapeHtml(s.name)} :${s.port}${s.gpu && s.gpu!=='—' && s.gpu!=='CPU' ? '·'+s.gpu : ''}</span>`).join('');
+  return `<b>🧭 ${escapeHtml(d.message)}</b>
+    <div class="arch-flow">${escapeHtml(d.flow||'')}</div>
+    <div class="arch-svcs">${svcs}</div>
+    <div class="arch-grid">${cards}</div>
+    <div class="arch-note">运行台账：${escapeHtml(d.board||'')}</div>
+    <div class="arch-note">入口：${escapeHtml(d.entry||'')}</div>`;
+}
+function renderAgent(d) {
+  if (d.board) {
+    const rows = (d.runs || []).map(s => {
+      const t = new Date((s.t_start || 0) * 1000);
+      const hh = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0') + ':' + String(t.getSeconds()).padStart(2, '0');
+      return `<div class="trace-row"><span class="trace-dur">${hh}</span>` +
+        `<span class="trace-badge" style="color:${ARCH_COLORS[s.layer]||'#888'}">${escapeHtml(s.layer)}</span>` +
+        `<span class="trace-agg ${s.ok?'ok':'err'}">${s.ok?'✓':'✗'} ${escapeHtml(s.agent)}</span>` +
+        (s.score != null ? `<span class="trace-score">${s.score}</span>` : '') +
+        `<span class="trace-dur" style="margin-left:0;color:var(--fg-dim)">${escapeHtml(String(s.task_id||''))}</span>` +
+        `<span class="trace-dur">${(s.t_dur||0).toFixed(1)}s</span></div>`;
+    }).join('');
+    return `<b>📖 ${escapeHtml(d.message)}</b>` + (rows || '<div class="trace-dur">暂无记录</div>');
+  }
+  if (d.agents) {
+    const rows = d.agents.map(a =>
+      `<div class="trace-row"><span class="trace-badge" style="color:${ARCH_COLORS[a.layer]}">${a.layer}</span>` +
+      `<span class="trace-agg">${escapeHtml(a.name)}</span><span>${escapeHtml(a.desc||'')}</span>` +
+      `<span class="trace-dur">${a.gpu?'⚡ GPU':''}</span></div>`).join('');
+    return `<b>${escapeHtml(d.message)}</b>${rows}`;
+  }
+  if (d.steps) {
+    const rows = traceRows(d.steps.map(s => ({
+      agent: s.agent, layer: s.layer, ok: s.ok, score: s.score,
+      t_dur: s.t_dur, error: s.error })));
+    const head = `<b>${d.ok ? '✓' : '✗'} ${escapeHtml(d.message || '')}</b>`;
+    const vid = d.ctx && d.ctx.video ? `<video controls preload="metadata" src="/api/file?path=${encodeURIComponent(d.ctx.video)}"></video>` : '';
+    return head + rows + vid;
+  }
+  const ok = d.ok !== false;
+  const arts = Object.entries(d.artifacts || {}).map(([k, v]) =>
+    `<span class="tl">${escapeHtml(k)}=${escapeHtml(String(v))}</span>`).join(' ');
+  const vid = d.artifacts && d.artifacts.video
+    ? `<video controls preload="metadata" src="/api/file?path=${encodeURIComponent(d.artifacts.video)}"></video>` : '';
+  return `<b>${ok ? '✓' : '✗'} ${escapeHtml(d.message || '')}</b> ` +
+         `<span class="trace-dur">${(d.t_dur||0).toFixed(1)}s</span>` +
+         (arts ? '<div style="margin-top:6px">' + arts + '</div>' : '') +
+         (d.error ? '<div class="trace-err">' + escapeHtml(d.error) + '</div>' : '') + vid;
+}
+function traceRows(runs) {
+  return runs.map((s, i) =>
+    `<div class="trace-row"><span class="trace-badge">#${i+1} ${(s.layer||'').toUpperCase()}</span>` +
+    `<span class="trace-agg ${s.ok?'ok':'err'}">${s.ok?'✓':'✗'} ${escapeHtml(s.agent)}</span>` +
+    (s.score != null ? `<span class="trace-score">${s.score}</span>` : '') +
+    (s.error ? `<span class="trace-err">${escapeHtml(String(s.error).slice(0,120))}</span>` : '') +
+    `<span class="trace-dur">${(s.t_dur||0).toFixed(1)}s</span></div>`).join('');
+}
+async function refreshTrace(taskId) {
+  const el = document.getElementById('trace-' + taskId);
+  if (!el) return;
+  try {
+    const d = await (await fetch(`/api/tasks/${taskId}/trace`)).json();
+    const runs = (d.runs || []).slice().reverse();
+    el.innerHTML = runs.length ? traceRows(runs)
+      : '<div class="trace-dur">等待首个 Agent 完成…</div>';
+  } catch (e) { /* 静默 */ }
 }
 
 function quickHelp(cmd) {
@@ -542,6 +665,10 @@ async function dispatchSlash(text) {
   });
   const d = await r.json();
   if (!r.ok) { addBot('<b>✗ ' + escapeHtml(d.detail || r.status) + '</b>'); return; }
+
+  // v13 arch 架构图 / agent 注册表+运行
+  if (name === 'arch') { addBot(renderArch(d)); return; }
+  if (name === 'agent') { addBot(renderAgent(d)); return; }
 
   // 任务型：auto/fast/hot
   if (d.task_id) {

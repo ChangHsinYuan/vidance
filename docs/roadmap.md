@@ -298,7 +298,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 **落地形态**（与最初"六 Agent 大重构"规划不同，按 2026-09-26 拍板的薄包装方案执行）：
 - **物理分层**：`agents/{director,generator,post,audit,common}/`，各层 `tools/` 存放从 utils/ 迁入的 27 个实现模块（`utils/` 原路径全部保留薄壳转发，旧 import/CLI 零破坏）；`core/`（CLI+api+scheduler=决策层宿主）与 `core/tts_server 启动链路` 不动
-- **Agent 契约（薄包装）**：`agents/base.py` — `@register(name, layer, desc, inputs, needs_gpu)` + `TaskResult{ok, artifacts, trace, score, error}` + `run_agent()`（计时/异常兜底/黑板落盘）；各层 `agents.py` 把既有能力包装成 21 个 Agent（D×5：scriptwrite/scout/select_lut/select_bgm/select_effects；G×3：svg/fast/wan_t2v；P×8：tts/compose/lut/bgm/subtitle_burn/stt/fx/transition；V×5：review_shot/review_character/relevance/describe_character/review_ensemble）
+- **Agent 契约（薄包装）**：`agents/base.py` — `@register(name, layer, desc, inputs, needs_gpu)` + `TaskResult{ok, artifacts, trace, score, error}` + `run_agent()`（计时/异常兜底/黑板落盘）；各层 `agents.py` 把既有能力包装成 24 个 Agent（D×6：scriptwrite/scout/select_lut/select_bgm/select_effects/**brain 智囊**；G×4：svg/fast/wan_t2v/**artist 美术师**；P×9：tts/compose/lut/bgm/subtitle_burn/stt/fx/transition/**voice 配音师**；V×5：review_shot/review_character/relevance/describe_character/review_ensemble）
 - **黑板**：`agents/blackboard.py` `agent_runs` 表（task_id/agent/layer/ok/score/artifacts_json/error/耗时），复用 `output/tasks.sqlite`，dashboard/trace 统一数据源
 - **chain 运行器**：`agents/runtime.py` `run_chain(steps, ctx)`，`${ctx.key}` 引用上一步产物（整体引用保类型/内嵌替换成字符串），产物双键回写（`as.artifact` + 裸 artifact），optional 步骤失败续跑
 - **ensemble 审核**：`audit.review_ensemble` 多模型投票基础设施，默认单票 `models=['qwen3.8-chat']`，评分归一 0-1、全票 pass
@@ -307,7 +307,9 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 **验证**：27 模块旧/新路径 import 同一性 + core 7 模块 + 壳 CLI（compose/llm/stt）+ 端到端 split；三步 LLM 链（编剧→选LUT→审片 score=2）；scheduler chain 任务 completed+黑板落盘。
 
-**后续（v13.x backlog）**：audit 接入 pipeline 重试闭环（review_ensemble 替换单票）、/ui 画布展示 agent trace、更多 GPU Agent（h3shot/mesh/splat）、v11 队友网关对接 agent API。
+**v13.1 前端可视化（2026-09-26）**：`/arch` 命令（`tool_dispatch` + `ui renderArch()` 分层彩色卡片，运行时注册表点亮 24 Agent）；chain 任务卡片内嵌 trace 时间线（轮询 `/api/tasks/{id}/trace`，`#步骤 层`徽章+✓/✗+评分+耗时）；`/agent list|run|chain` 命令三端同源。
+
+**后续（v13.x backlog）**：audit 接入 pipeline 重试闭环（review_ensemble 替换单票）、/ui 链 DAG 视图、更多 GPU Agent（h3shot/mesh/splat）、v11 队友网关对接 agent API。
 
 ### v14 — 长视频质量（🎯 待开发）
 
@@ -378,6 +380,21 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 - M2 `vidance.py make --director --generator` 统一入口（现有子命令变别名）
 - M3 `utils/director.py` 合并三套编剧/旁白 prompt（pipeline/fastline/svg_llm）为统一 schema
 - M4 生成器契约统一，v16 二创作为 G5 即插即用
+
+---
+
+### v18 — 面向最终用户的交付形态（🎯 规划，2026-09-26 立项）
+
+**目标**：从"开发者本地系统"变成"用户可安装可运行的产品"——先探测本机资源，再按资源分发对应部署档，屏蔽底层细节。
+
+**里程碑草案**：
+- **M0 资源探测**：`core/doctor.py`（GPU 型号/显存/端口占用/conda 环境/磁盘/外网可达性）→ 输出 profile JSON，`vidance doctor` + `/api/doctor`；首次启动自动跑并推荐档
+- **M1 部署分档**：lite（无 GPU：v15 纯 API 模式 + edge-tts + SVG/crawl 图源，pip 即装）/ std（单卡：T2V+CosyVoice，官方镜像）/ full（多卡全家桶：docker-compose 编排 ComfyUI×N+TTS+API），对应 `deploy/{lite,std,full}` Dockerfile/compose 模板
+- **M2 一键安装**：`install.sh` 按 M0 探测选档 → 拉镜像/建环境 → start_services 接管 → 冒烟自检（复用 start_services.sh test）
+- **M3 面向用户细节**：config 向导（首次填 LLM key/选端口）、失败自诊断提示（端口占用/显存不足/外网不通点名到人）、输出目录与清理策略 UI 化、版本更新通道
+- **M4 交付包装**：版本号语义化 + `vidance --version`、CHANGELOG、docs/usage.md 按档重写成用户手册
+
+**依赖**：v15 轻量化是 lite 档地基；v13 agent API 是网关/机器人接入面。
 
 ---
 
