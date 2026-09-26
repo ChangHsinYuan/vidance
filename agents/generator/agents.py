@@ -88,3 +88,68 @@ def artist(p):
         if engine == 'sdxl':  # sdxl 未起时兜底 flux
             return artist({**p, 'engine': 'flux'})
         return TaskResult(ok=False, error='artist %s: %s' % (inst, e))
+
+
+@register(name='generator.h3shot', layer='generator', needs_gpu=True,
+          desc='参考图+整段分镜 prompt → H3 有声单镜（ref2va 原生音）',
+          inputs='{prompt, refs, out_path?, seconds?, ref_image_size?}')
+def h3shot(p):
+    from agents.generator.tools.comfy_api import ComfyClient
+    refs = p.get('refs') or ([p['ref']] if p.get('ref') else [])
+    if not refs or not p.get('prompt'):
+        return TaskResult(ok=False, error='需 prompt + refs')
+    seconds = float(p.get('seconds', 5))
+    length = int(min(max(seconds, 2), 15) * 24) + 1
+    out = p.get('out_path') or os.path.join(
+        os.getcwd(), 'h3shot_%d.mp4' % abs(hash(p['prompt']) % 10 ** 8))
+    try:
+        client = ComfyClient(instance='h3')
+        r = client.generate_h3_ref2v(p['prompt'], refs, length=length,
+                                     ref_image_size=p.get('ref_image_size', 'match'),
+                                     output_path=out)
+        path = (r or {}).get('video_path') or out
+        return TaskResult(ok=os.path.isfile(path), artifacts={'video': path})
+    except Exception as e:
+        return TaskResult(ok=False, error='h3shot: %s' % str(e)[:200])
+
+
+@register(name='generator.splat', layer='generator', needs_gpu=True,
+          desc='单图 → 3DGS PLY（TripoSplat）',
+          inputs='{image, out_path?}')
+def splat(p):
+    from agents.generator.tools.comfy_api import ComfyClient
+    out = p.get('out_path') or os.path.join(
+        os.getcwd(), 'splat_%d.ply' % abs(hash(p['image']) % 10 ** 8))
+    try:
+        client = ComfyClient(instance='flux')
+        r = client.generate_tripsplat(p['image'], output_path=out)
+        path = (r or {}).get('ply_path') or (r or {}).get('path') or out
+        return TaskResult(ok=os.path.isfile(path), artifacts={'ply': path})
+    except Exception as e:
+        return TaskResult(ok=False, error='splat: %s' % str(e)[:200])
+
+
+@register(name='generator.mesh', layer='generator', needs_gpu=True,
+          desc='单图/三视图 → GLB mesh（Hunyuan3Dv2，可 mesh_render 出预览）',
+          inputs='{image | images={front,left,back}, out_path?, preview?}')
+def mesh(p):
+    from agents.generator.tools.hunyuan3d import Hunyuan3DClient
+    out = p.get('out_path') or os.path.join(
+        os.getcwd(), 'mesh_%d.glb' % abs(hash(str(p.get('image') or p.get('images'))) % 10 ** 8))
+    client = Hunyuan3DClient()
+    try:
+        imgs = p.get('images')
+        if imgs and all(imgs.get(k) for k in ('front', 'left', 'back')):
+            r = client.generate_multiview(imgs['front'], imgs['left'], imgs['back'],
+                                          output_path=out)
+        else:
+            r = client.generate_single(p['image'], output_path=out)
+        glb = (r.get('glb_path') if isinstance(r, dict) else r) or out
+        arts = {'glb': glb}
+        if p.get('preview') and os.path.isfile(glb):
+            from agents.generator.tools.mesh_render import render_mesh_angles
+            pv_dir = os.path.join(os.path.dirname(glb), 'previews')
+            arts['previews'] = render_mesh_angles(glb, angles=4, output_dir=pv_dir)
+        return TaskResult(ok=os.path.isfile(glb), artifacts=arts)
+    except Exception as e:
+        return TaskResult(ok=False, error='mesh: %s' % str(e)[:200])

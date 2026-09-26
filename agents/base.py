@@ -67,8 +67,15 @@ def list_agents():
 
 
 def run_agent(name, params, board=None, task_id=''):
-    """统一入口：计时 + trace + 黑板落盘 + 异常兜底。"""
+    """统一入口：计时 + trace + 黑板落盘 + 异常兜底。未加载时自举 load_all。"""
     spec = REGISTRY.get(name)
+    if spec is None:
+        try:
+            from agents.runtime import load_all
+            load_all()
+            spec = REGISTRY.get(name)
+        except Exception:
+            pass
     if spec is None:
         return TaskResult(agent=name, ok=False, error='unknown agent: %s' % name)
     t0 = time.time()

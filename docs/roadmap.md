@@ -298,7 +298,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 **落地形态**（与最初"六 Agent 大重构"规划不同，按 2026-09-26 拍板的薄包装方案执行）：
 - **物理分层**：`agents/{director,generator,post,audit,common}/`，各层 `tools/` 存放从 utils/ 迁入的 27 个实现模块（`utils/` 原路径全部保留薄壳转发，旧 import/CLI 零破坏）；`core/`（CLI+api+scheduler=决策层宿主）与 `core/tts_server 启动链路` 不动
-- **Agent 契约（薄包装）**：`agents/base.py` — `@register(name, layer, desc, inputs, needs_gpu)` + `TaskResult{ok, artifacts, trace, score, error}` + `run_agent()`（计时/异常兜底/黑板落盘）；各层 `agents.py` 把既有能力包装成 24 个 Agent（D×6：scriptwrite/scout/select_lut/select_bgm/select_effects/**brain 智囊**；G×4：svg/fast/wan_t2v/**artist 美术师**；P×9：tts/compose/lut/bgm/subtitle_burn/stt/fx/transition/**voice 配音师**；V×5：review_shot/review_character/relevance/describe_character/review_ensemble）
+- **Agent 契约（薄包装）**：`agents/base.py` — `@register(name, layer, desc, inputs, needs_gpu)` + `TaskResult{ok, artifacts, trace, score, error}` + `run_agent()`（计时/异常兜底/黑板落盘）；各层 `agents.py` 把既有能力包装成 27 个 Agent（D×6：scriptwrite/scout/select_lut/select_bgm/select_effects/**brain 智囊**；G×4：svg/fast/wan_t2v/**artist 美术师**；P×9：tts/compose/lut/bgm/subtitle_burn/stt/fx/transition/**voice 配音师**；V×5：review_shot/review_character/relevance/describe_character/review_ensemble）
 - **黑板**：`agents/blackboard.py` `agent_runs` 表（task_id/agent/layer/ok/score/artifacts_json/error/耗时），复用 `output/tasks.sqlite`，dashboard/trace 统一数据源
 - **chain 运行器**：`agents/runtime.py` `run_chain(steps, ctx)`，`${ctx.key}` 引用上一步产物（整体引用保类型/内嵌替换成字符串），产物双键回写（`as.artifact` + 裸 artifact），optional 步骤失败续跑
 - **ensemble 审核**：`audit.review_ensemble` 多模型投票基础设施，默认单票 `models=['qwen3.8-chat']`，评分归一 0-1、全票 pass
@@ -309,7 +309,9 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 **v13.1 前端可视化（2026-09-26）**：`/arch` 命令（`tool_dispatch` + `ui renderArch()` 分层彩色卡片，运行时注册表点亮 24 Agent）；chain 任务卡片内嵌 trace 时间线（轮询 `/api/tasks/{id}/trace`，`#步骤 层`徽章+✓/✗+评分+耗时）；`/agent list|run|chain` 命令三端同源。
 
-**后续（v13.x backlog）**：audit 接入 pipeline 重试闭环（review_ensemble 替换单票）、/ui 链 DAG 视图、更多 GPU Agent（h3shot/mesh/splat）、v11 队友网关对接 agent API。
+**v13.2 闭环（2026-09-26）**：pipeline 审片重试接入 `review_ensemble`（config `review.ensemble` 开关，默认关，失败回退单票）；GPU Agent 注册 `h3shot/splat/mesh`（27 个，splat 实测出 PLY）；`run_agent` 自举 load_all。
+
+**后续（v13.x backlog）**：/ui 链 DAG 视图、h3shot 实卡长测、v11 队友网关对接 agent API、chain 并联分支/断点续跑。
 
 ### v14 — 长视频质量（🎯 待开发）
 

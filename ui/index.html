@@ -519,12 +519,9 @@ function renderArch(d) {
       return `<span class="ag" title="${escapeHtml(ins)}｜${escapeHtml(a.desc||'')}">${escapeHtml(a.name)}${a.gpu?' ⚡':''}</span>`;
     }).join('');
     const tls = (L.tools || []).map(t => `<span class="tl">${escapeHtml(t)}</span>`).join('');
-    const roles = (L.roles || []).map(r =>
-      `<span class="ag" title="实现: ${escapeHtml(r.impl)}｜入口: ${escapeHtml(r.by)}">${escapeHtml(r.role)}</span>`).join('');
     return `<div class="arch-L" style="border-color:${c}">
       <div class="arch-h" style="color:${c}">${escapeHtml(L.title)}<span class="arch-p">${escapeHtml(L.path)}</span></div>
       <div class="arch-n">${escapeHtml(L.note)}</div>
-      ${roles ? '<div>' + roles + '</div><div class="arch-n" style="margin-top:4px">按角色拆分的共享服务，模块归各层 Agent 调用</div>' : ''}
       ${ags ? '<div>' + ags + '</div>' : ''}
       ${tls ? '<div class="arch-t">' + tls + '</div>' : ''}
     </div>`;

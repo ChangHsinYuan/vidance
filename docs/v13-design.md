@@ -115,6 +115,12 @@ def fx(params: dict) -> TaskResult: ...
 - **修复**：①`${ctx.key}` 与 `${key}` 双语法（runtime `_lookup`）；②P/G/D 层 `load_config` 误从 compose 导入（M0 迁移遗留，`_post()` 连带修复，post.lut 回归通过）；③`post.lut` 接受 `style` 别名；④`/arch` inputs 字符串渲染崩溃。
 - 快速用法：UI 直敲 `/agent chain --steps {"steps":[{"agent":"post.lut","as":"c","with":{"video":"/in.mp4","lut":"warm","out_path":"/tmp/l.mp4"}},{"agent":"post.fx","with":{"video":"${c.video}","effect":"zoom","out_path":"/tmp/f.mp4"}}]}`；排队异步 `POST /api/tasks {"mode":"chain","chain":[…],"ctx":{}}`。
 
-## 10. Backlog
+## 10. v13.2 闭环与 GPU 注册（2026-09-26）
 
-pipeline 审片重试接 review_ensemble；/ui 链视图（DAG 图）；h3shot/mesh/splat GPU Agent；v11 网关复用 agent API。
+- **pipeline 审片接 ensemble**：`_safe_review_shot` 按 config `review.ensemble.{enabled, models}` 走 `audit.review_ensemble`（`run_agent` 落台账，task=pipeline），返回映射回 pipeline 口径（score×10、全票 pass、feedback 拼接）；全票失败/异常**自动回退单票**不崩。默认关。实测双票 (7✓,5✗)→score 6.0 pass=False。
+- **GPU Agent 注册（24→27）**：`generator.h3shot`（prompt+refs→H3 有声单镜）、`generator.splat`（单图→3DGS PLY，实测 17.8MB）、`generator.mesh`（图→GLB，Hunyuan3D 离线时干净报错）。
+- **根治**：`run_agent` 未注册名自举 `load_all()`（此前 host 不调 load_all 会得到 unknown agent）。
+
+## 11. Backlog
+
+/ui 链视图（DAG 图）；h3shot 实卡长测；v11 网关复用 agent API；chain 并联/断点。

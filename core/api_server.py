@@ -697,7 +697,7 @@ TOOLS = [
      ]},
     {'name': 'arch', 'help': '架构总览：编排→D/G/P/V 四层 Agent + 服务在线状态',
      'params': []},
-    {'name': 'agent', 'help': 'Agent：list 注册表 / run 单跑 / chain 链式（${} 引用产物）',
+    {'name': 'agent', 'help': 'Agent：list 注册表 / run 单跑 / chain 链式 / board 查台账',
      'params': [
          {'key': 'sub', 'type': 'choice', 'choices': ['list', 'run', 'chain', 'board'],
           'required': True, 'desc': '子命令'},
@@ -1185,18 +1185,20 @@ def tool_dispatch(name: str, req: ToolRequest):
         ]
         layers = []
         for key, title, path, note, tools in skeleton:
-            item = {'layer': key, 'title': title, 'path': path, 'note': note,
-                    'tools': tools,
-                    'agents': sorted(by_layer.get(key, []), key=lambda x: x['name'])}
             if key == 'common':
-                item['roles'] = [
-                    {'role': '🧠 智囊团', 'impl': 'llm', 'by': 'director.brain / 各层 LLM 决策'},
-                    {'role': '🎙️ 配音师', 'impl': 'tts + voice_clone', 'by': 'post.voice / post.tts'},
-                    {'role': '📡 情报员', 'impl': 'crawler + asset_crawler', 'by': 'director.scout / artist(crawl)'},
-                    {'role': '🗄️ 资产管家', 'impl': 'asset_registry', 'by': '角色/场景 3D 资产复用'},
-                    {'role': '🧰 勤务管家', 'impl': 'config_loader + t2c_server', 'by': '配置 / 自然语言→命令'},
-                ]
-            layers.append(item)
+                for r in [
+                    {'role': '🧠 智囊团', 'impl': 'llm', 'by': 'director.brain；各层编剧/选风格/审片都调它'},
+                    {'role': '🎙️ 配音师', 'impl': 'tts + voice_clone', 'by': 'post.voice / post.tts；edge·CosyVoice·克隆音色'},
+                    {'role': '📡 情报员', 'impl': 'crawler + asset_crawler', 'by': 'director.scout / generator.artist(crawl)'},
+                    {'role': '🗄️ 资产管家', 'impl': 'asset_registry', 'by': '角色/场景 3D 资产查重复用'},
+                    {'role': '🧰 勤务管家', 'impl': 'config_loader + tts/t2c 服务', 'by': '配置加载 / 自然语言→命令'},
+                ]:
+                    layers.append({'layer': 'common', 'title': r['role'], 'path': r['impl'],
+                                   'note': r['by'], 'tools': [], 'agents': []})
+                continue
+            layers.append({'layer': key, 'title': title, 'path': path, 'note': note,
+                           'tools': tools,
+                           'agents': sorted(by_layer.get(key, []), key=lambda x: x['name'])})
         return {'message': 'Vidance 多智能体架构',
                 'flow': '概念 → D 决策 → G 生成 → P 后期 → V 审核（不过回 G 重做）→ 成片',
                 'layers': layers, 'services': services,

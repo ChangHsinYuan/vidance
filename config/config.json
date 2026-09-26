@@ -568,5 +568,13 @@
         ]
       }
     ]
+  },
+  "review": {
+    "ensemble": {
+      "enabled": false,
+      "models": [
+        "qwen3.8-chat"
+      ]
+    }
   }
 }

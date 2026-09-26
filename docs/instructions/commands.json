@@ -77,7 +77,7 @@
   },
   {
    "name": "arch",
-   "brief": "架构总览：编排→D/G/P/V 四层 Agent + 服务在线状态",
+   "brief": "架构总览：编排→D/G/P/V 四层 Agent + 五个人格化服务 + 在线状态",
    "detail": "渲染系统架构图：编排宿主（CLI/API/scheduler）→ director（决策）/ generator（生成）/ post（后期）/ audit（审核）四层 + common 共享基础设施，每层列出已注册 Agent 与实现模块；顶部显示主数据流与各模型服务端口在线状态（绿=在线）。所有 Agent 运行记录写入台账（output/tasks.sqlite 的 agent_runs 表），chain 任务时间线即从此读取。",
    "params": [],
    "examples": [
@@ -678,7 +678,7 @@
   {
    "name": "agent",
    "brief": "Agent：list 注册表 / run 单跑 / chain 链式 / board 查台账",
-   "detail": "Agent 体系（薄包装）：D(编剧决策)/G(生成)/P(后期)/V(审核) 四层共 24 个 Agent（含角色包装：美术师 artist 生图/爬图、配音师 voice 多引擎降级、智囊 brain 任意 LLM 问答），注册表统一分发，运行记录落台账（output/tasks.sqlite 的 agent_runs 表）。chain 步骤 JSON 支持 ${ctx.key} 引用上一步产物（整体引用保类型）。API：GET /api/agents、POST /api/agents/{name}/run、POST /api/agents/chain、GET /api/agents/board、GET /api/tasks/{id}/trace；排队执行用 POST /api/tasks {mode:'chain'}。",
+   "detail": "Agent 体系（薄包装）四层共 24 个 Agent，运行记录落台账（output/tasks.sqlite 的 agent_runs 表）。四个子命令：list 注册表；run <name> --with '<参数JSON>' 单跑；chain --steps '<JSON>' 链式跑（steps:[{agent,with,as?,optional?}]，${别名.产物} 引用上一步输出，整体引用保类型）；board 查运行台账（--n 条数 --task 任务id）。${} 引用也支持 ${key} 与 ${ctx.key} 两种写法。",
    "params": [
     {
      "key": "list",
@@ -700,10 +700,11 @@
     }
    ],
    "examples": [
-    "python core/vidance.py agent list",
-    "python core/vidance.py agent run audit.review_shot --with '{\"scene_desc\":\"猫在月球\",\"frame_paths\":[\"/tmp/f.png\"]}'",
-    "python core/vidance.py agent chain '{\"steps\":[{\"agent\":\"post.fx\",\"with\":{\"video\":\"/tmp/a.mp4\",\"effect\":\"flash\"},\"as\":\"f1\"}]}'",
-    "curl -X POST http://127.0.0.1:8894/api/agents/post.lut/run -H 'Content-Type: application/json' -d '{\"params\":{\"video\":\"/tmp/a.mp4\",\"lut\":\"warm\"}}'"
+    "/agent list",
+    "/agent board --n 20",
+    "/agent run director.brain --with {\"prompt\":\"用五个字形容月亮\"}",
+    "/agent run post.lut --with {\"video\":\"in.mp4\",\"lut\":\"warm\",\"out_path\":\"out.mp4\"}",
+    "/agent chain --steps {\"steps\":[{\"agent\":\"post.lut\",\"as\":\"c\",\"with\":{\"video\":\"in.mp4\",\"lut\":\"warm\",\"out_path\":\"/tmp/l.mp4\"}},{\"agent\":\"post.fx\",\"with\":{\"video\":\"${c.video}\",\"effect\":\"zoom\",\"out_path\":\"/tmp/f.mp4\"}}]}"
    ]
   }
  ],

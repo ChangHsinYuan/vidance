@@ -97,6 +97,7 @@ class Pipeline:
         """
         if task_id is None:
             task_id = time.strftime('%Y%m%d_%H%M%S')
+        self._task_id = task_id
         task_dir = os.path.join(self.output_dir, task_id)
         clips_dir = os.path.join(task_dir, 'clips')
         char_dir = os.path.join(task_dir, 'character')
@@ -301,6 +302,24 @@ class Pipeline:
             return self._default_review(score=5, feedback=f'Review error: {e}')
 
     def _safe_review_shot(self, scene_desc, frame_paths, char_ref=None):
+        ens = (self.config.get('review') or {}).get('ensemble') or {}
+        if ens.get('enabled'):
+            try:
+                from agents.base import run_agent
+                res = run_agent('audit.review_ensemble', {
+                    'scene_desc': scene_desc, 'frame_paths': frame_paths,
+                    'models': ens.get('models'), 'char_ref': char_ref},
+                    task_id=getattr(self, '_task_id', 'pipeline'))
+                if res.ok:
+                    votes = res.artifacts.get('votes', [])
+                    fb = ' | '.join(str(v.get('feedback') or v.get('error') or '')[:120]
+                                    for v in votes)
+                    return {'score': round((res.score or 0) * 10, 1), 'dimensions': {},
+                            'feedback': fb, 'pass': bool(res.artifacts.get('passed')),
+                            'ensemble': votes}
+                print('  ⚠ ensemble 全票失败，回退单票')
+            except Exception as e:
+                print(f'  ⚠ review_ensemble failed: {e}')
         try:
             return self.llm.review_shot(scene_desc, frame_paths, character_ref=char_ref)
         except Exception as e:
