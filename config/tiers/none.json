@@ -1,0 +1,14 @@
+{
+  "tier": "none",
+  "tier_desc": "无 GPU：SVG 动画 + fast 爬图链路；LLM/选题走远程 API；TTS=edge-tts 在线（无本地模型）",
+  "tier_capabilities": {
+    "generators": ["svg", "fast"],
+    "comfyui": [],
+    "tts": ["edge"],
+    "stt": false,
+    "voice_clone": false,
+    "auto": false,
+    "custom": false,
+    "h3shot": false
+  }
+}

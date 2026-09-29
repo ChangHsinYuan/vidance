@@ -40,6 +40,8 @@ from typing import Optional
 
 from core.scheduler import TaskQueue, Scheduler, load_config
 
+from agents.common.tools.config_loader import capabilities
+
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.json')
 
 app = FastAPI(title='Vidance Task Queue', version='4.2.0')
@@ -104,9 +106,13 @@ def startup():
 
 @app.get('/api/health')
 def health():
+    cfg = load_config()
     return {
         'status': 'ok',
         'timestamp': datetime.now().isoformat(),
+        'tier': cfg.get('tier', 'full'),
+        'tier_desc': cfg.get('tier_desc', ''),
+        'capabilities': cfg.get('tier_capabilities'),
         'queue': {
             'queued': queue.count_by_status('queued'),
             'running': queue.count_by_status('running'),
@@ -883,7 +889,14 @@ def instructions():
 
 @app.get('/api/tools')
 def tools():
-    return {'tools': TOOLS}
+    # v18 分档过滤：能力不足的命令不进补全清单（auto/quick/hot 需 wan；custom/h3shot 需 h3）
+    from agents.common.tools.config_loader import load_config as _lc
+    caps = capabilities()
+    cfg = _lc()
+    need = {'auto': 'auto', 'quick': 'auto', 'hot': 'auto', 'custom': 'custom', 'h3shot': 'h3shot'}
+    hidden = {n for n, cap in need.items() if caps.get(cap) is False}
+    return {'tools': [t for t in TOOLS if t['name'] not in hidden],
+            'tier': cfg.get('tier', 'full')}
 
 
 class ToolRequest(BaseModel):
@@ -1071,6 +1084,14 @@ def tool_dispatch(name: str, req: ToolRequest):
     spec = next((t for t in TOOLS if t['name'] == name), None)
     if not spec:
         raise HTTPException(status_code=404, detail=f'Unknown tool: {name}')
+    # v18 分档守卫：当前档能力不足的命令直接拒绝并提示换档
+    need = {'auto': 'auto', 'quick': 'auto', 'hot': 'auto', 'custom': 'custom', 'h3shot': 'h3shot'}
+    cap = need.get(name)
+    if cap and capabilities().get(cap) is False:
+        tier = load_config().get('tier', 'full')
+        raise HTTPException(status_code=400, detail=(
+            f'当前部署档 {tier} 不支持 /{name}（能力见 GET /api/health）；'
+            f'换档：VIDANCE_TIER=<none|flux|wan|h3|full>，或用该档可用命令（/svg /fast 等）'))
     a = _parse_tool_args(req.args or '')
     pos = a['positional']
     flags = a['flags']
@@ -2225,8 +2246,8 @@ if __name__ == '__main__':
     import uvicorn
 
     parser = argparse.ArgumentParser(description='Vidance API Server')
-    parser.add_argument('--host', default='0.0.0.0')
-    parser.add_argument('--port', type=int, default=8894)
+    parser.add_argument('--host', default=os.environ.get('VIDANCE_HOST', '0.0.0.0'))
+    parser.add_argument('--port', type=int, default=int(os.environ.get('VIDANCE_PORT', 8894)))
     args = parser.parse_args()
 
     print(f'  [api] starting on {args.host}:{args.port}')

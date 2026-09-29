@@ -1,0 +1,14 @@
+{
+  "tier": "h3",
+  "tier_desc": "+ MiniMax-H3 ref2va（custom/h3shot 参考图直出可用）",
+  "tier_capabilities": {
+    "generators": ["svg", "fast", "wan", "h3"],
+    "comfyui": ["flux", "wan", "h3"],
+    "tts": ["edge", "cosy"],
+    "stt": true,
+    "voice_clone": true,
+    "auto": true,
+    "custom": true,
+    "h3shot": true
+  }
+}

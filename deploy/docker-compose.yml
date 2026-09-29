@@ -1,0 +1,111 @@
+# Vidance 分档部署（v18）— VIDANCE_TIER=none|flux|wan|h3|full
+# 用法（在仓库根目录）：
+#   VIDANCE_TIER=none docker compose -f deploy/docker-compose.yml up -d vidance   # 无 GPU 最小档 :9400
+#   VIDANCE_TIER=full VIDANCE_PORT=9401 docker compose -f deploy/docker-compose.yml up -d vidance  # 全量档连宿主服务
+# 干净机器上才需要 ComfyUI 容器（本机已有宿主服务勿启）：
+#   docker compose -f deploy/docker-compose.yml --profile gpu-wan up -d comfyui-wan
+# 档位说明见 docs/deploy-tiers.md；host 网络直连宿主 ComfyUI/TTS（127.0.0.1）
+services:
+  vidance:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: vidance-api:latest
+    container_name: vidance
+    network_mode: host
+    environment:
+      - VIDANCE_TIER=${VIDANCE_TIER:-none}
+      - VIDANCE_PORT=${VIDANCE_PORT:-9400}
+    volumes:
+      - ../config:/app/config
+      - ../output:/app/output
+      - ../bgm:/app/bgm
+      - ../voices:/app/voices
+    restart: unless-stopped
+
+  # ── GPU 服务（干净机器按需；与宿主已有服务同端口会冲突，勿在本机启动） ──
+  comfyui-h3:      # MiniMax-H3 ref2va，GPU0，custom/h3shot 用
+    profiles: [gpu-h3, gpu-full]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.comfyui
+    image: vidance-comfyui:latest
+    network_mode: host
+    command: ["python", "main.py", "--listen", "0.0.0.0", "--port", "8188"]
+    volumes:
+      - /mnt/dataset/zxy:/mnt/dataset/zxy:ro
+      - ../../ComfyUI:/ComfyUI/custom_nodes_extra
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  comfyui-wan:     # Wan T2V/I2V + RIFE，GPU2，auto/quick 用
+    profiles: [gpu-wan, gpu-full]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.comfyui
+    image: vidance-comfyui:latest
+    network_mode: host
+    command: ["python", "main.py", "--listen", "0.0.0.0", "--port", "8189"]
+    volumes:
+      - /mnt/dataset/zxy:/mnt/dataset/zxy:ro
+    environment:
+      - CUDA_VISIBLE_DEVICES=2
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["2"]
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  comfyui-flux:    # FLUX + TripoSplat 生图，GPU3，fast --images-source flux 用
+    profiles: [gpu-flux, gpu-wan, gpu-h3, gpu-full]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.comfyui
+    image: vidance-comfyui:latest
+    network_mode: host
+    command: ["python", "main.py", "--listen", "0.0.0.0", "--port", "8192"]
+    volumes:
+      - /mnt/dataset/zxy:/mnt/dataset/zxy:ro
+    environment:
+      - CUDA_VISIBLE_DEVICES=3
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["3"]
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  tts:             # CosyVoice 本地 TTS（GPU2）；none/flux 档用 edge-tts 在线不需要
+    profiles: [gpu-wan, gpu-h3, gpu-full]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: vidance-api:latest
+    network_mode: host
+    command: ["python", "utils/tts_server.py"]
+    volumes:
+      - ../config:/app/config
+      - ../voices:/app/voices
+    environment:
+      - CUDA_VISIBLE_DEVICES=2
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["2"]
+              capabilities: [gpu]
+    restart: unless-stopped

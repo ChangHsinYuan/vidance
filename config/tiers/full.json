@@ -1,0 +1,14 @@
+{
+  "tier": "full",
+  "tier_desc": "全量：H3 + Wan + FLUX + Hunyuan3D + CosyVoice + STT 全功能（多卡全家桶）",
+  "tier_capabilities": {
+    "generators": ["svg", "fast", "flux", "wan", "h3"],
+    "comfyui": ["flux", "wan", "h3", "hunyuan", "h3d"],
+    "tts": ["edge", "cosy"],
+    "stt": true,
+    "voice_clone": true,
+    "auto": true,
+    "custom": true,
+    "h3shot": true
+  }
+}

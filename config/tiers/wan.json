@@ -1,0 +1,14 @@
+{
+  "tier": "wan",
+  "tier_desc": "视频卡：+ Wan T2V/I2V + RIFE（auto/quick 可用）；+ CosyVoice 本地 TTS + STT",
+  "tier_capabilities": {
+    "generators": ["svg", "fast", "wan"],
+    "comfyui": ["flux", "wan"],
+    "tts": ["edge", "cosy"],
+    "stt": true,
+    "voice_clone": true,
+    "auto": true,
+    "custom": false,
+    "h3shot": false
+  }
+}

@@ -141,6 +141,7 @@ vidance/
 │   └── common/                # 共享：tools/（llm/tts/config_loader/crawler/爬虫系/voice_clone/t2c_server）
 │   （utils/ 原 27 模块均留薄壳转发，旧 import/CLI 零破坏；tts_server.py 与数据目录不迁）
 ├── t2c/                       # t2c 自然语言→命令（mt5-small 微调模型 + 推理脚本 + README）
+├── deploy/                    # v18 部署档（VIDANCE_TIER=none|flux|wan|h3|full；Dockerfile + Dockerfile.comfyui + docker-compose.yml profiles 五档 + README；API 缺省挂 9400）
 ├── ui/                        # v7 前端（index.html 自包含，零 npm，:8894/ui 访问）
 ├── voices/                    # 自定义 CosyVoice 克隆音色素材目录
 ├── bgm/                       # v2 自定义 BGM 素材目录（放 {mood}.wav 自动使用）

@@ -36,6 +36,8 @@ from utils.fastline import FastLine
 
 def cmd_auto(args):
     """auto 子命令：概念 → LLM 编剧 → 生成 → 后处理"""
+    from agents.common.tools.config_loader import require as _tier
+    _tier('auto')
     pipeline = Pipeline()
     if args.no_rife:
         pipeline.rife_config['enabled'] = False
@@ -63,6 +65,8 @@ def cmd_auto(args):
 
 def cmd_custom(args):
     """custom 子命令：参考图 + 脚本 → H3 ref2va → 后处理"""
+    from agents.common.tools.config_loader import require as _tier
+    _tier('custom')
     post_kwargs = dict(
         no_rife=args.no_rife,
         lut_override=args.lut,
@@ -83,6 +87,8 @@ def cmd_custom(args):
 
 def cmd_quick(args):
     """quick 子命令：纯 T2V，无角色无后处理"""
+    from agents.common.tools.config_loader import require as _tier
+    _tier('auto')
     pipeline = Pipeline()
     pipeline.rife_config['enabled'] = False
     pipeline.color_config['enabled'] = False
@@ -186,6 +192,8 @@ def cmd_concat(args):
 
 def cmd_hot(args):
     """hot 子命令：爬热点 → LLM scout 选题 → fast 出片（一步到位，固定流程）"""
+    from agents.common.tools.config_loader import require as _tier
+    _tier('auto')
     from utils.crawler import Crawler
     from datetime import datetime
 

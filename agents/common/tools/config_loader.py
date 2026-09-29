@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """配置中心加载 — config.json（仓库规范值，服务器/本地通用）
-+ config/config.local.json（本机覆盖，gitignore，不入库）深度合并。
++ config/config.local.json（本机覆盖，gitignore，不入库）
++ config/tiers/{tier}.json（v18 部署档覆盖，VIDANCE_TIER=none|flux|wan|h3|full）深度合并。
 
 所有模块的 load_config 都应委托到这里。
 config.local.json 不存在时行为与直接读 config.json 完全一致（服务器零影响）。
+VIDANCE_TIER 未设时为 full（全量），宿主机行为零变化。
 """
 
 import os as _os
@@ -19,6 +21,15 @@ import os
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 CONFIG_PATH = os.path.join(ROOT, 'config', 'config.json')
 LOCAL_PATH = os.path.join(ROOT, 'config', 'config.local.json')
+TIERS_DIR = os.path.join(ROOT, 'config', 'tiers')
+
+# v18 部署档：VIDANCE_TIER=none|flux|wan|h3|full（缺省 full=全量，宿主机行为零变化）
+FULL_CAPS = {
+    'generators': ['svg', 'fast', 'flux', 'wan', 'h3'],
+    'comfyui': ['flux', 'wan', 'h3', 'hunyuan', 'h3d'],
+    'tts': ['edge', 'cosy'],
+    'stt': True, 'voice_clone': True, 'auto': True, 'custom': True, 'h3shot': True,
+}
 
 
 def deep_merge(base: dict, override: dict) -> dict:
@@ -31,6 +42,10 @@ def deep_merge(base: dict, override: dict) -> dict:
     return out
 
 
+def get_tier() -> str:
+    return _os.environ.get('VIDANCE_TIER', '').strip().lower() or 'full'
+
+
 def load_config() -> dict:
     with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
         cfg = json.load(f)
@@ -38,7 +53,33 @@ def load_config() -> dict:
         with open(LOCAL_PATH, 'r', encoding='utf-8') as f:
             local = json.load(f)
         cfg = deep_merge(cfg, local)
+    tier = get_tier()
+    tier_path = os.path.join(TIERS_DIR, tier + '.json')
+    if os.path.isfile(tier_path):
+        with open(tier_path, 'r', encoding='utf-8') as f:
+            cfg = deep_merge(cfg, json.load(f))
+    else:
+        raise SystemExit(f'⛔ 未知部署档 {tier!r}（可选 none/flux/wan/h3/full，定义在 config/tiers/）')
+    cfg.setdefault('tier', tier)
     return cfg
+
+
+def capabilities(cfg: dict = None) -> dict:
+    """当前档位能力（generators/comfyui/tts/stt/auto/custom/h3shot）"""
+    if cfg is None:
+        cfg = load_config()
+    return cfg.get('tier_capabilities', FULL_CAPS)
+
+
+def require(cap: str, cfg: dict = None):
+    """CLI 档位守卫：能力不足直接退出并提示（cap ∈ auto/custom/h3shot 或 generators 元素）"""
+    caps = capabilities(cfg)
+    ok = caps.get(cap) if isinstance(caps.get(cap), bool) else cap in caps.get('generators', [])
+    if not ok:
+        tier = (cfg or {}).get('tier') or get_tier()
+        raise SystemExit(
+            f"⛔ 当前部署档 {tier} 不支持 {cap}（能力：{caps.get('generators')}）。"
+            f"换档：VIDANCE_TIER=<none|flux|wan|h3|full>；或用该档可用子命令（svg/fast 等）")
 
 
 def load_base_config() -> dict:

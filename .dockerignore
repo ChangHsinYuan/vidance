@@ -1,0 +1,18 @@
+# .dockerignore — 构建上下文瘦身（模型/产出/大文档不入镜像）
+.git
+output/
+t2c/model
+t2c/__pycache__
+# docs 只保留 instructions/（/help 读 commands.json + compose-commands）
+docs/*
+!docs/instructions/
+voices/
+voice_samples/
+bgm/
+*.md
+.opencode/
+__pycache__/
+**/__pycache__/
+*.pyc
+start_services.sh
+deploy/

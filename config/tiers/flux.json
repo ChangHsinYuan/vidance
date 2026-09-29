@@ -1,0 +1,14 @@
+{
+  "tier": "flux",
+  "tier_desc": "单图像卡：+ SDXL/FLUX 生图（fast --images-source flux 可用）；TTS=edge-tts 在线；无视频模型",
+  "tier_capabilities": {
+    "generators": ["svg", "fast", "flux"],
+    "comfyui": ["flux"],
+    "tts": ["edge"],
+    "stt": false,
+    "voice_clone": false,
+    "auto": false,
+    "custom": false,
+    "h3shot": false
+  }
+}

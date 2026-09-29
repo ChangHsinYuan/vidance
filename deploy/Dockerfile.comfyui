@@ -1,0 +1,14 @@
+# ComfyUI 通用镜像模板（v18 部署档 GPU 部分，构建较重 ~10GB，按需构建）
+# 模型不进镜像：经 compose volume 挂 /mnt/dataset/<Model>-ComfyUI/（extra_model_paths.yaml 映射）
+# 用法：docker compose --profile gpu-wan up -d comfyui-wan（干净机器上才需要；本机已有宿主服务）
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg git libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/* \
+    && git clone https://github.com/comfyanonymous/ComfyUI /ComfyUI \
+    && pip install --no-cache-dir -r /ComfyUI/requirements.txt
+
+WORKDIR /ComfyUI
+EXPOSE 8188
+CMD ["python", "main.py", "--listen", "0.0.0.0", "--port", "8188"]
