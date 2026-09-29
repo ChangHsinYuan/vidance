@@ -92,9 +92,10 @@ class TaskQueue:
         return sqlite3.connect(self.db_path)
 
     def submit(self, concept, options=None, task_id=None):
-        """提交新任务到队列"""
+        """提交新任务到队列（task_id 缺省 {task_prefixes[mode]}_{时间戳}）"""
         if task_id is None:
-            task_id = datetime.now().strftime('%Y%m%d_%H%M%S_') + str(int(time.time() * 1000) % 10000)
+            from agents.common.tools.config_loader import task_id_for
+            task_id = task_id_for((options or {}).get('mode', 'auto'))
         opts = json.dumps(options or {}, ensure_ascii=False)
         now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
 

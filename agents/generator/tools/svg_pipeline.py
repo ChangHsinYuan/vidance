@@ -219,7 +219,10 @@ def concept_to_mp4(concept: str, out_path: str = None, duration: float = 3.0,
     from utils.svg_llm import generate_svg
 
     if out_path is None:
-        out_path = os.path.join(load_output_dir(), 'svg_pipeline', 'out.mp4')
+        from agents.common.tools.config_loader import task_id_for
+        task_dir = os.path.join(load_output_dir(), task_id_for('svg'))
+        os.makedirs(task_dir, exist_ok=True)
+        out_path = os.path.join(task_dir, 'final.mp4')
     base = os.path.splitext(out_path)[0]
     svg_path = base + '.svg'
 
@@ -313,7 +316,8 @@ class SvgLine:
         n = len(segments)
         print(f'  {n} 段: ' + ' | '.join(s['text'] for s in segments))
 
-        ts = datetime.now().strftime('svg%Y%m%d_%H%M%S')
+        from agents.common.tools.config_loader import task_id_for
+        ts = task_id_for('svg')
         workdir = os.path.join(self.output_dir, ts)
         os.makedirs(workdir, exist_ok=True)
         voice = voice or self.config.get('tts', {}).get('default_voice', 'cosy-default')
@@ -426,8 +430,8 @@ def _main():
 
     out = args.output
     if out is None:
-        d = os.path.join(load_output_dir(), 'svg_pipeline')
-        out = os.path.join(d, 'out.mp4')
+        from agents.common.tools.config_loader import task_id_for
+        out = os.path.join(load_output_dir(), task_id_for('svg') + '.mp4')
 
     if args.voice or args.say:
         narrate_to_mp4(concept=args.concept, n=args.n, say=args.say, out_path=out,

@@ -100,7 +100,8 @@ class Pipeline:
         task_id: 外部指定 task_id（调度器传入），None 时自动生成时间戳
         """
         if task_id is None:
-            task_id = time.strftime('%Y%m%d_%H%M%S')
+            from agents.common.tools.config_loader import task_id_for
+            task_id = task_id_for('auto')
         self._task_id = task_id
         task_dir = os.path.join(self.output_dir, task_id)
         clips_dir = os.path.join(task_dir, 'clips')

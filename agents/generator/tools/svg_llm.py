@@ -50,11 +50,21 @@ Draw and animate it as a single self-contained SVG. Output SVG only."""
 
 
 def extract_svg(text: str) -> str:
-    """从 LLM 回复里提取 <svg>...</svg>（容忍 markdown 代码块/前后杂字）。"""
+    """从 LLM 回复里提取 <svg>...</svg>（容忍 markdown 代码块/前后杂字）。
+
+    LLM 输出被 max_tokens/超时截断（有 <svg 无 </svg>，实测约 50%）→ 补 </svg> 兜底，
+    渲染器对未闭合标签宽容（Chromium 自动闭合）；完全无 <svg 才报错。
+    """
     m = re.search(r'<svg[\s\S]*?</svg>', text, re.IGNORECASE)
     if not m:
-        raise RuntimeError('LLM 输出里没找到 <svg>…</svg>')
-    svg = m.group(0)
+        m = re.search(r'<svg[\s\S]*', text, re.IGNORECASE)
+        if not m:
+            raise RuntimeError('LLM 输出里没找到 <svg>…</svg>')
+        svg = m.group(0)
+        if '</svg>' not in svg.lower():
+            svg += '\n</svg>'
+    else:
+        svg = m.group(0)
     if 'xmlns=' not in svg.split('>', 1)[0]:
         svg = svg.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"', 1)
     return svg
@@ -115,13 +125,24 @@ def generate_svg(concept: str, duration: float = 3.0, width: int = 800, height: 
     user_p = USER.format(concept=concept, width=width, height=height, duration=duration)
     messages = [{'role': 'system', 'content': sys_p},
                 {'role': 'user', 'content': user_p}]
-    if stream:
-        text = _chat_stream(llm, messages, model=model, temperature=temperature,
-                            on_chunk=on_chunk)
-    else:
-        text = llm.chat(messages, model=model, temperature=temperature,
-                        max_tokens=8192, timeout=300, retries=2)
-    return extract_svg(text)
+    last_err = None
+    for attempt in range(2):
+        if stream:
+            text = _chat_stream(llm, messages, model=model, temperature=temperature,
+                                on_chunk=on_chunk)
+        else:
+            text = llm.chat(messages, model=model, temperature=temperature,
+                            max_tokens=8192, timeout=300, retries=2)
+        try:
+            return extract_svg(text)
+        except RuntimeError as e:
+            last_err = e
+            # 截断/无 SVG 重试一次（重试时强调只输出 SVG）
+            messages = [{'role': 'system', 'content': sys_p},
+                        {'role': 'user', 'content': user_p +
+                         '\n\n注意：上一次输出不完整。只输出一个完整自包含的 <svg>，'
+                         '不要解释，元素精简控制在 60 行内。'}]
+    raise last_err
 
 
 NARR_SYS = """你是科普/营销短视频的旁白撰稿人。根据主题写 {n} 段递进式中文旁白，

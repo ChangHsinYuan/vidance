@@ -84,11 +84,22 @@
   .stream-log .live { color: var(--fg-dim); font-size: 12px; margin-bottom: 4px; }
   .stream-log .llmt { color: var(--fg-dim); font-size: 11px; font-family: ui-monospace,monospace; max-height: 96px; overflow: hidden; white-space: pre-wrap; word-break: break-all; margin-top: 4px; border-top: 1px dashed rgba(255,255,255,.1); padding-top: 4px; }
   .pipe-bar { position: sticky; top: -10px; display: flex; gap: 5px; flex-wrap: wrap; padding: 6px 2px; margin-bottom: 4px; background: var(--bg, rgba(10,12,20,.96)); z-index: 3; border-bottom: 1px solid rgba(255,255,255,.07); }
-  .pnode { font-size: 10.5px; padding: 2px 9px; border-radius: 7px; border: 1px solid rgba(255,255,255,.14); color: var(--fg-dim); background: rgba(255,255,255,.04); display: inline-flex; align-items: center; gap: 5px; }
-  .pnode.run { border-color: var(--accent); color: var(--fg); box-shadow: 0 0 7px rgba(108,123,255,.45); }
-  .pnode.ok { color: var(--ok); border-color: rgba(74,222,128,.55); background: rgba(74,222,128,.08); }
+  .pnode { font-size: 10.5px; padding: 3px 9px; border-radius: 7px; border: 1px solid rgba(255,255,255,.14); color: var(--fg-dim); background: rgba(255,255,255,.04); display: inline-flex; align-items: center; gap: 5px; }
+  .pnode.d0 { background: rgba(139,124,246,.10); border-color: rgba(139,124,246,.25); }
+  .pnode.d1 { background: rgba(246,163,92,.10); border-color: rgba(246,163,92,.25); }
+  .pnode.d2 { background: rgba(92,200,246,.10); border-color: rgba(92,200,246,.25); }
+  .pnode.d3 { background: rgba(99,230,166,.10); border-color: rgba(99,230,166,.25); }
+  .pnode.d4 { background: rgba(246,108,139,.10); border-color: rgba(246,108,139,.25); }
+  .pnode.run { color: var(--fg); box-shadow: 0 0 7px rgba(108,123,255,.45); }
+  .pnode.run.d0 { box-shadow: 0 0 7px rgba(139,124,246,.55); }
+  .pnode.run.d1 { box-shadow: 0 0 7px rgba(246,163,92,.55); }
+  .pnode.run.d2 { box-shadow: 0 0 7px rgba(92,200,246,.55); }
+  .pnode.run.d3 { box-shadow: 0 0 7px rgba(99,230,166,.55); }
+  .pnode.run.d4 { box-shadow: 0 0 7px rgba(246,108,139,.55); }
+  .pnode.run::before { content: ''; width: 7px; height: 7px; border-radius: 50%; flex: none;
+    border: 1.5px dashed currentColor; animation: rot .8s linear infinite; }
+  .pnode.ok { color: var(--ok); border-color: rgba(74,222,128,.55); background: rgba(74,222,128,.08); box-shadow: 0 0 6px rgba(74,222,128,.4); }
   .pnode.fail { color: #e5534b; border-color: rgba(229,83,75,.55); }
-  .pspin { width: 8px; height: 8px; border: 1.5px solid rgba(255,255,255,.22); border-top-color: var(--accent); border-radius: 50%; animation: rot .8s linear infinite; flex: none; }
   .ans { margin: 3px 0 3px 20px; border-left: 2px solid rgba(108,123,255,.35); padding-left: 8px; }
   .ans summary { cursor: pointer; color: var(--accent); font-size: 11.5px; user-select: none; }
   .ans .ans-b { font-size: 12.5px; line-height: 1.75; white-space: pre-wrap; word-break: break-word; margin-top: 3px; }
@@ -318,6 +329,7 @@
   <div id="topbar">
     <button id="btn-menu" onclick="toggleSidebar()">☰</button>
     <span class="brand">Vidance</span><span id="ui-ver" style="font-size:10px;color:var(--fg-dim)">v13.3.2</span>
+    <span id="llm-dot" title="LLM 服务状态" style="width:8px;height:8px;border-radius:50%;background:#555;display:inline-block;margin-left:8px;flex-shrink:0;"></span>
     <span class="title" id="session-title">新会话</span>
     <button id="btn-comfyui" onclick="openComfyUI()" title="ComfyUI 节点画布" style="background:none;border:none;color:var(--fg-dim);font-size:14px;cursor:pointer;padding:4px 8px;">🎨</button>
     <button id="btn-log" onclick="toggleLog()" title="详细日志">📋</button>
@@ -433,7 +445,30 @@ async function init() {
   TOOLS_LOADED = true;
   refreshTasks();
   setInterval(refreshTasks, 10000);
+  pollLlmHealth(); setInterval(pollLlmHealth, 30000);
   input.focus();
+}
+
+async function pollLlmHealth() {
+  const dot = $('#llm-dot');
+  if (!dot) return;
+  try {
+    const d = await (await fetch('/api/health')).json();
+    const llm = d.llm || {};
+    if (llm.ok === true) {
+      dot.style.background = '#4caf50';
+      dot.title = `LLM 正常 (${llm.latency_ms ?? '?'}ms${llm.cached ? ' 缓存' : ''})`;
+    } else if (llm.ok === false) {
+      dot.style.background = '#e53935';
+      dot.title = 'LLM 服务不可达';
+    } else {
+      dot.style.background = '#555';
+      dot.title = 'LLM 状态未知（旧版 API）';
+    }
+  } catch (e) {
+    dot.style.background = '#e53935';
+    dot.title = 'API 服务不可达';
+  }
 }
 
 /* ── 左栏任务列表 ── */
@@ -856,8 +891,10 @@ async function streamAgent(argstr) {
       curStep = { i: e.i + 1, name: e.name };
       if (barEl) {
         const n = document.createElement('span');
-        n.className = 'pnode run';
-        n.innerHTML = '<span class="pspin"></span>' + escapeHtml(shortName(e.name));
+        const ly = String(e.name).split('.')[0];
+        const LAYC = { director: 'd0', generator: 'd1', post: 'd2', audit: 'd3', common: 'd4' };
+        n.className = 'pnode run ' + (LAYC[ly] || 'd4');
+        n.innerHTML = escapeHtml(shortName(e.name));
         barEl.appendChild(n);
         nodeMap[e.i] = n;
       }

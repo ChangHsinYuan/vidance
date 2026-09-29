@@ -1,0 +1,8 @@
+# 临时薄镜像：基于现镜像（已含 chromium/依赖）只叠代码——绕开 playwright CDN
+FROM vidance-api:latest
+WORKDIR /app
+COPY . /app
+ENV VIDANCE_TIER=none \
+    VIDANCE_PORT=8894
+EXPOSE 8894
+CMD ["python", "core/api_server.py"]

@@ -197,8 +197,9 @@ def run_custom(ref_images: list, script_path: str,
     post = PostProcessor(config, llm=llm)
 
     output_dir = config['output_dir']
-    task_id = time.strftime('%Y%m%d_%H%M%S')
-    task_dir = os.path.join(output_dir, f'custom_{task_id}')
+    from agents.common.tools.config_loader import task_id_for
+    task_id = task_id_for('custom')
+    task_dir = os.path.join(output_dir, task_id)
     clips_dir = os.path.join(task_dir, 'clips')
     os.makedirs(clips_dir, exist_ok=True)
 

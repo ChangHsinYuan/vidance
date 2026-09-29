@@ -60,12 +60,19 @@ pids_of() { pgrep -f "$1" 2>/dev/null | tr '\n' ' '; }
 # 后台启动：setsid + nohup，彻底脱离当前 shell（避免阻塞/被父 shell 带走）
 # 关键点：用 setsid 新建会话+进程组，且 stdin/stdout/stderr 全部重定向，
 #         这样即使被 opencode/CI 这类会等待子进程管道的工具调用，也不会挂住。
-# 用法：bg_run <标签> <日志文件> <工作目录> <命令...>
+# 用法：bg_run <标签> <日志文件> <工作目录> [append] <命令...>
+#   append → 日志追加模式（配合 api 进程内 copytruncate 轮转；默认仍为启动截断）
 bg_run() {
     local tag="$1" log="$2" workdir="$3"; shift 3
+    local redir=">"
+    if [ "$1" = "append" ]; then redir=">>"; shift; fi
     (
         cd "$workdir" || exit 1
-        setsid "$@" >"$log" 2>&1 </dev/null &
+        if [ "$redir" = ">>" ]; then
+            setsid "$@" >>"$log" 2>&1 </dev/null &
+        else
+            setsid "$@" >"$log" 2>&1 </dev/null &
+        fi
         disown 2>/dev/null || true
     ) >/dev/null 2>&1 </dev/null
 }
@@ -126,8 +133,8 @@ start_one() {
         tts)  # TTS 双引擎 → GPU2（启动即加载 CosyVoice，约 28s）
             bg_run tts "$LOG_DIR/tts_9880.log" "$VIDANCE_DIR" \
                 env CUDA_VISIBLE_DEVICES=2 TTS_FP16=1 "$PY_COSY" utils/tts_server.py ;;
-        api)  # Vidance API + WebUI → CPU
-            bg_run api "$LOG_DIR/api_8894.log" "$VIDANCE_DIR" \
+        api)  # Vidance API + WebUI → CPU（append：配合 api_server 内 copytruncate 轮转）
+            bg_run api "$LOG_DIR/api_8894.log" "$VIDANCE_DIR" append \
                 "$PY_COMFY" core/api_server.py --port 8894 ;;
     esac
 

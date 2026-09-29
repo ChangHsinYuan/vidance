@@ -28,6 +28,7 @@ import re
 import sys
 import threading
 import time
+import urllib.request
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -113,6 +114,7 @@ def health():
         'tier': cfg.get('tier', 'full'),
         'tier_desc': cfg.get('tier_desc', ''),
         'capabilities': cfg.get('tier_capabilities'),
+        'llm': _llm_health(),
         'queue': {
             'queued': queue.count_by_status('queued'),
             'running': queue.count_by_status('running'),
@@ -120,6 +122,37 @@ def health():
             'failed': queue.count_by_status('failed'),
         },
     }
+
+
+_LLM_HL = {'ts': 0.0, 'ok': None, 'latency_ms': None}
+_LLM_HL_TTL = 30.0
+
+
+def _llm_health() -> dict:
+    """LLM 探活（GET /models，2s 超时，30s 缓存——不阻塞健康检查）"""
+    now = time.time()
+    if _LLM_HL['ok'] is not None and now - _LLM_HL['ts'] < _LLM_HL_TTL:
+        return {'ok': _LLM_HL['ok'], 'latency_ms': _LLM_HL['latency_ms'],
+                'cached': True}
+    ok, lat = False, None
+    try:
+        base_url, api_key, _m = llm_health_target()
+        t0 = time.time()
+        req = urllib.request.Request(
+            f'{base_url}/models', headers={'Authorization': f'Bearer {api_key}'})
+        urllib.request.urlopen(req, timeout=2).read()
+        ok, lat = True, int((time.time() - t0) * 1000)
+    except Exception:
+        pass
+    _LLM_HL.update(ts=now, ok=ok, latency_ms=lat)
+    return {'ok': ok, 'latency_ms': lat, 'cached': False}
+
+
+def llm_health_target():
+    """健康灯用：取 LLM base_url/key（复用 LLMClient 配置，不发起对话）"""
+    from agents.common.tools.llm import LLMClient
+    c = LLMClient(load_config())
+    return c._resolve(c.models['script'])
 
 
 @app.post('/api/tasks')
@@ -2285,6 +2318,27 @@ if __name__ == '__main__':
     parser.add_argument('--host', default=os.environ.get('VIDANCE_HOST', '0.0.0.0'))
     parser.add_argument('--port', type=int, default=int(os.environ.get('VIDANCE_PORT', 8894)))
     args = parser.parse_args()
+
+    # 2026-09-29 日志轮转：api 日志由 start_services 重定向到 /tmp/api_{port}.log（fd 直写）。
+    # 进程内 RotatingFileHandler 与 fd 双写同一文件会互相覆盖 → 用 copytruncate：
+    # 每 5 min 检查，>10MB 时拷贝到 .1 并原地清空（fd O_APPEND 时安全，见 start_services append）。
+    def _log_rotate_loop():
+        path = f'/tmp/api_{args.port}.log'
+        max_bytes = 10 * 1024 * 1024
+        while True:
+            time.sleep(300)
+            try:
+                same = (os.fstat(1).st_ino == os.stat(path).st_ino)
+                if not same or os.path.getsize(path) <= max_bytes:
+                    continue
+                import shutil
+                shutil.copyfile(path, path + '.1')
+                os.truncate(path, 0)
+                print(f'  [api] 日志轮转: {path} → {path}.1')
+            except Exception:
+                continue
+
+    threading.Thread(target=_log_rotate_loop, daemon=True).start()
 
     print(f'  [api] starting on {args.host}:{args.port}')
     uvicorn.run(app, host=args.host, port=args.port, log_level='info')

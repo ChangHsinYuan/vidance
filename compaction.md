@@ -61,15 +61,24 @@
 - _vault_final 链目录归并（output 内但不在 {tid} → 复制 final.ext 进链目录，真文件非软链）
 - fast out_path 别名 bug 修复；output 架构还原（软链拆净）；fast 链端到端验证 194.9s ok
 
-- **测试产物清理 + 遗留清理（第三轮，未提交）**：
-  1. output/ 测试产物全清（用户要求）：api DELETE 两个 quick 任务（sqlite+目录）+ 容器 rm root 目录 6 个（svg 测试×3、failed quick×2、fast 爬图链验证、agent 链 smoke）；仅剩用户自己的 svg_pipeline/（15:23 out.mp4）、svg_20260929_072112（用户 15:21 /svg run）、assets/。注：之前抢救的 out.mp4 已被本轮测试覆盖（现在 15:23 这份是用户自己刚跑的新产物）
-  2. **compose 加 `../ui:/app/ui:ro` 挂载**：UI 直挂宿主，改前端零重建（本轮镜像重建因 playwright CDN 下载失败没走通，靠 ui 挂载生效；后端改动上午那次构建已含）；镜像 vidance-api:latest 现版可用，CDN 恢复后可重 build
-  3. commands.json 遗留旧号清理：svg v15→v13、make v17→v12、top version v0-v13→v0-v18（/help 读镜像内副本，下次重建生效）
-  4. 容器 full :9401 重启后回归：health OK、logs/tail 宿主日志 OK、/help OK、UI 含折叠 summary；无在跑任务
+- **SVG 截断修复 + pipe-bar 彩色方块 + 输出命名统一（第四轮，未提交）**：
+  1. **SVG "LLM 输出里没找到 svg" 修复**：实测 LLM 输出被 max_tokens 截断（有 `<svg` 无 `</svg>`，约 50% 概率，LEN 2-7K）→ extract_svg 补 `</svg>` 兜底（Chromium 自动闭合）+ generate_svg 自动重试一次（重试时强调"只输出 SVG、元素精简 60 行内"）；容器复测同款场景成功
+  2. **pipe-bar 升级（用户拍板样式）**：每步一个彩色方块（按 layer 配色：D 浅红/G 浅橙/P 浅蓝/V 浅绿/C 浅粉，d0-d4 CSS 类）+ 未完成时当前步边缘虚线转圈圈（.pnode.run::before border-dashed 旋转）+ 完成高亮（ok 类绿光/fail 红光）；去掉旧 pspin 圆圈改 ::before
+  3. **输出命名统一（用户要求）**：config.json 加 task_prefixes（auto/quick/fast/hot/custom/make/chain→agent）+ config_loader.task_id_for(mode, task_id=None) 统一生成 `{prefix}_{YYYYmmdd_HHMMSS}`；接入：scheduler.submit（缺省改 mode 前缀）、pipeline.run（auto）、custom_gen.run_custom（custom）、svg_pipeline concept_to_mp4/SvgLine/_main（svg，修 svg_pipeline/out.mp4 覆盖问题）、fastline（f→fast 前缀）；make 的 _resolve_out 已有 make_{tag}；agent/records 扫描目录名无关安全
+  4. **chain "TypeError failed to fetch" 结论**：非代码 bug——SSE 流 curl 实测正常（task/start/step/chunk/done 全事件）；用户点 chain 时容器恰在重建/重启（本轮反复 build 期间），或浏览器连接被断。容器稳定后不会再出现
+  5. 验证：/svg 无声容器实跑（S1→S4、72/72 帧、新命名 svg_20260929_093034.mp4、agent.log 可读）、/quick 提交即 quick_ 前缀+阶段推送（[1] 编剧，验证后取消）、task_id_for 单测 7 例、extract_svg 兜底单测、py_compile+node --check 过；测试产物已清（仅剩用户 svg_20260929_072112/093034 跑 + assets）
+  6. compose 已加 `../ui:/app/ui:ro`（改前端零重建）；本轮后端改动已重建进镜像 df3a6de53ba1
+- **svg 落盘修复（第五轮，用户报"svg 视频不在对应目录下面而是同级"）**：concept_to_mp4 缺省 out_path 上一轮改命名时只给文件名没放进任务目录 → mp4/svg/preview 散落 output/ 同级、任务目录空。修复：缺省路径改 `output/{svg_ts}/final.mp4`（svg/svg/preview 同目录，与有声路径 final.mp4 口径一致）。验证：单测（mock LLM/渲染，三文件全进 svg_ 目录）+ 容器端到端两连跑（svg_20260929_110601、130723，72/72 帧、agent.log/final.mp4/final.svg/final.preview.html 全在目录内、同级无散落）；旧散落文件已归位（093034 宿主移/100333 容器移）
+- **打磨快赢三项（第五轮，未提交，全部进镜像）**：
+  1. **fast 爬图提速**：下载/审核两阶段并行（ThreadPool max_workers=3，按关键词序回填保序"图-段对应"）+ 每词 top=2 候选（多一份备选）+ 审核失败用同词备选补位（零额外搜索）+ FLUX 兜底提前、原概念重爬降为最后手段（串行无审核）。实测瓶颈：Pexels API 单次搜索 50-65s（网络）> 下载 79s > assess 4s/张 > extract 2s。单测：15s→5.5s 保序、备选补位保序、全失败 FLUX 兜底三场景 PASS；容器实跑 284s（3 词 Pexels 搜索 ~55s×3 串行为主，并行省下审核/下载时间）
+  2. **api 日志轮转**：api_server __main__ 加 copytruncate 线程（/tmp/api_{port}.log >10MB → 拷 .1 + truncate 0，O_APPEND fd 下安全，300s 检查一次）+ start_services.sh bg_run 加 append 模式（api 用，配合轮转）；单测 O_APPEND truncate 后写入回到开头 PASS
+  3. **llm 健康灯**：/api/health 加 llm 字段（/models 探活 2s 超时、30s 缓存、不阻塞）+ api_server 补 urllib import + UI topbar llm-dot 红绿点（init 30s 轮询 pollLlmHealth，绿=ok+latency、红=不可达、灰=旧版 API）；容器验证 {'ok': True, 'latency_ms': 143}
+- **Dockerfile 三连修（第五轮）**：基础镜像 python:3.11-slim 已升 Debian 13 (trixie) → ①apt 包名 5 个改 t64（libasound2t64/libatk1.0-0t64/libatk-bridge2.0-0t64/libatspi2.0-0t64/libcups2t64，逐一 apt-cache 验证）；②deb.debian.org 直连不稳 → sed 换清华镜像（debian.sources 优先/sources.list 兜底）；③playwright CDN（cdn.playwright.dev+storage.googleapis.com）双超时 → PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright（build 仍超时未验证）；**当前方案：deploy/Dockerfile.update 薄镜像**（FROM vidance-api:latest 只叠代码，秒级 build 零网络下载）→ 已 build e306d8d82502 并重启容器验证全通
 
 ### In Progress
-- **提交未提交改动**：v18 部署三件套 + UI 三问题追修 + 全 pipeline 流式追修 + 本轮清理（均未提交）
-  - 建议消息：`feat:v18 部署分档 + /svg job化/全pipeline LLM流式/任务阶段实时推送/quick修复`
+- **提交未提交改动**：v18 部署三件套 + UI 追修五轮（转圈圈/日志/流式/quick/截断/pipe-bar 彩色方块/命名统一/svg 落盘）+ 打磨快赢三项 + gitignore 清理
+  - 建议消息：`feat:v18 部署分档 + 全pipeline流式/彩色pipe-bar/输出命名统一/svg截断+落盘修复 + fast爬图并行/日志轮转/llm健康灯`
+- **Dockerfile.update 临时薄镜像**：playwright CDN 修复未验证（npmmirror build 超时）；CDN 恢复后重 build 主 Dockerfile，成功后可删 Dockerfile.update
 
 ### Blocked
 - (none)
@@ -83,26 +92,29 @@
 - light/none 强制 max_retries=0（30 分钟灾难根因）
 
 ## Next Steps
-1. **提交 4 个文档改动**（见 In Progress；commit 前先 git status/diff 复核）
-2. 下次开工选项（已定优先序）：
-   - **打磨快赢**：fast 爬图提速（~160s→~60s，多模态相关性校验 120s 逐张串行 → 并发/批量）+ api 日志轮转（start_services `>` 截断+/tmp 无轮转）+ llm 健康灯（前端顶栏 LLM 可用状态）
+1. **提交全部未提交改动**（见 In Progress；commit 前先 git status/diff 复核）
+2. CDN 恢复后重 build 主 Dockerfile（trixie 包名已修 + 清华 apt 源 + npmmirror playwright），成功后删 Dockerfile.update
+3. 下次开工选项（快赢三项已完成）：
    - **v15 开源整合**：M1 断点续跑（挂 v11 黑板）+ JSON 容错 → M2 五维提示词+RAG（2-3 天）
    - **v16 长视频**：M0 spike 末帧回灌验证（Wan I2V 连续 3-5 段抽末帧回灌，实测漂移 SSIM）→ M2 oneshot.py + `--oneshot --duration N` → M1 关键帧/M3 层级一致性/M4 长文本
    - v14 队友做完后 review 接入
 
 ## Critical Context
-- git HEAD：`56c8b92 docs:roadmap:change version orders`（重排主体已提交）；本轮 4 文件改动未提交
-- output/ 已空（只剩 19:42 的 0 字节 tasks.sqlite，旧测试记录全没）——**重跑废链的事已作废**；若非用户所清需确认
-- 服务状态：h3(8188)/wan(8189)/flux(8192)/tts(9880)/api(8894) 全 UP；hunyuan(8190)+h3d(8193) DOWN 不影响 fast/生图/svg
-- 服务日志 /tmp/comfyui_{8188,8189,8190,8192,8193}.log、/tmp/tts_9880.log、/tmp/api_8894.log；start_services `>` 每次截断
-- fastline 爬图链 ~160s（Pexels 41s + 多模态校验 120s 逐张）；flux 生图 30-60s；svg 10-30s
+- git HEAD：`56c8b92 docs:roadmap:change version orders`（重排主体已提交）；**大量代码追修未提交**（v18 部署+五轮 UI/管线追修+快赢三项+Dockerfile 修复）
+- Docker：vidance 容器现跑 **full 档 :9401**（host 网络）+ 镜像 e306d8d82502（薄镜像：老镜像+最新代码，含全部追修+快赢三项）+ 挂载 ../ui:/app/ui:ro + /tmp:/hostlogs/tmp:ro + VIDANCE_LOG_PREFIX=/hostlogs
+- 主 Dockerfile（deploy/Dockerfile）已修 trixie 包名 t64 + 清华 apt 源 + npmmirror playwright，但整 build 未走通（playwright CDN/npmmirror 均超时）；CDN 恢复后重 build
+- output/ 现状：assets、quick_20260929_101107（用户真实任务）、svg_20260929_093034/100333/130723（用户+验证，已归位进目录）、tasks.sqlite
+- 服务状态：h3(8188)/wan(8189)/flux(8192)/tts(9880)/api 宿主 :8894(旧代码) UP；hunyuan(8190)+h3d(8193) DOWN
+- 容器 api :9401 = 最新代码；宿主 api :8894 = 旧代码（start_services 启的，重启才会换）
+- fastline 爬图瓶颈（实测）：Pexels API 单次搜索 50-65s（网络慢，无法再省）> 下载 79s > assess 4s/张 > extract 2s；已并行化（省审核+下载串行时间），3 词 Pexels 搜索仍串行约 165s 是下限
 - agent.log 行格式 `[HH:MM:SS] ▶/⏳/✓/■`；status 判定必须 `'■' in last` 非 startswith
-- agent 总数 28（post 10/generator 7/director 6/audit 5）；v11-design §6 数字已改 28
+- agent 总数 28（post 10/generator 7/director 6/audit 5）
 - whisper 模型路径需带 snapshots/ 子目录；TestClient/stream 超时会杀 daemon 线程（长链验证给足 timeout 或查盘）
 - fastline 图源：Pexels 首选（中文 keyword 必须 LLM 英译），必应兜底；FLUX 仅补足+兜底
 - Pexels key 在 config.json pexels.api_key；USTC LLM 双模型：deepseek-v4-flash（编剧/纯文本）、qwen3.8-chat（多模态审片）
 - 主 Python：/home/zxy/.conda/envs/comfyui/bin/python；TTS 环境 cosyvoice；4× RTX 4090
 - GPU 分配：h3 8188(GPU0)/h3d 8193(GPU1)/wan 8189(GPU2)/hunyuan 8190(GPU3)/flux 8192(GPU3 与 hunyuan 互斥)/tts 9880(GPU2)/api 8894(CPU)
+- 测试产物即测即删（用户要求）；误删用户文件是大忌
 
 ## Relevant Files
 - `/mnt/disk_sdb/zxy/vidance/docs/roadmap.md` — §4 新节序+（原 vN）标注+5 处设计链接+§8 目录树+去重后 549 行（**待提交**）
@@ -111,8 +123,15 @@
 - `/mnt/disk_sdb/zxy/vidance/docs/usage-v11.md` — **新建**（多智能体 usage）（**待提交**）
 - `/mnt/disk_sdb/zxy/vidance/docs/v12-modules.md`（原 v17-modules，git mv）/`docs/v11-design.md`（原 v13-design）
 - `/mnt/disk_sdb/zxy/vidance/AGENTS.md` — 状态/路线/目录/命令注释全按新号（已随 56c8b92 提交）
-- `/mnt/disk_sdb/zxy/vidance/core/api_server.py` — agent_records/_vault_final/api/logs/tail/agent_stream
+- `/mnt/disk_sdb/zxy/vidance/core/api_server.py` — agent_records/_vault_final/api/logs/tail/agent_stream/llm 健康灯/copytruncate（**未提交**）
+- `/mnt/disk_sdb/zxy/vidance/agents/generator/tools/fastline.py` — 并行爬图+top=2 备选+FLUX 兜底提前（**未提交**）
+- `/mnt/disk_sdb/zxy/vidance/agents/generator/tools/svg_pipeline.py` — svg 落盘进任务目录（**未提交**）
 - `/mnt/disk_sdb/zxy/vidance/agents/{base,runtime,blackboard}.py` + `core/{vidance,scheduler,narration}.py` — 注释已同步（已提交）
 - `/mnt/disk_sdb/zxy/vidance/utils/*.py` — 24 个门面薄壳 docstring 已同步（已提交）
-- `/mnt/disk_sdb/zxy/vidance/ui/index.html` — streamAgent/pipe-bar/日志 tab/conceptOf
+- `/mnt/disk_sdb/zxy/vidance/ui/index.html` — streamAgent/pipe-bar 彩色方块/日志 tab/llm-dot 健康灯/conceptOf（**未提交**）
+- `/mnt/disk_sdb/zxy/vidance/deploy/Dockerfile` — trixie t64 包名+清华 apt 源+npmmirror playwright（**未提交**）
+- `/mnt/disk_sdb/zxy/vidance/deploy/Dockerfile.update` — 临时薄镜像（CDN 恢复后可删）
+- `/mnt/disk_sdb/zxy/vidance/start_services.sh` — bg_run append 模式（**未提交**）
 - `/mnt/disk_sdb/zxy/vidance/docs/instructions/commands.json` — v12-modules 链接已同步（已提交）
+- `/mnt/disk_sdb/zxy/vidance/config/config.json` — task_prefixes（**未提交**）
+- `/mnt/disk_sdb/zxy/vidance/agents/common/tools/config_loader.py` — task_id_for() helper（**未提交**）

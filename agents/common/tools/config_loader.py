@@ -82,6 +82,20 @@ def require(cap: str, cfg: dict = None):
             f"换档：VIDANCE_TIER=<none|flux|wan|h3|full>；或用该档可用子命令（svg/fast 等）")
 
 
+def task_id_for(mode: str, task_id: str = None) -> str:
+    """统一产出命名：{config task_prefixes[mode]}_{时间戳}（可被外部 task_id 覆盖）。
+
+    config.json task_prefixes 定义各方法前缀（auto/quick/fast/hot/custom/make/chain），
+    输出目录=output_dir/{task_id}/，不重不覆盖。未知 mode 用 mode 原名。
+    """
+    import time as _t
+    if task_id:
+        return task_id
+    cfg = load_config()
+    pref = (cfg.get('task_prefixes') or {}).get(mode, mode)
+    return f'{pref}_{_t.strftime("%Y%m%d_%H%M%S")}'
+
+
 def load_base_config() -> dict:
     """读原始 config.json（不含本机覆盖），供写回配置时使用，避免把本机值固化进仓库文件"""
     with open(CONFIG_PATH, 'r', encoding='utf-8') as f:

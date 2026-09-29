@@ -137,38 +137,40 @@ class FastLine:
             except Exception:
                 keywords = [concept]
             print(f'  [crawl] 搜索词: {keywords}')
+            # 2026-09-29 提速：下载/审核两阶段并行（原串行逐词逐张 ~160s → ~60s）。
+            # 每词下载 top=2 候选（并行，多一份备选），审核失败用同词备选补位
+            # （零额外搜索），仍不足走 FLUX 补齐，原概念重爬降为最后手段。
+            # 结果按关键词序号回填，保持"每张图贴合一段旁白"的顺序不变。
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=min(3, len(keywords))) as pool:
+                dl = list(pool.map(lambda kw: self._safe_download(kw, save_dir, top=2), keywords))
+            flat = [(kw, it['path']) for kw, items in zip(keywords, dl) for it in items]
+
+            def _assess(pair):
+                kw, path = pair
+                return kw, path, self.llm.assess_image_relevance(path, kw)
+            with ThreadPoolExecutor(max_workers=min(3, max(1, len(flat)))) as pool:
+                assessed = list(pool.map(_assess, flat))
+            by_kw = {}
+            for kw, path, rel in assessed:
+                if rel.get('pass'):
+                    by_kw.setdefault(kw, []).append(path)
+                    print(f'  [审核 ✓] score={rel.get("score")} "{kw}": '
+                          f'{os.path.basename(path)}')
+                else:
+                    print(f'  [审核 ✗] score={rel.get("score")} "{kw}": '
+                          f'{os.path.basename(path)} — {rel.get("reason", "")}')
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+            # 每词一张（保序：图-段对应）；同词多余合格图补缺位（免重搜）
             for kw in keywords:
-                if len(imgs) >= n:
-                    break
-                try:
-                    items = self.crawler.download_images(kw, save_dir, top=1)
-                except Exception as e:
-                    print(f'  ⚠ [图源缺省] 爬图 "{kw}" 失败（{e}）')
-                    continue
-                for it in items:
-                    path = it['path']
-                    rel = self.llm.assess_image_relevance(path, kw)
-                    if rel.get('pass'):
-                        imgs.append(path)
-                        print(f'  [审核 ✓] score={rel.get("score")} "{kw}": '
-                              f'{os.path.basename(path)}')
-                    else:
-                        print(f'  [审核 ✗] score={rel.get("score")} "{kw}": '
-                              f'{os.path.basename(path)} — {rel.get("reason", "")}')
-                        try:
-                            os.remove(path)
-                        except OSError:
-                            pass
-            # 仍不足则用原概念兜底
-            if len(imgs) < n:
-                try:
-                    for it in self.crawler.download_images(concept, save_dir, top=n):
-                        if it['path'] not in imgs:
-                            imgs.append(it['path'])
-                        if len(imgs) >= n:
-                            break
-                except Exception:
-                    pass
+                if by_kw.get(kw):
+                    imgs.append(by_kw[kw].pop(0))
+            for paths in by_kw.values():
+                while paths and len(imgs) < n:
+                    imgs.append(paths.pop(0))
             print(f'  [crawl] 取到 {len(imgs)} 张')
             if len(imgs) < n:
                 lack = n - len(imgs)
@@ -176,9 +178,19 @@ class FastLine:
                     print(f'  [topup] 图源不足，用 FLUX 补齐 {lack} 张')
                     imgs += self._gen_flux_images(concept, lack, save_dir, segments=segments)
                 except Exception as e:
-                    print(f'  ⚠ [FLUX 缺省] FLUX 不可用（{e}），用纯色图兜底 {lack} 张')
-                    imgs += [self._gen_placeholder_image(save_dir, i, concept)
-                             for i in range(lack)]
+                    # FLUX 不可用 → 原概念重爬（串行且无审核，最后手段）→ 纯色图
+                    print(f'  ⚠ [FLUX 缺省] FLUX 不可用（{e}），用原概念重爬兜底')
+                    try:
+                        for it in self.crawler.download_images(concept, save_dir, top=n):
+                            if it['path'] not in imgs:
+                                imgs.append(it['path'])
+                            if len(imgs) >= n:
+                                break
+                    except Exception:
+                        pass
+                    if len(imgs) < n:
+                        imgs += [self._gen_placeholder_image(save_dir, i, concept)
+                                 for i in range(n - len(imgs))]
         else:  # 'flux'
             try:
                 imgs = self._gen_flux_images(concept, n, save_dir, segments=segments)
@@ -190,6 +202,14 @@ class FastLine:
         if not imgs:
             raise RuntimeError('图片获取失败，请 --images 自行提供或检查网络/8192')
         return _pad_list(imgs, n)[:n]
+
+    def _safe_download(self, kw, save_dir, top=1):
+        """单关键词爬图（线程池用），失败返回 [] 不炸并行"""
+        try:
+            return self.crawler.download_images(kw, save_dir, top=top)
+        except Exception as e:
+            print(f'  ⚠ [图源缺省] 爬图 "{kw}" 失败（{e}）')
+            return []
 
     @staticmethod
     def _gen_placeholder_image(save_dir, idx, concept=''):
@@ -318,7 +338,7 @@ class FastLine:
         show_source: 是否在片头烧录 "{trend_date} 热搜: {source_topic}"。
         """
         start = time.time()
-        task_id = task_id or datetime.now().strftime('f%Y%m%d_%H%M%S')
+        task_id = task_id or datetime.now().strftime('fast%Y%m%d_%H%M%S')
         trend_date = trend_date or datetime.now().strftime('%Y-%m-%d')
         task_dir = os.path.join(self.output_dir, task_id)
         os.makedirs(task_dir, exist_ok=True)
