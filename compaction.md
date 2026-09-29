@@ -32,7 +32,7 @@
 - **UI 转圈圈/日志/流式三问题修复（v18 后追修，未提交）**：
   1. `/svg` 无声模式同步阻塞 → 黑屏无反馈（回归根因）：api_server /svg 全部 job 化（无声 concept_to_mp4 / 有声 narrate_to_mp4 同走 _run_svgjob 异步线程），stage/llm_text/frames 写 _h3_jobs + 阶段/完成写 output/{job}/agent.log（日志面板有料）
   2. LLM 流式打印：svg_llm._chat_stream 加 on_chunk 逐 delta 回调 → generate_svg/plan_narration → svg_pipeline concept_to_mp4/narrate_to_mp4 透传（stage_cb/on_chunk/on_frame）→ job llm_text 字段（尾 600 字）→ 前端 .llmt 流式预览
-  3. 前端 pollH3 重写：svg_/h3_ 前缀分流（svg 3s/h3 5s 轮询）、spin 转圈圈 + stage + 耗时 + 帧进度 + llm_text 打字预览、完成回填 ✓ + 成片卡片 + setLogTask 跟踪
+  3. 前端 pollH3 重写：svg_/h3_ 前缀分流（svg 3s/h3 5s 轮询）、spin 转圈圈 + stage + 耗时 + 帧进度 + llm_text 打字预览（**details/summary 折叠式**，保留用户开合状态）、完成回填 ✓ + 成片卡片 + setLogTask 跟踪
   4. /api/logs/tail 加 VIDANCE_LOG_PREFIX（前缀路径谁存在读谁）：容器读宿主 /tmp 服务日志；compose 挂 /tmp:/hostlogs/tmp:ro + env VIDANCE_LOG_PREFIX=/hostlogs
   5. 验证（容器 full :9401 实跑）：无声 /svg job S1→S4→完成（llm_text 流式、72/72 帧、out.mp4 落宿主）、有声 --say job TTS→SVG→合成（80/80、final.mp4 落宿主）、两 job agent.log 经 /api/tasks/{id}/log 可读、/api/logs/tail 读宿主 wan 日志 OK；宿主 :8894 不受影响；py_compile + node --check 过
 - **全 pipeline 流式交互（第二轮追修，未提交）**：
@@ -61,8 +61,14 @@
 - _vault_final 链目录归并（output 内但不在 {tid} → 复制 final.ext 进链目录，真文件非软链）
 - fast out_path 别名 bug 修复；output 架构还原（软链拆净）；fast 链端到端验证 194.9s ok
 
+- **测试产物清理 + 遗留清理（第三轮，未提交）**：
+  1. output/ 测试产物全清（用户要求）：api DELETE 两个 quick 任务（sqlite+目录）+ 容器 rm root 目录 6 个（svg 测试×3、failed quick×2、fast 爬图链验证、agent 链 smoke）；仅剩用户自己的 svg_pipeline/（15:23 out.mp4）、svg_20260929_072112（用户 15:21 /svg run）、assets/。注：之前抢救的 out.mp4 已被本轮测试覆盖（现在 15:23 这份是用户自己刚跑的新产物）
+  2. **compose 加 `../ui:/app/ui:ro` 挂载**：UI 直挂宿主，改前端零重建（本轮镜像重建因 playwright CDN 下载失败没走通，靠 ui 挂载生效；后端改动上午那次构建已含）；镜像 vidance-api:latest 现版可用，CDN 恢复后可重 build
+  3. commands.json 遗留旧号清理：svg v15→v13、make v17→v12、top version v0-v13→v0-v18（/help 读镜像内副本，下次重建生效）
+  4. 容器 full :9401 重启后回归：health OK、logs/tail 宿主日志 OK、/help OK、UI 含折叠 summary；无在跑任务
+
 ### In Progress
-- **提交未提交改动**：v18 部署三件套 + UI 三问题追修 + 全 pipeline 流式追修（本轮）+ gitignore 大文件清理
+- **提交未提交改动**：v18 部署三件套 + UI 三问题追修 + 全 pipeline 流式追修 + 本轮清理（均未提交）
   - 建议消息：`feat:v18 部署分档 + /svg job化/全pipeline LLM流式/任务阶段实时推送/quick修复`
 
 ### Blocked

@@ -26,6 +26,8 @@ services:
       - ../bgm:/app/bgm
       - ../voices:/app/voices
       - /tmp:/hostlogs/tmp:ro
+      # UI 直挂宿主（改前端零重建）
+      - ../ui:/app/ui:ro
     restart: unless-stopped
 
   # ── GPU 服务（干净机器按需；与宿主已有服务同端口会冲突，勿在本机启动） ──

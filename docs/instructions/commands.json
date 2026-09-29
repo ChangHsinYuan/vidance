@@ -1,5 +1,5 @@
 {
- "version": "v0-v13",
+ "version": "v0-v18",
  "title": "Vidance 命令指令库",
  "overview_hint": "输入 /help 看全部命令一句话说明；输入 /help 命令名 看该命令的详细参数与示例。",
  "commands": [
@@ -86,7 +86,7 @@
   },
   {
    "name": "make",
-   "version": "v17",
+   "version": "v12",
    "brief": "统一入口：导演(llm/manual/scout) × 生成器(wan/fast/svg/h3) 排列组合",
    "detail": "v12（原 v17）三排正交统一入口。导演层：--director llm(LLM编脚本,默认)/manual(--say/--prompt)/scout(爬热点自动选题)；生成层：--generator wan(带--character走auto全管线,否则quick)/fast(爬图+生图营销号)/svg(矢量动画,--voice出有声)/h3(--prompt整段式+--ref,或--script走custom)。后期参数 --voice/--lut/--bgm/--stt 通用。见 docs/v12-modules.md。",
    "params": [
@@ -290,7 +290,7 @@
   },
   {
    "name": "svg",
-   "version": "v15",
+   "version": "v13",
    "brief": "SVG 流水线：概念→LLM→动效SVG→有声成片（可配音/字幕/BGM，纯CPU）",
    "detail": "无声：概念→LLM生成SVG→逐帧渲染→mp4。加 --voice 或 --say 进入有声模式：LLM规划旁白→逐段TTS→逐段SVG渲染→字幕烧录→crossfade拼接→可选 LUT/BGM。前端走异步轮询。",
    "params": [

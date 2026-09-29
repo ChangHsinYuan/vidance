@@ -1133,7 +1133,12 @@ function pollH3(jobId) {
       const fr = d.frames ? ' · 帧 ' + d.frames : '';
       let html = '<span class="spin"></span><span class="live-t">' +
         escapeHtml(st + Math.round((Date.now() - t0) / 1000) + 's' + fr) + '</span>';
-      if (d.llm_text) html += '<div class="llmt">' + escapeHtml(d.llm_text) + '</div>';
+      if (d.llm_text) {
+        const prev = liveEl.querySelector('details');
+        const open = prev ? (prev.open ? ' open' : '') : ' open';
+        html += '<div class="ans"><details' + open + '><summary>▸ LLM 输出</summary>' +
+          '<div class="llmt">' + escapeHtml(d.llm_text) + '</div></details></div>';
+      }
       liveEl.innerHTML = html;
       scrollBottom();
       return;
