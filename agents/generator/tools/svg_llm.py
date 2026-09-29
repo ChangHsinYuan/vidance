@@ -62,11 +62,12 @@ def extract_svg(text: str) -> str:
 
 def _chat_stream(llm, messages: list, model: str = None, temperature: float = 0.4,
                  max_tokens: int = 8192, read_timeout: int = 30,
-                 total_timeout: int = 300) -> str:
+                 total_timeout: int = 300, on_chunk=None) -> str:
     """流式调用 LLM（SSE），边收边累加 —— 避免长输出的单次读超时。
 
     用 urllib 直接读 `stream: true` 的 SSE 响应；每次 socket 读超时设小（read_timeout），
     但只要还有数据就继续，总时长由 total_timeout 兜底。
+    on_chunk(delta) 逐 delta 回调（/job 日志与前端流式显示）。
     """
     import json as _json
     import urllib.request as _rq
@@ -96,20 +97,27 @@ def _chat_stream(llm, messages: list, model: str = None, temperature: float = 0.
                 delta = obj['choices'][0].get('delta', {}).get('content')
                 if delta:
                     parts.append(delta)
+                    if on_chunk:
+                        try:
+                            on_chunk(delta)
+                        except Exception:
+                            pass
             except Exception:
                 continue
     return ''.join(parts)
 
 
 def generate_svg(concept: str, duration: float = 3.0, width: int = 800, height: int = 450,
-                 model: str = None, temperature: float = 0.4, stream: bool = True) -> str:
+                 model: str = None, temperature: float = 0.4, stream: bool = True,
+                 on_chunk=None) -> str:
     llm = LLMClient(load_config())
     sys_p = SYSTEM.format(duration=duration)
     user_p = USER.format(concept=concept, width=width, height=height, duration=duration)
     messages = [{'role': 'system', 'content': sys_p},
                 {'role': 'user', 'content': user_p}]
     if stream:
-        text = _chat_stream(llm, messages, model=model, temperature=temperature)
+        text = _chat_stream(llm, messages, model=model, temperature=temperature,
+                            on_chunk=on_chunk)
     else:
         text = llm.chat(messages, model=model, temperature=temperature,
                         max_tokens=8192, timeout=300, retries=2)
@@ -123,7 +131,7 @@ NARR_SYS = """你是科普/营销短视频的旁白撰稿人。根据主题写 {
 [{{"text": "旁白文本", "scene": "画面视觉描述"}}]"""
 
 
-def plan_narration(concept: str, n: int = 3, model: str = None) -> list:
+def plan_narration(concept: str, n: int = 3, model: str = None, on_chunk=None) -> list:
     """概念 → LLM → n 段旁白 [{text, scene}]（S5 配音模式的剧本层）。
 
     解析失败/数量不足时兜底：截断 JSON 或按段复制概念。
@@ -134,7 +142,8 @@ def plan_narration(concept: str, n: int = 3, model: str = None) -> list:
                 {'role': 'user', 'content': f'主题：{concept}'}]
     import json as _json
     try:
-        text = _chat_stream(llm, messages, model=model, temperature=0.6, read_timeout=20)
+        text = _chat_stream(llm, messages, model=model, temperature=0.6, read_timeout=20,
+                            on_chunk=on_chunk)
         m = re.search(r'\[[\s\S]*\]', text)
         segs = _json.loads(m.group(0)) if m else []
         segs = [{'text': str(s.get('text', '')).strip(),

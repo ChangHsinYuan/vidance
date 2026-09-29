@@ -31,6 +31,18 @@ def load_config():
     return _load()
 
 
+_LIVE_CB = None
+
+
+def set_live(cb):
+    """全局 LLM 流式回显开关：设置后所有 chat/chat_json 系调用走 SSE 流式并逐 delta
+    回调 cb(delta)。CLI 传 print 回调即打字机输出；任务子进程 stdout 进 scheduler.log，
+    日志面板轮询即见。传 None 关闭。
+    """
+    global _LIVE_CB
+    _LIVE_CB = cb
+
+
 class LLMClient:
     def __init__(self, config=None):
         self.config = config or load_config()
@@ -69,7 +81,20 @@ class LLMClient:
 
     def chat(self, messages: list, model: str = None, temperature: float = 0.7,
              max_tokens: int = 4096, timeout: int = 300, retries: int = 2) -> str:
-        """调用 LLM 文本对话，返回 assistant 回复文本（超时自动重试）"""
+        """调用 LLM 文本对话，返回 assistant 回复文本（超时自动重试）。
+
+        set_live() 启用全局回显后自动走 SSE 流式并逐 delta 回调（CLI/日志面板可见）。
+        """
+        if _LIVE_CB is not None:
+            return self.chat_stream(messages, model=model, temperature=temperature,
+                                    max_tokens=max_tokens, timeout=timeout,
+                                    on_chunk=_LIVE_CB)
+        return self._chat_plain(messages, model=model, temperature=temperature,
+                                max_tokens=max_tokens, timeout=timeout, retries=retries)
+
+    def _chat_plain(self, messages: list, model: str = None, temperature: float = 0.7,
+                    max_tokens: int = 4096, timeout: int = 300, retries: int = 2) -> str:
+        """非流式 chat 原始实现（超时自动重试）。"""
         self._refresh()
         model = model or self.models['script']
         base_url, api_key, model = self._resolve(model)
@@ -157,8 +182,8 @@ class LLMClient:
                 return text
         except Exception:
             pass
-        return self.chat(messages, model=model, temperature=temperature,
-                         max_tokens=max_tokens, timeout=timeout)
+        return self._chat_plain(messages, model=model, temperature=temperature,
+                                max_tokens=max_tokens, timeout=timeout)
 
     def chat_json(self, messages: list, model: str = None,
                   temperature: float = 0.7, timeout: int = 300, retries: int = 0) -> dict:

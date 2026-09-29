@@ -82,6 +82,7 @@
   .spin { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--fg-dim); border-top-color: var(--accent); border-radius: 50%; animation: rot .8s linear infinite; vertical-align: -1px; margin-right: 6px; }
   @keyframes rot { to { transform: rotate(360deg); } }
   .stream-log .live { color: var(--fg-dim); font-size: 12px; margin-bottom: 4px; }
+  .stream-log .llmt { color: var(--fg-dim); font-size: 11px; font-family: ui-monospace,monospace; max-height: 96px; overflow: hidden; white-space: pre-wrap; word-break: break-all; margin-top: 4px; border-top: 1px dashed rgba(255,255,255,.1); padding-top: 4px; }
   .pipe-bar { position: sticky; top: -10px; display: flex; gap: 5px; flex-wrap: wrap; padding: 6px 2px; margin-bottom: 4px; background: var(--bg, rgba(10,12,20,.96)); z-index: 3; border-bottom: 1px solid rgba(255,255,255,.07); }
   .pnode { font-size: 10.5px; padding: 2px 9px; border-radius: 7px; border: 1px solid rgba(255,255,255,.14); color: var(--fg-dim); background: rgba(255,255,255,.04); display: inline-flex; align-items: center; gap: 5px; }
   .pnode.run { border-color: var(--accent); color: var(--fg); box-shadow: 0 0 7px rgba(108,123,255,.45); }
@@ -649,7 +650,12 @@ function updateTaskCard(t) {
   if (pill) { pill.textContent = t.status; pill.className = 'pill ' + t.status; }
   updateTabDot(t.task_id, t.status);
   if (bar) bar.style.width = Math.round((t.progress || 0) * 100) + '%';
-  if (meta) meta.textContent = '阶段: ' + (t.stage || t.status) + (t.error ? ' | 错误: ' + t.error : '');
+  if (meta) {
+    let el = '';
+    if (t.started_at && t.status === 'running')
+      el = ' · ' + Math.max(0, Math.round((Date.now() - new Date(t.started_at)) / 1000)) + 's';
+    meta.textContent = '阶段: ' + (t.stage || t.status) + el + (t.error ? ' | 错误: ' + t.error : '');
+  }
   if (document.getElementById('trace-' + t.task_id) || (t.options && t.options.mode === 'chain')) {
     const wrap = document.getElementById('card-' + t.task_id);
     if (wrap && !document.getElementById('trace-' + t.task_id))
@@ -1039,9 +1045,10 @@ async function dispatchSlash(text) {
     addBot(`<b>${escapeHtml(d.message)}</b>${rows}`);
     return;
   }
-  // h3shot / custom 异步（长耗时，约 15-20 分钟/镜）
+  // h3shot / custom / svg 异步（svg 有实时日志可跟踪；h3 约 15-20 分钟/镜）
   if (d.h3_job_id) {
     addBot(`<b>✓ ${escapeHtml(d.message || 'H3 任务已提交')}</b> 轮询 ${escapeHtml(d.poll)}`);
+    if (/^svg_/.test(d.h3_job_id)) setLogTask(d.h3_job_id);
     pollH3(d.h3_job_id);
     return;
   }
@@ -1109,19 +1116,42 @@ function pollClip(jobId) {
 
 /* H3 单镜 / custom 异步轮询（长耗时，60s 一次） */
 function pollH3(jobId) {
-  addBot('<span class="d">H3 生成中，通常 15-20 分钟，可离开页面稍后回来查看…</span>');
+  const isSvg = /^svg_/.test(jobId);
+  addBot('<div class="stream-log" id="jl-' + jobId + '">' +
+    '<div class="live"><span class="spin"></span><span class="live-t">⌁ ' +
+    (isSvg ? 'LLM 生成中…' : 'H3 生成中，通常 15-20 分钟，可离开页面稍后回来…') +
+    '</span></div></div>');
+  const root = document.getElementById('jl-' + jobId);
+  const liveEl = root.querySelector('.live');
+  const t0 = Date.now();
   const iv = setInterval(async () => {
-    const d = await (await fetch(`/api/h3shot/${jobId}`)).json();
-    if (d.status === 'completed') {
-      clearInterval(iv);
-      addBot(`<b>✓ H3 生成完成</b>\n输出: ${escapeHtml(d.output || '')}`
-        + (d.seed ? `\nseed: ${d.seed}` : ''));
-      if (d.video_url) addComposeCard(d.output, d.video_url);
-    } else if (d.status === 'failed') {
-      clearInterval(iv);
-      addBot('<b>✗ H3 生成失败</b> ' + escapeHtml(d.error || ''));
+    let d;
+    try { d = await (await fetch(`/api/h3shot/${jobId}`)).json(); } catch (e) { return; }
+    if (d.status === 'running') {
+      if (!liveEl || !liveEl.isConnected) return;
+      const st = d.stage ? d.stage + ' · ' : '';
+      const fr = d.frames ? ' · 帧 ' + d.frames : '';
+      let html = '<span class="spin"></span><span class="live-t">' +
+        escapeHtml(st + Math.round((Date.now() - t0) / 1000) + 's' + fr) + '</span>';
+      if (d.llm_text) html += '<div class="llmt">' + escapeHtml(d.llm_text) + '</div>';
+      liveEl.innerHTML = html;
+      scrollBottom();
+      return;
     }
-  }, 60000);
+    clearInterval(iv);
+    const secs = Math.round((Date.now() - t0) / 1000);
+    if (liveEl && liveEl.isConnected) {
+      liveEl.classList.remove('live');
+      liveEl.innerHTML = d.status === 'completed'
+        ? '<b>✓ 生成完成（' + secs + 's）</b>'
+        : '<b>✗ 生成失败</b> ' + escapeHtml(d.error || '');
+    }
+    if (d.status === 'completed') {
+      addBot(`输出: ${escapeHtml(d.output || '')}` + (d.seed ? `\nseed: ${d.seed}` : ''));
+      if (d.video_url) addComposeCard(d.output, d.video_url);
+      if (isSvg) setLogTask(jobId);
+    }
+  }, isSvg ? 3000 : 5000);
 }
 
 /* 自然语言 → v6 dialog（续聊或新开） */

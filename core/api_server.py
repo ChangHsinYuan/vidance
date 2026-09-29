@@ -477,36 +477,68 @@ def _run_custom_job(job_id: str, rr: dict):
             })
 
 
-def _run_svgjob(job_id: str, concept, n: int, say: list, flags: dict):
-    """SVG 有声短片（异步 job，复用 h3shot 轮询通道；回执 output/video_url）"""
+def _run_svgjob(job_id: str, concept, n: int, say: list, flags: dict, voiced: bool):
+    """SVG 短片（异步 job，复用 h3shot 轮询通道；回执 output/video_url）。
+
+    voiced=有声（narrate_to_mp4）/无声（concept_to_mp4）。阶段/LLM 流式/帧进度
+    写 job 字段（stage/llm_text/frames）+ agent.log，前端 pollH3 有得显示。
+    """
     def _num(k, d):
         v = flags.get(k)
         try:
             return int(v)
         except (TypeError, ValueError):
             return d
+
+    def _scb(s):
+        with _h3_jobs_lock:
+            if job_id in _h3_jobs:
+                _h3_jobs[job_id]['stage'] = s
+        _agent_log(job_id, '▶ ' + s)
+
+    def _on_chunk(delta):
+        with _h3_jobs_lock:
+            if job_id in _h3_jobs:
+                _h3_jobs[job_id]['llm_text'] = ((_h3_jobs[job_id].get('llm_text') or '')
+                                                + delta)[-600:]
+
+    def _on_frame(done, total):
+        with _h3_jobs_lock:
+            if job_id in _h3_jobs:
+                _h3_jobs[job_id]['frames'] = f'{done}/{total}'
+
     try:
-        from utils.svg_pipeline import narrate_to_mp4
-        meta = narrate_to_mp4(
-            concept=concept, n=n, say=say or None,
-            out_path=flags.get('o') or flags.get('output'),
-            voice=flags.get('voice') or None,
-            width=_num('width', 800), height=_num('height', 450), fps=_num('fps', 24),
-            lut=flags.get('lut'), bgm=flags.get('bgm'),
-        )
-        out = meta.get('output')
+        if voiced:
+            from utils.svg_pipeline import narrate_to_mp4
+            meta = narrate_to_mp4(
+                concept=concept, n=n, say=say or None,
+                out_path=flags.get('o') or flags.get('output'),
+                voice=flags.get('voice') or None,
+                width=_num('width', 800), height=_num('height', 450), fps=_num('fps', 24),
+                lut=flags.get('lut'), bgm=flags.get('bgm'),
+                stage_cb=_scb, on_chunk=_on_chunk, on_frame=_on_frame)
+        else:
+            from utils.svg_pipeline import concept_to_mp4
+            meta = concept_to_mp4(
+                concept=concept, out_path=flags.get('o') or flags.get('output'),
+                duration=float(flags.get('duration') or 3),
+                width=_num('width', 800), height=_num('height', 450), fps=_num('fps', 24),
+                stage_cb=_scb, on_chunk=_on_chunk, on_frame=_on_frame)
+        out = meta.get('output') or meta.get('mp4')
         with _h3_jobs_lock:
             _h3_jobs[job_id].update({
                 'status': 'completed', 'output': out,
                 'video_url': ('/api/file?path=' + out) if out else '',
                 'completed_at': datetime.now().isoformat(),
             })
+        _agent_log(job_id, '■ 完成 %s' % (out or ''))
     except Exception as e:
         with _h3_jobs_lock:
             _h3_jobs[job_id].update({
                 'status': 'failed', 'error': str(e),
                 'completed_at': datetime.now().isoformat(),
             })
+        _agent_log(job_id, '✗ 失败: %s' % str(e)[:300])
 
 
 @app.post('/api/h3shot')
@@ -1231,9 +1263,8 @@ def tool_dispatch(name: str, req: ToolRequest):
                 'compose_output': out,
                 'video_url': ('/api/file?path=' + out) if out else ''}
 
-    # ── svg（v13（原 v15）流水线：无声同步；--voice/--say 有声走异步 job，前端 pollH3 复用）──
+    # ── svg（v13（原 v15）流水线：全部异步 job（无声 concept_to_mp4 / 有声 narrate_to_mp4），前端 pollH3 复用）──
     if name == 'svg':
-        from utils import svg_pipeline as _sp
         rr = _parse_repeated(req.args or '', {'say'})
         fl, pos2 = rr['flags'], rr['pos']
         say = rr['rep'].get('say') or []
@@ -1248,24 +1279,18 @@ def tool_dispatch(name: str, req: ToolRequest):
         if not concept and not say:
             raise HTTPException(status_code=400,
                                 detail='用法: /svg 概念 [--voice 音色 --n 3] | /svg --say "文本" --say …')
-        if say or fl.get('voice'):
-            job_id = f'svg_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
-            with _h3_jobs_lock:
-                _h3_jobs[job_id] = {'job_id': job_id,
-                                    'concept': concept or (say[0][:20] if say else ''),
-                                    'status': 'running',
-                                    'created_at': datetime.now().isoformat()}
-            threading.Thread(target=_run_svgjob, args=(job_id, concept, _num('n', 3), say, fl),
-                             daemon=True).start()
-            return {'message': 'SVG 有声任务已提交（异步，约 1-3 分钟/段）',
-                    'job_id': job_id, 'poll': f'/api/h3shot/{job_id}', 'h3_job_id': job_id}
-        res = _sp.concept_to_mp4(concept, out_path=fl.get('o') or fl.get('output'),
-                                 duration=float(fl.get('duration') or 3),
-                                 width=_num('width', 800), height=_num('height', 450),
-                                 fps=_num('fps', 24))
-        out = res['mp4']
-        return {'message': 'SVG 无声成片已生成', 'output': out, 'compose_output': out,
-                'video_url': '/api/file?path=' + out}
+        voiced = bool(say or fl.get('voice'))
+        job_id = f'svg_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        with _h3_jobs_lock:
+            _h3_jobs[job_id] = {'job_id': job_id,
+                                'concept': concept or (say[0][:20] if say else ''),
+                                'status': 'running',
+                                'created_at': datetime.now().isoformat()}
+        threading.Thread(target=_run_svgjob,
+                         args=(job_id, concept, _num('n', 3), say, fl, voiced),
+                         daemon=True).start()
+        return {'message': 'SVG 任务已提交（异步，LLM 生成中，可看日志面板跟踪）',
+                'job_id': job_id, 'poll': f'/api/h3shot/{job_id}', 'h3_job_id': job_id}
 
     # ── concat（多视频拼接，同步子进程）──
     if name == 'concat':
@@ -2093,7 +2118,11 @@ def task_trace(task_id: str):
 
 @app.get('/api/logs/tail')
 def logs_tail(name: str = Query('wan'), n: int = Query(200, ge=1, le=800)):
-    """tail 服务日志（start_services 写 /tmp）：wan/flux/tts/api/h3/h3d/hunyuan。"""
+    """tail 服务日志（start_services 写 /tmp）：wan/flux/tts/api/h3/h3d/hunyuan。
+
+    容器内宿主 /tmp 不存在 → 设 VIDANCE_LOG_PREFIX（如 /hostlogs）并挂载宿主 /tmp 只读；
+    前缀路径与原路径谁存在读谁（宿主机不受影响）。
+    """
     _map = {'wan': '/tmp/comfyui_8189.log', 'h3': '/tmp/comfyui_8188.log',
             'flux': '/tmp/comfyui_8192.log', 'hunyuan': '/tmp/comfyui_8190.log',
             'h3d': '/tmp/comfyui_8193.log', 'tts': '/tmp/tts_9880.log',
@@ -2102,8 +2131,15 @@ def logs_tail(name: str = Query('wan'), n: int = Query(200, ge=1, le=800)):
     if not p:
         raise HTTPException(status_code=400,
                             detail='用法: /api/logs/tail?name=wan|flux|tts|api|h3|h3d|hunyuan&n=200')
-    if not os.path.isfile(p):
-        return {'log': f'（{p} 不存在——服务可能未用 start_services 启动）', 'path': p}
+    pref = os.environ.get('VIDANCE_LOG_PREFIX', '')
+    paths = [pref + p, p] if pref and pref != '/' else [p]
+    for cand in paths:
+        if os.path.isfile(cand):
+            p = cand
+            break
+    else:
+        return {'log': f'（{paths[0]} 不存在——服务可能未用 start_services 启动，或容器未挂载宿主 /tmp）',
+                'path': paths[0]}
     try:
         with open(p, 'rb') as f:
             f.seek(0, 2)

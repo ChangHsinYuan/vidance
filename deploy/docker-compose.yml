@@ -16,11 +16,16 @@ services:
     environment:
       - VIDANCE_TIER=${VIDANCE_TIER:-none}
       - VIDANCE_PORT=${VIDANCE_PORT:-9400}
+      # 日志面板读宿主 start_services 日志（/api/logs/tail 里前缀路径谁存在读谁）
+      - VIDANCE_LOG_PREFIX=/hostlogs
     volumes:
       - ../config:/app/config
       - ../output:/app/output
+      # config output_dir 是宿主绝对路径，代码如实尊重 —— 同路径挂载保证落宿主盘
+      - ../output:/mnt/disk_sdb/zxy/vidance/output
       - ../bgm:/app/bgm
       - ../voices:/app/voices
+      - /tmp:/hostlogs/tmp:ro
     restart: unless-stopped
 
   # ── GPU 服务（干净机器按需；与宿主已有服务同端口会冲突，勿在本机启动） ──

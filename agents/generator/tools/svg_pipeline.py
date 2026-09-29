@@ -125,8 +125,11 @@ def render_frames(svg_code: str, width: int, height: int, fps: int, duration: fl
 
 def svg_to_mp4(svg_code: str = None, svg_path: str = None, out_path: str = 'output.mp4',
                width: int = 800, height: int = 450, fps: int = 24, duration: float = 3.0,
-               bg: str = '#ffffff') -> str:
-    """把 SVG 动画渲染成 mp4（纯 CPU）。返回输出路径。"""
+               bg: str = '#ffffff', on_frame=None) -> str:
+    """把 SVG 动画渲染成 mp4（纯 CPU）。返回输出路径。
+
+    on_frame(done, total) 渲染进度回调（job 日志用）。
+    """
     if svg_code is None:
         if not svg_path:
             raise ValueError('需要 svg_code 或 svg_path 之一')
@@ -147,10 +150,16 @@ def svg_to_mp4(svg_code: str = None, svg_path: str = None, out_path: str = 'outp
     proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
 
     n = 0
+    total_frames = max(1, int(round(fps * duration)))
     try:
         for png_bytes in render_frames(svg_code, width, height, fps, duration, bg=bg):
             proc.stdin.write(png_bytes)
             n += 1
+            if on_frame:
+                try:
+                    on_frame(n, total_frames)
+                except Exception:
+                    pass
     finally:
         if proc.stdin:
             proc.stdin.close()
@@ -201,8 +210,12 @@ def dump_frames(svg_code: str = None, svg_path: str = None, out_dir: str = 'fram
 
 def concept_to_mp4(concept: str, out_path: str = None, duration: float = 3.0,
                    width: int = 800, height: int = 450, fps: int = 24,
-                   model: str = None, bg: str = '#ffffff', save_svg: bool = True) -> dict:
-    """S1+S4 一键：概念 → LLM 生成 SVG → 渲染 mp4。返回 {svg, svg_path, mp4}。"""
+                   model: str = None, bg: str = '#ffffff', save_svg: bool = True,
+                   stage_cb=None, on_chunk=None, on_frame=None) -> dict:
+    """S1+S4 一键：概念 → LLM 生成 SVG → 渲染 mp4。返回 {svg, svg_path, mp4}。
+
+    stage_cb(stage) 阶段回调；on_chunk(delta) LLM 流式回调；on_frame(done, total) 渲染进度。
+    """
     from utils.svg_llm import generate_svg
 
     if out_path is None:
@@ -210,8 +223,14 @@ def concept_to_mp4(concept: str, out_path: str = None, duration: float = 3.0,
     base = os.path.splitext(out_path)[0]
     svg_path = base + '.svg'
 
+    if stage_cb:
+        try:
+            stage_cb('S1 LLM 生成 SVG')
+        except Exception:
+            pass
     print(f'[S1] LLM 生成 SVG：{concept}')
-    svg = generate_svg(concept, duration=duration, width=width, height=height, model=model)
+    svg = generate_svg(concept, duration=duration, width=width, height=height, model=model,
+                       on_chunk=on_chunk)
     if save_svg:
         os.makedirs(os.path.dirname(os.path.abspath(svg_path)) or '.', exist_ok=True)
         with open(svg_path, 'w', encoding='utf-8') as f:
@@ -222,9 +241,14 @@ def concept_to_mp4(concept: str, out_path: str = None, duration: float = 3.0,
             f.write(f'<!DOCTYPE html><html><body style="margin:0;background:#fff">'
                     f'{svg}</body></html>')
 
+    if stage_cb:
+        try:
+            stage_cb('S4 渲染 mp4')
+        except Exception:
+            pass
     print(f'[S4] 渲染 mp4 …')
     svg_to_mp4(svg_code=svg, out_path=out_path, width=width, height=height,
-               fps=fps, duration=duration, bg=bg)
+               fps=fps, duration=duration, bg=bg, on_frame=on_frame)
     return {'svg': svg, 'svg_path': svg_path if save_svg else None, 'mp4': out_path}
 
 
@@ -264,8 +288,12 @@ class SvgLine:
 
     def run(self, concept, n=3, say=None, voice=None, out_path=None,
             width=800, height=450, fps=24, bg='#ffffff', model=None,
-            lut=None, bgm=None, keep_workdir=False) -> dict:
-        """一键出有声 SVG 短片。say 给定时用手动旁白（每元素一段），否则 LLM 规划 n 段。"""
+            lut=None, bgm=None, keep_workdir=False,
+            stage_cb=None, on_chunk=None, on_frame=None) -> dict:
+        """一键出有声 SVG 短片。say 给定时用手动旁白（每元素一段），否则 LLM 规划 n 段。
+
+        stage_cb(stage) / on_chunk(delta) / on_frame(done, total) 同 concept_to_mp4。
+        """
         import json as _json
         from datetime import datetime
         from utils.ffmpeg_tools import compose
@@ -275,8 +303,13 @@ class SvgLine:
         if say:
             segments = [{'text': t, 'scene': t} for t in say]
         else:
+            if stage_cb:
+                try:
+                    stage_cb(f'S5 旁白规划（{n} 段）')
+                except Exception:
+                    pass
             print(f'[S5] 旁白规划（{n} 段）…')
-            segments = self._plan(concept, n, model=model)
+            segments = self._plan(concept, n, model=model, on_chunk=on_chunk)
         n = len(segments)
         print(f'  {n} 段: ' + ' | '.join(s['text'] for s in segments))
 
@@ -288,19 +321,29 @@ class SvgLine:
         clips, audios, srt_ts, t = [], [], [], 0.0
         for i, seg in enumerate(segments, 1):
             wav = os.path.join(workdir, f'seg_{i}.wav')
+            if stage_cb:
+                try:
+                    stage_cb(f'[{i}/{n}] TTS 配音')
+                except Exception:
+                    pass
             print(f'  [{i}/{n}] TTS "{seg["text"]}"')
             self.narr.say(seg['text'], wav, voice=voice)
             adur = _probe_duration(wav)
             d_i = max(adur + 0.6, 2.5)
+            if stage_cb:
+                try:
+                    stage_cb(f'[{i}/{n}] SVG+渲染（{d_i:.1f}s）')
+                except Exception:
+                    pass
             print(f'  [{i}/{n}] SVG+渲染（{d_i:.1f}s）…')
             svg = self._gen_svg(f"{concept}——{seg['scene']}", duration=d_i,
-                                width=width, height=height, model=model)
+                                width=width, height=height, model=model, on_chunk=on_chunk)
             svg_path = os.path.join(workdir, f'seg_{i}.svg')
             with open(svg_path, 'w', encoding='utf-8') as f:
                 f.write(svg + '\n')
             clip = os.path.join(workdir, f'seg_{i}.mp4')
             svg_to_mp4(svg_code=svg, out_path=clip, width=width, height=height,
-                       fps=fps, duration=d_i, bg=bg)
+                       fps=fps, duration=d_i, bg=bg, on_frame=on_frame)
             clips.append(clip)
             audios.append(wav)
             srt_ts.append({'start': t, 'end': t + adur + 0.3, 'text': seg['text']})
@@ -330,6 +373,11 @@ class SvgLine:
 
         extra = (' + LUT ' + str(lut) if lut_path else '') + \
                 (' + BGM ' + str(bgm) if bgm_path else '')
+        if stage_cb:
+            try:
+                stage_cb(f'S5 合成（crossfade + 字幕{extra}）')
+            except Exception:
+                pass
         print(f'[S5] 合成（crossfade + 字幕{extra}）…')
         compose(clips, audios, srt_path=srt_path, output_path=out_path,
                 transition_types=['crossfade'] * max(0, n - 1),
@@ -347,7 +395,7 @@ class SvgLine:
 
 
 def narrate_to_mp4(concept=None, n=3, say=None, **kwargs) -> dict:
-    """S5 便捷函数。"""
+    """S5 便捷函数。stage_cb/on_chunk/on_frame 随 kwargs 透传。"""
     sl = SvgLine()
     if not concept and say:
         concept = say[0][:24]

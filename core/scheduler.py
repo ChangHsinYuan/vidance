@@ -259,6 +259,43 @@ class Scheduler:
         t.start()
         print(f'  [scheduler] started: {task["task_id"]} — {task["concept"][:40]}')
 
+    def _watch_progress(self, task_id, log_path, stop_evt):
+        """tail scheduler.log 解析阶段标记 → 实时回写 task.stage（任务卡片轮询可见）。
+
+        识别：=== [1] 编剧 === / ▸ [1] … / ▶ … / [S1] … 等标记行，取最后一条。
+        """
+        import re
+        while not stop_evt.is_set():
+            stop_evt.wait(2.0)
+            if stop_evt.is_set():
+                break
+            try:
+                if not os.path.isfile(log_path):
+                    continue
+                with open(log_path, 'r', errors='replace') as f:
+                    lines = f.read().splitlines()
+                stage = None
+                for ln in reversed(lines):
+                    m = re.match(r'=+\s*(.+?)\s*=+\s*$', ln)  # === [1] 编剧 ===
+                    if m:
+                        stage = m.group(1)
+                        break
+                    m = re.match(r'[▸▶]\s*(.+)', ln)          # ▸ / ▶
+                    if m:
+                        stage = m.group(1)
+                        break
+                    m = re.match(r'\[(S\d+)\]\s*(.+)', ln)    # [S1] LLM 生成 SVG
+                    if m:
+                        stage = m.group(1) + ' ' + m.group(2)
+                        break
+                if not stage:
+                    continue
+                cur = self.queue.get_task(task_id)
+                if cur and cur.get('status') == 'running':
+                    self.queue.update_task(task_id, stage=stage[:80])
+            except Exception:
+                pass
+
     def _run_task(self, task):
         """执行单个任务（子进程调用 vidance.py {auto|fast|hot}，v7 加 mode 分发）"""
         task_id = task['task_id']
@@ -345,12 +382,21 @@ class Scheduler:
 
         try:
             with open(log_path, 'w') as logf:
-                proc = subprocess.run(
+                proc = subprocess.Popen(
                     cmd, stdout=logf, stderr=subprocess.STDOUT,
-                    timeout=7200,
                 )
+                stop_evt = threading.Event()
+                watcher = threading.Thread(target=self._watch_progress,
+                                           args=(task_id, log_path, stop_evt),
+                                           daemon=True)
+                watcher.start()
+                try:
+                    rc = proc.wait(timeout=7200)
+                finally:
+                    stop_evt.set()
+                    watcher.join(timeout=1)
 
-            if proc.returncode == 0:
+            if rc == 0:
                 final_path = os.path.join(self.config['output_dir'], task_id, 'final.mp4')
                 now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
                 self.queue.update_task(
@@ -362,11 +408,17 @@ class Scheduler:
                 now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
                 self.queue.update_task(
                     task_id, status='failed', stage='failed',
-                    error=f'exit code {proc.returncode}', completed_at=now,
+                    error=f'exit code {rc}', completed_at=now,
                 )
-                print(f'  [scheduler] failed: {task_id} (exit {proc.returncode})')
+                print(f'  [scheduler] failed: {task_id} (exit {rc})')
 
         except subprocess.TimeoutExpired:
+            try:
+                if proc and proc.poll() is None:
+                    proc.kill()
+                    proc.wait()
+            except Exception:
+                pass
             now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
             self.queue.update_task(
                 task_id, status='failed', stage='failed',

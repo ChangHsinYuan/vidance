@@ -29,6 +29,18 @@
 ## Progress
 
 ### Done（本轮）
+- **UI 转圈圈/日志/流式三问题修复（v18 后追修，未提交）**：
+  1. `/svg` 无声模式同步阻塞 → 黑屏无反馈（回归根因）：api_server /svg 全部 job 化（无声 concept_to_mp4 / 有声 narrate_to_mp4 同走 _run_svgjob 异步线程），stage/llm_text/frames 写 _h3_jobs + 阶段/完成写 output/{job}/agent.log（日志面板有料）
+  2. LLM 流式打印：svg_llm._chat_stream 加 on_chunk 逐 delta 回调 → generate_svg/plan_narration → svg_pipeline concept_to_mp4/narrate_to_mp4 透传（stage_cb/on_chunk/on_frame）→ job llm_text 字段（尾 600 字）→ 前端 .llmt 流式预览
+  3. 前端 pollH3 重写：svg_/h3_ 前缀分流（svg 3s/h3 5s 轮询）、spin 转圈圈 + stage + 耗时 + 帧进度 + llm_text 打字预览、完成回填 ✓ + 成片卡片 + setLogTask 跟踪
+  4. /api/logs/tail 加 VIDANCE_LOG_PREFIX（前缀路径谁存在读谁）：容器读宿主 /tmp 服务日志；compose 挂 /tmp:/hostlogs/tmp:ro + env VIDANCE_LOG_PREFIX=/hostlogs
+  5. 验证（容器 full :9401 实跑）：无声 /svg job S1→S4→完成（llm_text 流式、72/72 帧、out.mp4 落宿主）、有声 --say job TTS→SVG→合成（80/80、final.mp4 落宿主）、两 job agent.log 经 /api/tasks/{id}/log 可读、/api/logs/tail 读宿主 wan 日志 OK；宿主 :8894 不受影响；py_compile + node --check 过
+- **全 pipeline 流式交互（第二轮追修，未提交）**：
+  1. **/quick 修复**：scheduler 对所有模式追加 --task-id 但 vidance.py quick 子命令没这参数 → argparse exit 2（用户实测"quick 不太行"根因）；p_quick 加 --task-id + cmd_quick 透传 pipeline.run(task_id=)
+  2. **llm.py 全局 live 流式**：set_live(cb) 全局开关 + _LIVE_CB；chat() 有 CB 时自动走 chat_stream(on_chunk=_LIVE_CB)（chat_json/script_write/optimize_*/assess_*/review_* 全部生效，因底层都走 chat）；chat_stream 回退改 _chat_plain（原调 self.chat 会无限递归，已拆出）；vidance.py main() 设 set_live(print) → CLI 全 pipeline（auto/quick/fast/hot/custom/agent）LLM 打字机输出
+  3. **scheduler 日志 watcher**：_run_task subprocess.run → Popen + _watch_progress 线程（2s tail scheduler.log 解析 === [1] 编剧 === / ▸ / ▶ / [S1] 标记 → queue.update_task(stage=)，仅 status=running 时回写防竞态）；TimeoutExpired 补 proc.kill()
+  4. **前端任务卡片**：meta 行加耗时（Date.now()-started_at）
+  5. **验证（容器 full :9401 实跑）**：/quick 端到端 ~20 min 全链——阶段实时推送 [1]编剧→[2]prompt 优化→[4] shot 1-4 生成→[5]合成→completed（任务卡片轮询可见）、LLM 流式 JSON 全文进 scheduler.log（日志面板可读）、审片 score 8/9 落 log、final.mp4 4.8MB 落宿主盘；CLI smoke：agent run scriptwrite 流式输出确认（带 [Δ] 前缀调试验证）；py_compile + node --check 过
 - **roadmap 重排全部收尾**：git mv v13-design→v11-design、v17-modules→v12-modules（留史）；§4 节序重排+17 处（原 vN）标注；头部摘要/v18 依赖/部署分档/仓库表同步；§5-§10 整块重复两份 → 删重复（671→549 行）；§8 目录树旧号改新号+补 agents/ 行+v0-v18
 - **代码注释版本号全同步**：core×4 + agents×3 + tools 层 + utils 24 个门面薄壳 docstring，全库 py_compile 通过，零逻辑改动
 - **grep 复验零残留**：docs/ AGENTS.md commands.json 旧号链接全清（v13-design/v17-modules 引用归零）
@@ -50,8 +62,8 @@
 - fast out_path 别名 bug 修复；output 架构还原（软链拆净）；fast 链端到端验证 194.9s ok
 
 ### In Progress
-- **提交 4 个文档改动**（一条 commit）：docs/roadmap.md + docs/usage.md + docs/v11-design.md 修改 + docs/usage-v11.md 新建
-  - 建议消息：`docs:usage-v11 usage总览补全 + roadmap去重/目录树同步`
+- **提交未提交改动**：v18 部署三件套 + UI 三问题追修 + 全 pipeline 流式追修（本轮）+ gitignore 大文件清理
+  - 建议消息：`feat:v18 部署分档 + /svg job化/全pipeline LLM流式/任务阶段实时推送/quick修复`
 
 ### Blocked
 - (none)

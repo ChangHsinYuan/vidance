@@ -103,6 +103,7 @@ def cmd_quick(args):
         lut_override=None,
         bgm_override=None,
         use_stt=False,
+        task_id=args.task_id,
     )
     print(f'\nDone: {meta["output"]}')
 
@@ -597,6 +598,8 @@ def build_parser():
     p_quick.add_argument('concept', help='视频概念（中文）')
     p_quick.add_argument('--voice', default=None,
                          help='TTS 音色 (如 edge-moe)')
+    p_quick.add_argument('--task-id', default=None,
+                         help='外部指定 task_id（调度器传入），不指定则自动生成时间戳')
     p_quick.set_defaults(func=cmd_quick)
 
     # ── concat 子命令 ──
@@ -765,6 +768,12 @@ def build_parser():
 def main():
     parser = build_parser()
     args = parser.parse_args()
+    # CLI 全链路 LLM 流式回显：所有 pipeline 的 LLM 调用打字机输出到终端
+    try:
+        from agents.common.tools.llm import set_live
+        set_live(lambda d: print(d, end='', flush=True))
+    except Exception:
+        pass
     args.func(args)
 
 
