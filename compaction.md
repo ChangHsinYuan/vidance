@@ -76,9 +76,7 @@
 - **Dockerfile 三连修（第五轮）**：基础镜像 python:3.11-slim 已升 Debian 13 (trixie) → ①apt 包名 5 个改 t64（libasound2t64/libatk1.0-0t64/libatk-bridge2.0-0t64/libatspi2.0-0t64/libcups2t64，逐一 apt-cache 验证）；②deb.debian.org 直连不稳 → sed 换清华镜像（debian.sources 优先/sources.list 兜底）；③playwright CDN（cdn.playwright.dev+storage.googleapis.com）双超时 → PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright（build 仍超时未验证）；**当前方案：deploy/Dockerfile.update 薄镜像**（FROM vidance-api:latest 只叠代码，秒级 build 零网络下载）→ 已 build e306d8d82502 并重启容器验证全通
 
 ### In Progress
-- **提交未提交改动**：v18 部署三件套 + UI 追修五轮（转圈圈/日志/流式/quick/截断/pipe-bar 彩色方块/命名统一/svg 落盘）+ 打磨快赢三项 + gitignore 清理
-  - 建议消息：`feat:v18 部署分档 + 全pipeline流式/彩色pipe-bar/输出命名统一/svg截断+落盘修复 + fast爬图并行/日志轮转/llm健康灯`
-- **Dockerfile.update 临时薄镜像**：playwright CDN 修复未验证（npmmirror build 超时）；CDN 恢复后重 build 主 Dockerfile，成功后可删 Dockerfile.update
+- (none)
 
 ### Blocked
 - (none)
@@ -92,17 +90,18 @@
 - light/none 强制 max_retries=0（30 分钟灾难根因）
 
 ## Next Steps
-1. **提交全部未提交改动**（见 In Progress；commit 前先 git status/diff 复核）
-2. CDN 恢复后重 build 主 Dockerfile（trixie 包名已修 + 清华 apt 源 + npmmirror playwright），成功后删 Dockerfile.update
-3. 下次开工选项（快赢三项已完成）：
+1. 可选小优化：fast 爬图加搜索缓存（关键词→结果落盘，重复概念秒出）——Pexels 网络瓶颈的缓解项
+2. 下次开工选项（快赢三项已完成）：
    - **v15 开源整合**：M1 断点续跑（挂 v11 黑板）+ JSON 容错 → M2 五维提示词+RAG（2-3 天）
    - **v16 长视频**：M0 spike 末帧回灌验证（Wan I2V 连续 3-5 段抽末帧回灌，实测漂移 SSIM）→ M2 oneshot.py + `--oneshot --duration N` → M1 关键帧/M3 层级一致性/M4 长文本
    - v14 队友做完后 review 接入
 
 ## Critical Context
 - git HEAD：`56c8b92 docs:roadmap:change version orders`（重排主体已提交）；**大量代码追修未提交**（v18 部署+五轮 UI/管线追修+快赢三项+Dockerfile 修复）
-- Docker：vidance 容器现跑 **full 档 :9401**（host 网络）+ 镜像 e306d8d82502（薄镜像：老镜像+最新代码，含全部追修+快赢三项）+ 挂载 ../ui:/app/ui:ro + /tmp:/hostlogs/tmp:ro + VIDANCE_LOG_PREFIX=/hostlogs
-- 主 Dockerfile（deploy/Dockerfile）已修 trixie 包名 t64 + 清华 apt 源 + npmmirror playwright，但整 build 未走通（playwright CDN/npmmirror 均超时）；CDN 恢复后重 build
+- Docker：vidance 容器现跑 **full 档 :9401**（host 网络）+ **正式构建镜像 d217e29b19a2（vidance-api:latest）**（npmmirror playwright 源 build 成功，含全部追修+快赢三项）+ 挂载 ../ui:/app/ui:ro + /tmp:/hostlogs/tmp:ro + VIDANCE_LOG_PREFIX=/hostlogs
+- 主 Dockerfile（deploy/Dockerfile）已修 trixie 包名 t64 + 清华 apt 源 + npmmirror playwright，**已 build 成功**（之前超时是下载慢被 15min timeout 杀，后台跑即成）；cdn.playwright.dev 不可达（000），npmmirror 200 可达；Dockerfile.update 临时薄镜像已无用可删
+- **用户已提交全部改动**（e999d64 docker_deploy_try 覆盖 fastline/svg/健康灯/轮转/Dockerfile/config；54bbbe1/575531e/527d8e7/42ce625 前置），工作区干净
+- fastline v2 备选补位容器实测：词 1 两张全废 → 从词 2 备选补位（零重爬、保序）✓；总耗时 276s = Pexels 网络瓶颈（单搜索 50-65s，并发带宽挤占等效串行，外部因素代码已到极限；如需再快可加搜索缓存）
 - output/ 现状：assets、quick_20260929_101107（用户真实任务）、svg_20260929_093034/100333/130723（用户+验证，已归位进目录）、tasks.sqlite
 - 服务状态：h3(8188)/wan(8189)/flux(8192)/tts(9880)/api 宿主 :8894(旧代码) UP；hunyuan(8190)+h3d(8193) DOWN
 - 容器 api :9401 = 最新代码；宿主 api :8894 = 旧代码（start_services 启的，重启才会换）

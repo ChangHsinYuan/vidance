@@ -1,7 +1,7 @@
 # Vidance 总览与路线图
 
 > 视频生成 agent 系统：opencode 当"制片人"编排本地生图/生视频/生3D/语音引擎，从一句概念产出有声短片。
-> 原始规划稿见 `archive/roadmap_origin.md`。**已实现**：v0-v10 + t2c + v11 多智能体（原 v13）+ v12 三排正交 M1-M2（原 v17）+ v13 轻量化 S1-S5（原 v15）；**待开发**：v14 社交媒体（原 v11）/ v15 开源整合（原 v12）/ v16 长视频质量（原 v14）/ v17 二创（原 v16）/ v18 交付形态。（2026-09-26 重排：已完成块前移，未完成块后移，编号按新顺序，括号内为原号，方便对照旧 commit）
+> 原始规划稿见 `archive/roadmap_origin.md`。**已实现**：v0-v10 + t2c + v11 多智能体（原 v13）+ v12 三排正交 M1-M2（原 v17）+ v13 轻量化 S1-S5（原 v15）；**待开发**：v14 社交媒体（原 v11）/ v15 开源整合（原 v12）/ v16 长视频质量（原 v14）/ v17 二创（原 v16）/ v18 交付形态 / v19 视频处理编辑（SAM/光流/换脸/局部替换）/ v20 LLM 生成 PPT / v21 生成中审核（tensor 边生边审）。（2026-09-26 重排：已完成块前移，未完成块后移，编号按新顺序，括号内为原号，方便对照旧 commit；2026-09-30 新增 v19-v21）
 
 ## 1. 定位
 
@@ -436,6 +436,62 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
+### v19 — 视频处理与编辑（SAM 分割 / 光流追踪 / AI 换脸 / 局部替换）（🎯 待开发，2026-09-30 立项）
+
+**目标**：给流水线补上**帧级视频编辑能力**——分割、追踪、换脸、局部替换，既服务二创（v17 的画面改写），也让 custom/auto 的成片可后期精修。
+
+**范围**：
+- **SAM 分割**：Segment Anything（或 SAM2，带视频传播）对帧/片段做目标分割——抠主体/换背景/局部打码；`utils/sam_edit.py`（image/clip → mask → 抠图/换底/模糊），`--segment 主体` 一键
+- **光流追踪**：复用 v2 RIFE 光流模型做**目标轨迹追踪**（CoTracker/RIFE flow 聚焦）——镜头稳定/运动模糊修复/追踪局部打码；RIFE(8189) 已在线，增量改造
+- **AI 换脸**：本地开源方案（FaceFusion/inswapper，参考图→目标视频换脸）——与 v1 角色锚结合（角色参考图→成片换脸），**明确仅用于已授权素材/虚构角色**；`utils/face_swap.py`（GPU，接 v18 档位 none 档禁用）
+- **局部替换（inpaint）**：帧内区域重绘（SDXL inpaint 8191 / FLUX fill）——去水印/替换物件/改背景；mask 来自 SAM 分割（SAM 分割 → inpaint 补全，两能力串联）
+- **agent 化**：`audit.edit` 或 `post.edit` 薄包装 Agent（mask/sam/inpaint/face 四工具），链式调用：`{"agent":"post.edit","with":{"video":"${v.video}","op":"segment+inpaint","target":"背景"}}`
+- **档位接入**：新增能力进 v18 档位阶梯（`full` 档启用，编辑类全 GPU 依赖，none/flux 档降级提示）
+
+**里程碑**：M1 SAM 分割（图→mask→抠图/换底）→ M2 光流追踪+稳镜 → M3 局部替换（SAM mask→inpaint）→ M4 换脸（合规边界内）+ agent 化一条命令。
+
+**参考**：SAM2（Meta，视频分割）、CoTracker（Meta，点追踪）、FaceFusion、ProPainter（视频修补）。
+
+---
+
+### v20 — LLM 生成 PPT（轻量化延伸：v13 姊妹篇）（🎯 待开发，2026-09-30 立项）
+
+**目标**：v13 已验证"LLM 产出结构化声明式产物（SVG）→ 无头浏览器确定性渲染 → mp4"这条纯 CPU 路线；v20 把它延伸到 **PPT/幻灯片**——LLM 生成 HTML 幻灯片 → 渲染成图/成片，零 GPU、秒级、矢量清晰。
+
+**范围**：
+- **LLM 生成 HTML 幻灯片**：概念/大纲 → LLM 产出带 CSS 动画的自包含 HTML 幻灯片（复用 v13 svg_llm 的提示词工程经验：布局/配色/字体/动效约束 + 只输出代码）；16:9 固定分辨率，reveal.js 或纯 CSS（更轻）
+- **渲染管线**：复用 v13 svg_pipeline 的 Playwright/Chromium 确定性逐帧（`currentTime=t` + pause 截图）——幻灯片页间转场（fade/slide）+ 页内动效逐帧渲染 → mp4 短片；或导出 PDF/图片（PPT 交付形态）
+- **数据可视化**：PPT 常见图表（柱状/折线/饼图/流程图）→ LLM 直接生成 SVG 图表（数据驱动，矢量清晰）——可从热点/数据源（v4 crawler）取数自动生成"数据解读"短片/PPT
+- **两条交付形态**：`vidance.py ppt "<大纲>" -o deck.html`（HTML 幻灯片，浏览器直接放映）+ `vidance.py ppt "<大纲>" --video`（渲染成 mp4 有声短片，接 TTS 旁白 = v13 S5 同款）
+- **agent 化**：`generator.ppt` 薄包装（needs_gpu=False），链式：`{"agent":"generator.ppt","with":{"concept":"季度总结","n":5,"voice":"edge-moe"}}`
+- **模板系统**：常用 PPT 版式（标题页/目录/图文页/数据页/结尾页）LLM 按版式生成，风格统一（配色/字体全局约束）
+
+**里程碑**：M1 LLM→HTML 幻灯片→渲染 mp4（单页）→ M2 多页+页间转场+TTS 旁白 → M3 数据可视化图表 → M4 PDF/PPTX 导出 + agent 化。
+
+**参考**：v13 svg_pipeline（同一渲染管线）、Marp（Markdown→幻灯片）、Slidev、reveal.js。
+
+---
+
+### v21 — 生成中审核（tensor 导出 + 多模态边生边审）（🎯 待开发，2026-09-30 立项）
+
+**目标**：体现**本地部署的优越性**——生成视频时中间有 token/latent 在流动，把中间态**直接导出成可审图像**丢给多模态 LLM 实时审核，**边生成边审**（不等全片渲完再逐帧审），流水线级省时（审片是当前最大耗时瓶颈之一，30-200s/镜）。
+
+**范围**：
+- **原理**：Wan T2V/I2V 是 diffusion 迭代去噪——ComfyUI 节点间流动的 latent tensor 可以**中途解码出预览帧**（VAE decode 部分去噪的 latent → 模糊但可判构图/主体的图）。本地部署 = 能拿到中间 tensor；云端 API = 只能等最终结果
+- **latent 中途导出**：ComfyUI 自定义节点（`PreviewLatent`/SaveImage 中间态）或 workflow 改造——每 N 步去噪导出一帧预览（步骤数/质量权衡：太多打断 GPU，太少审核滞后）；`utils/latent_probe.py`（workflow JSON 模板 + 中间帧导出）
+- **边生边审流水线**：中间帧 → 多模态 LLM（qwen3.8-chat）**与生成并行**审核——构图/主体/角色一致性早判，不合格**提前止损**（terminate 当前 workflow，省下剩余去噪时间）而非渲完再审重做
+- **早停重生成**：审核不过 → 提前终止 + 调整 prompt/seed 重生成（相比渲完再审省 50-80% 单镜时间，N 步内发现问题就能止损）
+- **渐进式审片**：低步数粗审（快，构图/主体）→ 高步数细审（慢，细节/伪影）分级，最后成片仍走现有逐帧审片（v0 口径）
+- **v11 集成**：审核事件进 chain SSE（`event: preview`），前端画布实时显示"生成中预览帧 + 审核意见"——用户可看到 AI 正在边画边自检
+
+**里程碑**：M0 spike（ComfyUI 中间 latent 解码导出验证：改 workflow 8189 实测能否拿到可判图）→ M1 latent_probe 工具化 + 审核接通 → M2 早停止损（不合格提前终止重生成）→ M3 分级粗/细审 + 前端实时预览集成。
+
+**依赖**：Wan/ComfyUI 本地实例（8189）+ 多模态 LLM + v11 chain SSE/前端。
+
+**参考**：ComfyUI PreviewLatent/TAESD（快速 latent 解码小模型）、LCM（低步数快速出图思路）。
+
+---
+
 ## 5. GPU 与端口分配
 
 | 服务 | 端口 | GPU | 环境 | 启动方式 |
@@ -547,6 +603,9 @@ vidance/
 | MoneyPrinterTurbo | 架构参考（字幕双模式/VideoParams/skill） |
 | OpenCut | v10 拼接/时间线模型参考（仅后端思路） |
 | ViMax / Toonflow / BigBanana | v11 多智能体 / v16 长视频（原 v13/v14）/ v15 开源整合参考 |
+| SAM2 / CoTracker / FaceFusion / ProPainter | v19 视频处理编辑（分割/追踪/换脸/修补）参考 |
+| Marp / Slidev / reveal.js | v20 LLM 生成 PPT（Markdown/代码→幻灯片）参考 |
+| ComfyUI PreviewLatent / TAESD / LCM | v21 生成中审核（latent 中途解码/快速解码）参考 |
 
 ---
 
