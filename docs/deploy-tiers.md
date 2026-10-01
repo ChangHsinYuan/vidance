@@ -1,4 +1,4 @@
-# Vidance 部署档（v18）
+# Vidance 部署档（v21，原 v18）
 
 > 按部署机器的硬件能力分档打包：能走接口的走接口（LLM/选题/TTS=edge-tts 在线），能部署的模型才进档。同一份代码 + `VIDANCE_TIER` 环境变量 + `config/tiers/{档}.json` 覆盖，Docker 挂一个端口即服务。
 

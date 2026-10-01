@@ -1,7 +1,7 @@
 # Vidance 总览与路线图
 
 > 视频生成 agent 系统：opencode 当"制片人"编排本地生图/生视频/生3D/语音引擎，从一句概念产出有声短片。
-> 原始规划稿见 `archive/roadmap_origin.md`。**已实现**：v0-v10 + t2c + v11 多智能体（原 v13）+ v12 三排正交 M1-M2（原 v17）+ v13 轻量化 S1-S5（原 v15）；**待开发**：v14 社交媒体（原 v11）/ v15 开源整合（原 v12）/ v16 长视频质量（原 v14）/ v17 二创（原 v16）/ v18 交付形态 / v19 视频处理编辑（SAM/光流/换脸/局部替换）/ v20 LLM 生成 PPT / v21 生成中审核（tensor 边生边审）。（2026-09-26 重排：已完成块前移，未完成块后移，编号按新顺序，括号内为原号，方便对照旧 commit；2026-09-30 新增 v19-v21）
+> 原始规划稿见 `archive/roadmap_origin.md`。**已实现**：v0-v10 + t2c + v11 多智能体（原 v13）+ v12 三排正交 M1-M2（原 v17）+ v13 轻量化 S1-S5（原 v15）；**待开发**：v14 社交媒体（原 v11）/ v15 LLM 生成 PPT（原 v20）/ v16 视频处理编辑（原 v19）/ v17 开源整合（原 v12）/ v18 长视频质量（原 v14）/ v19 二创（原 v16）/ v20 生成中审核（原 v21）/ v21 交付形态（原 v18）。（2026-09-26 重排：已完成块前移，未完成块后移；2026-09-30 新增 v19-v21；2026-10-01 二次重排：PPT/视频编辑前移至 v14 后、生成中审核插至交付形态前——括号内为原号，v12/v14/v16 指最初编号，v18-v21 指 2026-09-30 编号，方便对照 commit）
 
 ## 1. 定位
 
@@ -311,7 +311,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 - **M1 ✅**：`core/narration.py`（Narrator：say 含三级降级链 / silence / srt）；fastline `_tts_segment`/`_gen_silence`/`_build_srt`/`srt_time`/`_video_duration` 与 svg_pipeline `_tts_seg`/`_silence`/`_srt_time`/`_probe_duration` 全部改薄壳转发（删 ~80 行重复）；SVG S5 回归通过
 - M2 `vidance.py make --director --generator` 统一入口（现有子命令变别名）
 - M3 `utils/director.py` 合并三套编剧/旁白 prompt（pipeline/fastline/svg_llm）为统一 schema
-- M4 生成器契约统一，v16 二创作为 G5 即插即用
+- M4 生成器契约统一，v19 二创作为 G5 即插即用
 
 ---
 
@@ -362,7 +362,43 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v15 — 整合已有开源仓库（原 v12）（🎯 待开发）
+### v15 — LLM 生成 PPT（轻量化延伸：v13 姊妹篇）（原 v20，🎯 待开发，2026-09-30 立项）
+
+**目标**：v13 已验证"LLM 产出结构化声明式产物（SVG）→ 无头浏览器确定性渲染 → mp4"这条纯 CPU 路线；v15 把它延伸到 **PPT/幻灯片**——LLM 生成 HTML 幻灯片 → 渲染成图/成片，零 GPU、秒级、矢量清晰。
+
+**范围**：
+- **LLM 生成 HTML 幻灯片**：概念/大纲 → LLM 产出带 CSS 动画的自包含 HTML 幻灯片（复用 v13 svg_llm 的提示词工程经验：布局/配色/字体/动效约束 + 只输出代码）；16:9 固定分辨率，reveal.js 或纯 CSS（更轻）
+- **渲染管线**：复用 v13 svg_pipeline 的 Playwright/Chromium 确定性逐帧（`currentTime=t` + pause 截图）——幻灯片页间转场（fade/slide）+ 页内动效逐帧渲染 → mp4 短片；或导出 PDF/图片（PPT 交付形态）
+- **数据可视化**：PPT 常见图表（柱状/折线/饼图/流程图）→ LLM 直接生成 SVG 图表（数据驱动，矢量清晰）——可从热点/数据源（v4 crawler）取数自动生成"数据解读"短片/PPT
+- **两条交付形态**：`vidance.py ppt "<大纲>" -o deck.html`（HTML 幻灯片，浏览器直接放映）+ `vidance.py ppt "<大纲>" --video`（渲染成 mp4 有声短片，接 TTS 旁白 = v13 S5 同款）
+- **agent 化**：`generator.ppt` 薄包装（needs_gpu=False），链式：`{"agent":"generator.ppt","with":{"concept":"季度总结","n":5,"voice":"edge-moe"}}`
+- **模板系统**：常用 PPT 版式（标题页/目录/图文页/数据页/结尾页）LLM 按版式生成，风格统一（配色/字体全局约束）
+
+**里程碑**：M1 LLM→HTML 幻灯片→渲染 mp4（单页）→ M2 多页+页间转场+TTS 旁白 → M3 数据可视化图表 → M4 PDF/PPTX 导出 + agent 化。
+
+**参考**：v13 svg_pipeline（同一渲染管线）、Marp（Markdown→幻灯片）、Slidev、reveal.js。
+
+---
+
+### v16 — 视频处理与编辑（SAM 分割 / 光流追踪 / AI 换脸 / 局部替换）（原 v19，🎯 待开发，2026-09-30 立项）
+
+**目标**：给流水线补上**帧级视频编辑能力**——分割、追踪、换脸、局部替换，既服务二创（v19 的画面改写），也让 custom/auto 的成片可后期精修。
+
+**范围**：
+- **SAM 分割**：Segment Anything（或 SAM2，带视频传播）对帧/片段做目标分割——抠主体/换背景/局部打码；`utils/sam_edit.py`（image/clip → mask → 抠图/换底/模糊），`--segment 主体` 一键
+- **光流追踪**：复用 v2 RIFE 光流模型做**目标轨迹追踪**（CoTracker/RIFE flow 聚焦）——镜头稳定/运动模糊修复/追踪局部打码；RIFE(8189) 已在线，增量改造
+- **AI 换脸**：本地开源方案（FaceFusion/inswapper，参考图→目标视频换脸）——与 v1 角色锚结合（角色参考图→成片换脸），**明确仅用于已授权素材/虚构角色**；`utils/face_swap.py`（GPU，接 v21 档位 none 档禁用）
+- **局部替换（inpaint）**：帧内区域重绘（SDXL inpaint 8191 / FLUX fill）——去水印/替换物件/改背景；mask 来自 SAM 分割（SAM 分割 → inpaint 补全，两能力串联）
+- **agent 化**：`audit.edit` 或 `post.edit` 薄包装 Agent（mask/sam/inpaint/face 四工具），链式调用：`{"agent":"post.edit","with":{"video":"${v.video}","op":"segment+inpaint","target":"背景"}}`
+- **档位接入**：新增能力进 v21 档位阶梯（`full` 档启用，编辑类全 GPU 依赖，none/flux 档降级提示）
+
+**里程碑**：M1 SAM 分割（图→mask→抠图/换底）→ M2 光流追踪+稳镜 → M3 局部替换（SAM mask→inpaint）→ M4 换脸（合规边界内）+ agent 化一条命令。
+
+**参考**：SAM2（Meta，视频分割）、CoTracker（Meta，点追踪）、FaceFusion、ProPainter（视频修补）。
+
+---
+
+### v17 — 整合已有开源仓库（原 v12）（🎯 待开发）
 
 **目标**：吸收成熟开源项目的工程能力，不重复造轮子。
 
@@ -384,7 +420,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v16 — 长视频质量（原 v14）（🎯 待开发）
+### v18 — 长视频质量（原 v14）（🎯 待开发）
 
 **目标**：提升长片（分钟级）的画面质量与跨镜一致性。
 
@@ -404,7 +440,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v17 — 营销号 Plus：视频链接二创（原 v16）（🎯 待开发，backlog）
+### v19 — 营销号 Plus：视频链接二创（原 v16）（🎯 待开发，backlog）
 
 **目标**：用户给一个**视频链接**（B站/抖音/YouTube 等），流水线自动二创出一条新视频，**保留原有全部功能**。
 
@@ -421,58 +457,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v18 — 面向最终用户的交付形态（🎯 规划，2026-09-26 立项）
-
-**目标**：从"开发者本地系统"变成"用户可安装可运行的产品"——先探测本机资源，再按资源分发对应部署档，屏蔽底层细节。
-
-**里程碑草案**：
-- **M0 资源探测**：`core/doctor.py`（GPU 型号/显存/端口占用/conda 环境/磁盘/外网可达性）→ 输出 profile JSON，`vidance doctor` + `/api/doctor`；首次启动自动跑并推荐档
-- **M1 部署分档** ✅（2026-09-26 改五档落地，见 [deploy-tiers.md](./deploy-tiers.md)、deploy/README.md）：五档阶梯 `none`（无 GPU：svg + fast 爬图，LLM/edge-tts 全走远程接口）/ `flux`（+SDXL/FLUX 生图）/ `wan`（+Wan T2V/I2V+RIFE+auto/quick）/ `h3`（+MiniMax-H3 ref2va+custom/h3shot）/ `full`（全量全家桶）——同一份代码 + `VIDANCE_TIER` 环境变量 + `config/tiers/{档}.json` 覆盖（`agents/common/tools/config_loader.py` 深合并，缺省 full 宿主机零变化）；守卫点 `/api/health` 报档 / `/api/tools` 按档过滤 / tool 分发 400 / CLI require() 退出提示换档；Docker：`deploy/Dockerfile`（API 层 ~2GB：ffmpeg+Noto CJK+playwright/Chromium）+ `deploy/Dockerfile.comfyui`（GPU 模板，模型卷挂不进镜像）+ `deploy/docker-compose.yml`（profiles 五档，API 缺省挂 9400，host 网络直连宿主服务）——本机 full 档演示：`VIDANCE_TIER=full VIDANCE_PORT=9401 docker compose -f deploy/docker-compose.yml up -d vidance`
-- **M2 一键安装**：`install.sh` 按 M0 探测选档 → 拉镜像/建环境 → start_services 接管 → 冒烟自检（复用 start_services.sh test）
-- **M3 面向用户细节**：config 向导（首次填 LLM key/选端口）、失败自诊断提示（端口占用/显存不足/外网不通点名到人）、输出目录与清理策略 UI 化、版本更新通道
-- **M4 交付包装**：版本号语义化 + `vidance --version`、CHANGELOG、docs/usage.md 按档重写成用户手册
-
-**依赖**：v13 轻量化（原 v15）是 lite 档地基；v11 多智能体（原 v13）agent API 是网关/机器人接入面。
-
----
-
-### v19 — 视频处理与编辑（SAM 分割 / 光流追踪 / AI 换脸 / 局部替换）（🎯 待开发，2026-09-30 立项）
-
-**目标**：给流水线补上**帧级视频编辑能力**——分割、追踪、换脸、局部替换，既服务二创（v17 的画面改写），也让 custom/auto 的成片可后期精修。
-
-**范围**：
-- **SAM 分割**：Segment Anything（或 SAM2，带视频传播）对帧/片段做目标分割——抠主体/换背景/局部打码；`utils/sam_edit.py`（image/clip → mask → 抠图/换底/模糊），`--segment 主体` 一键
-- **光流追踪**：复用 v2 RIFE 光流模型做**目标轨迹追踪**（CoTracker/RIFE flow 聚焦）——镜头稳定/运动模糊修复/追踪局部打码；RIFE(8189) 已在线，增量改造
-- **AI 换脸**：本地开源方案（FaceFusion/inswapper，参考图→目标视频换脸）——与 v1 角色锚结合（角色参考图→成片换脸），**明确仅用于已授权素材/虚构角色**；`utils/face_swap.py`（GPU，接 v18 档位 none 档禁用）
-- **局部替换（inpaint）**：帧内区域重绘（SDXL inpaint 8191 / FLUX fill）——去水印/替换物件/改背景；mask 来自 SAM 分割（SAM 分割 → inpaint 补全，两能力串联）
-- **agent 化**：`audit.edit` 或 `post.edit` 薄包装 Agent（mask/sam/inpaint/face 四工具），链式调用：`{"agent":"post.edit","with":{"video":"${v.video}","op":"segment+inpaint","target":"背景"}}`
-- **档位接入**：新增能力进 v18 档位阶梯（`full` 档启用，编辑类全 GPU 依赖，none/flux 档降级提示）
-
-**里程碑**：M1 SAM 分割（图→mask→抠图/换底）→ M2 光流追踪+稳镜 → M3 局部替换（SAM mask→inpaint）→ M4 换脸（合规边界内）+ agent 化一条命令。
-
-**参考**：SAM2（Meta，视频分割）、CoTracker（Meta，点追踪）、FaceFusion、ProPainter（视频修补）。
-
----
-
-### v20 — LLM 生成 PPT（轻量化延伸：v13 姊妹篇）（🎯 待开发，2026-09-30 立项）
-
-**目标**：v13 已验证"LLM 产出结构化声明式产物（SVG）→ 无头浏览器确定性渲染 → mp4"这条纯 CPU 路线；v20 把它延伸到 **PPT/幻灯片**——LLM 生成 HTML 幻灯片 → 渲染成图/成片，零 GPU、秒级、矢量清晰。
-
-**范围**：
-- **LLM 生成 HTML 幻灯片**：概念/大纲 → LLM 产出带 CSS 动画的自包含 HTML 幻灯片（复用 v13 svg_llm 的提示词工程经验：布局/配色/字体/动效约束 + 只输出代码）；16:9 固定分辨率，reveal.js 或纯 CSS（更轻）
-- **渲染管线**：复用 v13 svg_pipeline 的 Playwright/Chromium 确定性逐帧（`currentTime=t` + pause 截图）——幻灯片页间转场（fade/slide）+ 页内动效逐帧渲染 → mp4 短片；或导出 PDF/图片（PPT 交付形态）
-- **数据可视化**：PPT 常见图表（柱状/折线/饼图/流程图）→ LLM 直接生成 SVG 图表（数据驱动，矢量清晰）——可从热点/数据源（v4 crawler）取数自动生成"数据解读"短片/PPT
-- **两条交付形态**：`vidance.py ppt "<大纲>" -o deck.html`（HTML 幻灯片，浏览器直接放映）+ `vidance.py ppt "<大纲>" --video`（渲染成 mp4 有声短片，接 TTS 旁白 = v13 S5 同款）
-- **agent 化**：`generator.ppt` 薄包装（needs_gpu=False），链式：`{"agent":"generator.ppt","with":{"concept":"季度总结","n":5,"voice":"edge-moe"}}`
-- **模板系统**：常用 PPT 版式（标题页/目录/图文页/数据页/结尾页）LLM 按版式生成，风格统一（配色/字体全局约束）
-
-**里程碑**：M1 LLM→HTML 幻灯片→渲染 mp4（单页）→ M2 多页+页间转场+TTS 旁白 → M3 数据可视化图表 → M4 PDF/PPTX 导出 + agent 化。
-
-**参考**：v13 svg_pipeline（同一渲染管线）、Marp（Markdown→幻灯片）、Slidev、reveal.js。
-
----
-
-### v21 — 生成中审核（tensor 导出 + 多模态边生边审）（🎯 待开发，2026-09-30 立项）
+### v20 — 生成中审核（tensor 导出 + 多模态边生边审）（原 v21，🎯 待开发，2026-09-30 立项）
 
 **目标**：体现**本地部署的优越性**——生成视频时中间有 token/latent 在流动，把中间态**直接导出成可审图像**丢给多模态 LLM 实时审核，**边生成边审**（不等全片渲完再逐帧审），流水线级省时（审片是当前最大耗时瓶颈之一，30-200s/镜）。
 
@@ -489,6 +474,21 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 **依赖**：Wan/ComfyUI 本地实例（8189）+ 多模态 LLM + v11 chain SSE/前端。
 
 **参考**：ComfyUI PreviewLatent/TAESD（快速 latent 解码小模型）、LCM（低步数快速出图思路）。
+
+---
+
+### v21 — 面向最终用户的交付形态（原 v18，🎯 规划，2026-09-26 立项）
+
+**目标**：从"开发者本地系统"变成"用户可安装可运行的产品"——先探测本机资源，再按资源分发对应部署档，屏蔽底层细节。
+
+**里程碑草案**：
+- **M0 资源探测**：`core/doctor.py`（GPU 型号/显存/端口占用/conda 环境/磁盘/外网可达性）→ 输出 profile JSON，`vidance doctor` + `/api/doctor`；首次启动自动跑并推荐档
+- **M1 部署分档** ✅（2026-09-26 改五档落地，见 [deploy-tiers.md](./deploy-tiers.md)、deploy/README.md）：五档阶梯 `none`（无 GPU：svg + fast 爬图，LLM/edge-tts 全走远程接口）/ `flux`（+SDXL/FLUX 生图）/ `wan`（+Wan T2V/I2V+RIFE+auto/quick）/ `h3`（+MiniMax-H3 ref2va+custom/h3shot）/ `full`（全量全家桶）——同一份代码 + `VIDANCE_TIER` 环境变量 + `config/tiers/{档}.json` 覆盖（`agents/common/tools/config_loader.py` 深合并，缺省 full 宿主机零变化）；守卫点 `/api/health` 报档 / `/api/tools` 按档过滤 / tool 分发 400 / CLI require() 退出提示换档；Docker：`deploy/Dockerfile`（API 层 ~2GB：ffmpeg+Noto CJK+playwright/Chromium）+ `deploy/Dockerfile.comfyui`（GPU 模板，模型卷挂不进镜像）+ `deploy/docker-compose.yml`（profiles 五档，API 缺省挂 9400，host 网络直连宿主服务）——本机 full 档演示：`VIDANCE_TIER=full VIDANCE_PORT=9401 docker compose -f deploy/docker-compose.yml up -d vidance`
+- **M2 一键安装**：`install.sh` 按 M0 探测选档 → 拉镜像/建环境 → start_services 接管 → 冒烟自检（复用 start_services.sh test）
+- **M3 面向用户细节**：config 向导（首次填 LLM key/选端口）、失败自诊断提示（端口占用/显存不足/外网不通点名到人）、输出目录与清理策略 UI 化、版本更新通道
+- **M4 交付包装**：版本号语义化 + `vidance --version`、CHANGELOG、docs/usage.md 按档重写成用户手册
+
+**依赖**：v13 轻量化（原 v15）是 lite 档地基；v11 多智能体（原 v13）agent API 是网关/机器人接入面。
 
 ---
 
@@ -581,7 +581,7 @@ vidance/
 │   ├── svg_llm.py             # v13（原 v15）概念→LLM→动效 SVG
 │   ├── t2c_server.py          # t2c 自然语言→命令（translate，进程内/可选 HTTP）
 │   ├── h3_prompt_video.py     # 整段式 prompt + 参考图 → H3 ref2va 单镜（原生音频直出）
-│   ├── oneshot.py             # v16（原 v14）一镜到底（🎯 待实现）
+│   ├── oneshot.py             # v18（原 v14）一镜到底（🎯 待实现）
 │   ├── notify/                # v14（原 v11）机器人网关（🎯 待实现）
 │   ├── luts/  bgm/  workflows/  voices/
 ├── agents/                    # v11 多智能体（原 v13）：D/G/P/V 物理分层 + 薄包装（docs/v11-design.md）
@@ -602,10 +602,10 @@ vidance/
 | CosyVoice (`/mnt/disk_sdb/zxy/CosyVoice/`) | TTS 引擎 |
 | MoneyPrinterTurbo | 架构参考（字幕双模式/VideoParams/skill） |
 | OpenCut | v10 拼接/时间线模型参考（仅后端思路） |
-| ViMax / Toonflow / BigBanana | v11 多智能体 / v16 长视频（原 v13/v14）/ v15 开源整合参考 |
-| SAM2 / CoTracker / FaceFusion / ProPainter | v19 视频处理编辑（分割/追踪/换脸/修补）参考 |
-| Marp / Slidev / reveal.js | v20 LLM 生成 PPT（Markdown/代码→幻灯片）参考 |
-| ComfyUI PreviewLatent / TAESD / LCM | v21 生成中审核（latent 中途解码/快速解码）参考 |
+| ViMax / Toonflow / BigBanana | v11 多智能体 / v18 长视频（原 v14）/ v17 开源整合（原 v12）参考 |
+| SAM2 / CoTracker / FaceFusion / ProPainter | v16 视频处理编辑（原 v19；分割/追踪/换脸/修补）参考 |
+| Marp / Slidev / reveal.js | v15 LLM 生成 PPT（原 v20；Markdown/代码→幻灯片）参考 |
+| ComfyUI PreviewLatent / TAESD / LCM | v20 生成中审核（原 v21；latent 中途解码/快速解码）参考 |
 
 ---
 

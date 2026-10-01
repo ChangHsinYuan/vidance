@@ -8,9 +8,9 @@ Vidance 是一个基于 opencode agent 编排的本地视频生成系统。核�
 
 **统一入口**：`python core/vidance.py make`（v12（原 v17）：`--director llm|manual|scout × --generator wan|fast|svg|h3` 排列组合）或直用子命令 `{auto|custom|quick|fast|hot|svg|compose|concat|h3shot}` — auto 模式走 LLM 编剧+Wan/FLUX 生成，custom 模式走参考图+预写脚本+H3 ref2va 生成，quick 模式纯 T2V 无后处理。后处理（RIFE/LUT/BGM/STT）由 `core/postprocess.py` 共享模块提供。
 
-**当前状态：v0-v7 全部实现 + v10 时间线拼接（M1-M8）+ svg 有声流水线（S1-S5）+ t2c 自然语言→命令 + v12 make 统一入口（M1-M2，原 v17）+ v11 多智能体（M0-M4 + v11.1 前端可视化，原 v13，agents/ 目录，docs/v11-design.md）**（v2 长视频 + v2.1 backlog + v3 M0-M7 + v4 M1-M6 + v5 M1-M4 + v6 M1-M4 + v7 前端 M1-M4 + v10 + t2c），**待开发**：v14 社交媒体（原 v11）/ v15 开源整合（原 v12）/ v16 长视频质量（原 v14）/ v17 二创（原 v16）/ v18 交付形态 / v19 视频处理编辑（SAM/光流/换脸）/ v20 LLM 生成 PPT / v21 生成中审核（tensor 边生边审）（2026-09-26 重排 + 2026-09-30 新增 v19-v21）。
+**当前状态：v0-v7 全部实现 + v10 时间线拼接（M1-M8）+ svg 有声流水线（S1-S5）+ t2c 自然语言→命令 + v12 make 统一入口（M1-M2，原 v17）+ v11 多智能体（M0-M4 + v11.1 前端可视化，原 v13，agents/ 目录，docs/v11-design.md）**（v2 长视频 + v2.1 backlog + v3 M0-M7 + v4 M1-M6 + v5 M1-M4 + v6 M1-M4 + v7 前端 M1-M4 + v10 + t2c），**待开发**：v14 社交媒体（原 v11）/ v15 LLM 生成 PPT（原 v20）/ v16 视频处理编辑（原 v19）/ v17 开源整合（原 v12）/ v18 长视频质量（原 v14）/ v19 二创（原 v16）/ v20 生成中审核（原 v21）/ v21 交付形态（原 v18）（2026-09-26 重排 + 2026-09-30 新增 v19-v21 + 2026-10-01 二次重排：括号内为原号）。
 
-**版本路线**：v4 营销号流水线（fast/hot 爬图出片）→ v5 剪辑特效 → v6 prompt 多轮核实（ask + dialog API）→ v7 前端 agent WebUI（:8894/ui）→ **v8 前端增强**（资产库/分镜预览/进度可视化/时间线展示）→ **v9 API 标准化**（多 Vendor 适配/能力发现/用量限流/OpenAPI）→ **v10 拼接与特效**（OpenCut 时间线思路，后端 CLI 可被 LLM 调用）→ **v11 多智能体**（三层 Agent 解耦，原 v13）→ **v12 三排正交**（make 统一入口，原 v17）→ **v13 轻量化**（SVG 流水线，原 v15）→ **v14 接入社交媒体**（发布渠道 + IM 机器人网关，原 v11）→ **v15 整合开源仓库**（断点续跑/JSON 容错/RAG/五维提示词，原 v12）→ **v16 长视频质量**（关键帧驱动/一镜到底/层级一致性，原 v14）→ **v17 二创**（视频链接二创，原 v16）。详见 docs/roadmap.md。
+**版本路线**：v4 营销号流水线（fast/hot 爬图出片）→ v5 剪辑特效 → v6 prompt 多轮核实（ask + dialog API）→ v7 前端 agent WebUI（:8894/ui）→ **v8 前端增强**（资产库/分镜预览/进度可视化/时间线展示）→ **v9 API 标准化**（多 Vendor 适配/能力发现/用量限流/OpenAPI）→ **v10 拼接与特效**（OpenCut 时间线思路，后端 CLI 可被 LLM 调用）→ **v11 多智能体**（三层 Agent 解耦，原 v13）→ **v12 三排正交**（make 统一入口，原 v17）→ **v13 轻量化**（SVG 流水线，原 v15）→ **v14 接入社交媒体**（发布渠道 + IM 机器人网关，原 v11）→ **v15 LLM 生成 PPT**（HTML 幻灯片→渲染 mp4/PDF，原 v20）→ **v16 视频处理编辑**（SAM/光流/换脸/局部替换，原 v19）→ **v17 整合开源仓库**（断点续跑/JSON 容错/RAG/五维提示词，原 v12）→ **v18 长视频质量**（关键帧驱动/一镜到底/层级一致性，原 v14）→ **v19 二创**（视频链接二创，原 v16）→ **v20 生成中审核**（tensor 边生边审，原 v21）→ **v21 交付形态**（部署分档/一键安装，原 v18）。详见 docs/roadmap.md。
 
 v1 角色锚流程：FLUX 生角色图 → TripoSplat 重建 3DGS → 每镜 RenderSplat 按角度渲染参考帧 → Wan I2V 生成。
 
@@ -119,7 +119,7 @@ vidance/
 │   ├── svg_llm.py             # v13（原 v15）概念→LLM→动效 SVG（S1）
 │   ├── svg_pipeline.py        # v13（原 v15）SVG→mp4（无头浏览器逐帧渲染，纯 CPU；S2 单帧/S3 抽帧/S4 成片）
 │   ├── h3_prompt_video.py     # 整段式 prompt + 参考图 → H3 ref2va 单镜（原生音频直出）
-│   ├── oneshot.py             # v16（原 v14）一镜到底（链式 I2V 末帧回灌 + 运镜脚本 + 漂移控制；🎯 待实现）
+│   ├── oneshot.py             # v18（原 v14）一镜到底（链式 I2V 末帧回灌 + 运镜脚本 + 漂移控制；🎯 待实现）
 │   ├── notify/                # v14（原 v11）社交媒体/IM 网关（base/wecom/feishu/dingtalk/factory；🎯 待实现）
 │   ├── luts/                  # v2 LUT 文件目录（cinematic/warm/cool/vintage/vivid/soft .cube）
 │   └── workflows/
@@ -141,7 +141,7 @@ vidance/
 │   └── common/                # 共享：tools/（llm/tts/config_loader/crawler/爬虫系/voice_clone/t2c_server）
 │   （utils/ 原 27 模块均留薄壳转发，旧 import/CLI 零破坏；tts_server.py 与数据目录不迁）
 ├── t2c/                       # t2c 自然语言→命令（mt5-small 微调模型 + 推理脚本 + README）
-├── deploy/                    # v18 部署档（VIDANCE_TIER=none|flux|wan|h3|full；Dockerfile + Dockerfile.comfyui + docker-compose.yml profiles 五档 + README；API 缺省挂 9400）
+├── deploy/                    # v21（原 v18）部署档（VIDANCE_TIER=none|flux|wan|h3|full；Dockerfile + Dockerfile.comfyui + docker-compose.yml profiles 五档 + README；API 缺省挂 9400）
 ├── ui/                        # v7 前端（index.html 自包含，零 npm，:8894/ui 访问）
 ├── voices/                    # 自定义 CosyVoice 克隆音色素材目录
 ├── bgm/                       # v2 自定义 BGM 素材目录（放 {mood}.wav 自动使用）
