@@ -38,6 +38,35 @@
 2. v16 视频处理与编辑（原 v19）：SAM 分割 M1 起步
 3. 快赢备选：fast 爬图加搜索缓存（Pexels 网络瓶颈缓解）
 
+## Session 2026-10-01（续）：v13 blender 3D 简单版完成（M0-M3 全部）
+
+### Goal
+- v13 blender 线简单版：概念→LLM 规划 3D 场景→bpy EEVEE 渲染→mp4；M0-M2 早已通过，本会话完成 M3（CLI/agent/API/容器）+ 文档同步
+
+### Done
+- **M3 API 完成**：_run_blenderjob（core/api_server.py，仿 _run_pptjob：stage/llm_text/frames 写 job 字段 + BlenderLine 调用，video_url 仅 .mp4）+ /api/tool/blender3d 分发块（b3d_* job 复用 h3shot 轮询）+ /api/tools blender3d spec（GPU 加速标注，4-20s 时长提示）
+- **utils 薄壳**：utils/blender_llm.py + blender_pipeline.py 门面（转发 agents/generator/tools/，旧 import 兼容）
+- **M3 测试 4 连全过**：①CLI 一键"深海探索主题三维动画" 6s 58.3s（blender3d_20261001_192947）②agent run generator.blender3d "雪山日出三维场景" 5s（blender3d_20261001_193101）③宿主临时 8999 端口 /api/tool/blender3d（b3d_20261001_193212，100s 内 completed）④容器 :9401（b3d_20261001_114559，120/120 帧，6.0s final.mp4 + scene.json/scene.mp4/narration.wav/subtitle.srt/meta.json 齐全）
+- **容器 bpy 安装**：容器内 pip install bpy（5.0.1，numpy 1.26.4 随装）+ apt libsm6/libxext6/libxrender1/libx11-6/libxi6/libxxf86vm1/libxfixes3/libxkbcommon0/libgl1/libegl1（缺 libSM.so.6 报错后补）；bpy 5.0.1 容器内 import 通过；容器已重启
+- **容器渲染性能**：容器无 GPU 直通 → CPU EEVEE 约 2.5s/帧（120 帧 5s 片段约 6.5 分钟）；宿主 GPU CUDA ~156ms/帧
+- **文档同步**：roadmap.md v13 blender 条目 🎯→🔄（简单版已实现，含实测数据/依赖说明）；AGENTS.md 状态行 + 目录树双处（agents/generator/tools/ + utils/ 薄壳）+ blender3d 命令块双处（ppt 块后）
+
+### Key Decisions
+- API 用 b3d_ 前缀区分 ppt_ 的 job_id；时长默认 8s（4-20 钳制）
+- 容器 bpy 走容器内 pip（非宿主拷贝 site-packages，CP 版本一致 3.11 但稳妥）
+- bpy 在容器装包顺带 numpy 1.26.4（与宿主 bpy 安装同样降级，无害）
+
+### Critical Context
+- 容器镜像 784b2fd41f56 仍不含 bpy/v15/blender（本次容器内 pip+apt 是运行时安装，**容器重建后丢失**，需下次 build 时写进 Dockerfile 或 build 时 pip install bpy + apt libsm6 等）
+- 宿主 bpy 5.0.1 在 /home/zxy/.conda/envs/comfyui；numpy 降级 2.4.4→1.26.4（fast/svg 等链路 import 待最终验证——本会话 CLI/api 跑通即已侧面验证）
+- 测试产物保留：output/blender3d_20261001_{192947,193101,193212,114559}/
+- 临时 8999 端口 api 已杀
+
+### Next Steps
+1. 用户提交（v15+美化+blender+文档一条 commit）
+2. 可选：下次 docker build 时 Dockerfile 加 `pip install bpy` + `apt-get install libsm6 libxext6 libxrender1 libgl1 libegl1`（否则容器重建后 blender3d 不可用）
+3. v16 视频处理与编辑（原 v19）：SAM 分割 M1 起步
+
 ---
 
 # （以下为 2026-09-26 晚原记录）

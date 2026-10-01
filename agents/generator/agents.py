@@ -42,6 +42,21 @@ def ppt(p):
                       trace=[{'step': 'pptline', 'output': video or meta.get('html')}])
 
 
+@register(name='generator.blender3d', layer='generator', needs_gpu=True,
+          desc='概念 → LLM 规划 3D 场景 → bpy EEVEE 渲染 → mp4（BlenderLine 全链，GPU 加速）',
+          inputs='{concept, n?, say?, voice?, duration?, model?, out_path?}')
+def blender3d(p):
+    from agents.generator.tools.blender_pipeline import BlenderLine
+    kwargs = {k: p[k] for k in ('n', 'say', 'voice', 'duration', 'model', 'out_path')
+              if k in p}
+    meta = BlenderLine().run(p['concept'], **kwargs)
+    video = meta.get('output') or meta.get('out_path')
+    return TaskResult(ok=bool(video),
+                       artifacts={'video': video, 'scene_json': meta.get('scene_json'),
+                                  'meta': meta},
+                       trace=[{'step': 'blenderline', 'output': video}])
+
+
 @register(name='generator.fast', layer='generator', needs_gpu=False,
           desc='概念 → 网图 + 运镜 + 旁白 + BGM（FastLine 全链）',
           inputs='{concept, n?, images_dir?, motion?, out_path?}')

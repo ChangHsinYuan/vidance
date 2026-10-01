@@ -432,8 +432,32 @@ def cmd_ppt(args):
     print(meta.get('output') or meta.get('html') or '')
 
 
+def cmd_blender3d(args):
+    """v13（blender 线）3D 短片：概念→LLM 规划场景→bpy EEVEE 渲染→mp4（GPU 加速）
+
+    一键：blender3d "主题" [--duration 8 --voice cosy-xxx --scheme ocean]
+    渲染：blender3d --scene scene.json -o out.mp4
+    """
+    import sys, os, json as _json
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from agents.generator.tools import blender_pipeline as bp
+
+    if args.scene:
+        with open(args.scene, 'r', encoding='utf-8') as f:
+            scene = _json.load(f)
+        out = args.output or args.scene.rsplit('.', 1)[0] + '.mp4'
+        print(bp.scene_to_mp4(scene, out)['mp4'])
+        return
+    if not args.concept:
+        print('usage: blender3d "主题" [--duration 8] | blender3d --scene scene.json -o out.mp4')
+        return
+    line = bp.BlenderLine()
+    meta = line.run(args.concept, n=args.n, say=args.say, voice=args.voice,
+                    duration=args.duration, model=args.model)
+    print(meta.get('output') or '')
+
+
 def cmd_make(args):
-    """v12（原 v17）M2 统一入口：--director × --generator 排列组合路由到现有实现（子命令变别名）"""
     gen = args.generator or 'wan'
     director = args.director or ('manual' if (args.say or args.prompt or args.script) else 'llm')
     concept = args.concept or ''
@@ -785,6 +809,19 @@ def build_parser():
     p_ppt.add_argument('--bgm', default=None, help='BGM mood（mp4）')
     p_ppt.add_argument('--no-html', action='store_true', help='不落 deck.html')
     p_ppt.set_defaults(func=cmd_ppt)
+
+    # ── blender3d 子命令（v13 blender 线：LLM 3D 场景 + bpy EEVEE 渲染）──
+    p_b3d = sub.add_parser('blender3d',
+        help='v13 blender 线：概念→LLM 规划 3D 场景→bpy EEVEE 渲染→mp4（GPU 加速）')
+    p_b3d.add_argument('concept', nargs='?', default=None, help='主题（一键模式）')
+    p_b3d.add_argument('--scene', default=None, help='scene.json 路径（渲染模式）')
+    p_b3d.add_argument('-o', '--output', default=None, help='mp4 输出路径（缺省 output/blender3d*/final.mp4）')
+    p_b3d.add_argument('-n', type=int, default=1, help='物体数提示（约 n*4 个）')
+    p_b3d.add_argument('--duration', type=float, default=8.0, help='时长（秒，4-20）')
+    p_b3d.add_argument('--voice', default=None, help='配音音色')
+    p_b3d.add_argument('--say', action='append', default=None, help='手动旁白（第一句为副标题+旁白）')
+    p_b3d.add_argument('--model', default=None, help='LLM 模型')
+    p_b3d.set_defaults(func=cmd_blender3d)
 
     # ── make 子命令（v12（原 v17）M2 三排正交统一入口） ──
     p_make = sub.add_parser('make', parents=[output_parent, post_parent],

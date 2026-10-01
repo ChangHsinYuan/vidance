@@ -636,6 +636,57 @@ def _run_pptjob(job_id: str, concept, n: int, say: list, flags: dict,
         _agent_log(job_id, '✗ 失败: %s' % str(e)[:300])
 
 
+        _agent_log(job_id, '✗ 失败: %s' % str(e)[:300])
+
+
+def _run_blenderjob(job_id: str, concept, n: int, say: list, flags: dict):
+    """3D 短片（blender 线，异步 job，复用 h3shot 轮询通道；回执 output/video_url）。
+
+    阶段/LLM 流式/帧进度写 job 字段（stage/llm_text/frames）+ agent.log。
+    """
+    def _scb(s):
+        with _h3_jobs_lock:
+            if job_id in _h3_jobs:
+                _h3_jobs[job_id]['stage'] = s
+        _agent_log(job_id, '▶ ' + s)
+
+    def _on_chunk(delta):
+        with _h3_jobs_lock:
+            if job_id in _h3_jobs:
+                _h3_jobs[job_id]['llm_text'] = ((_h3_jobs[job_id].get('llm_text') or '')
+                                                + delta)[-600:]
+
+    def _on_frame(done, total):
+        with _h3_jobs_lock:
+            if job_id in _h3_jobs:
+                _h3_jobs[job_id]['frames'] = f'{done}/{total}'
+
+    try:
+        from agents.generator.tools.blender_pipeline import BlenderLine
+        meta = BlenderLine().run(
+            concept or (say[0] if say else '3D 短片'),
+            n=n, say=say or None,
+            voice=flags.get('voice') or None,
+            duration=float(flags.get('duration') or 8.0),
+            model=flags.get('model') or None,
+            stage_cb=_scb, on_chunk=_on_chunk, on_frame=_on_frame)
+        out = meta.get('output') or meta.get('clip')
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'completed', 'output': out,
+                'video_url': ('/api/file?path=' + out) if out else '',
+                'completed_at': datetime.now().isoformat(),
+            })
+        _agent_log(job_id, '■ 完成 %s' % (out or ''))
+    except Exception as e:
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'failed', 'error': str(e),
+                'completed_at': datetime.now().isoformat(),
+            })
+        _agent_log(job_id, '✗ 失败: %s' % str(e)[:300])
+
+
 @app.post('/api/h3shot')
 def h3shot(req: H3ShotRequest):
     if not req.prompt or not req.refs:
@@ -978,7 +1029,15 @@ TOOLS = [
          {'key': '--say', 'type': 'text', 'desc': '手动大纲（每元素一页标题，可重复多个）'},
          {'key': '--lut', 'type': 'text', 'desc': '调色风格（mp4）'},
          {'key': '--bgm', 'type': 'text', 'desc': 'BGM mood（mp4）'},
-     ]},
+      ]},
+     {'name': 'blender3d', 'help': '3D 短片：概念→LLM 规划场景→bpy EEVEE 渲染→mp4（GPU 加速）',
+      'params': [
+          {'key': 'concept', 'type': 'text', 'required': True, 'desc': '主题（中文）'},
+          {'key': '--duration', 'type': 'number', 'desc': '时长（秒，默认 8，4-20）'},
+          {'key': '--voice', 'type': 'text', 'desc': '配音音色'},
+          {'key': '--say', 'type': 'text', 'desc': '手动旁白（副标题+旁白）'},
+          {'key': '-n', 'type': 'number', 'desc': '物体数提示（约 n*4 个）'},
+      ]},
     {'name': 'clip', 'help': 'FunClip：长素材 ASR 转写+语义裁剪',
      'params': [
          {'key': 'input', 'type': 'text', 'required': True, 'desc': '音频/视频路径'},
@@ -1433,6 +1492,28 @@ def tool_dispatch(name: str, req: ToolRequest):
                                want_video, want_pdf, want_pngs),
                          daemon=True).start()
         return {'message': 'PPT 任务已提交（异步，LLM 规划中，可看日志面板跟踪）',
+                'job_id': job_id, 'poll': f'/api/h3shot/{job_id}', 'h3_job_id': job_id}
+
+    # ── blender3d（LLM 3D 场景 + bpy 渲染，异步 job，复用 h3shot 轮询通道）──
+    if name == 'blender3d':
+        rr = _parse_repeated(req.args or '', {'say'})
+        fl, pos2 = rr['flags'], rr['pos']
+        say = rr['rep'].get('say') or []
+        concept = fl.get('concept') or (' '.join(pos2) if pos2 else None)
+        if not concept and not say:
+            raise HTTPException(status_code=400,
+                                detail='用法: /blender3d 主题 [--duration 8 --voice 音色] | /blender3d --say "旁白"')
+        job_id = f'b3d_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        with _h3_jobs_lock:
+            _h3_jobs[job_id] = {'job_id': job_id,
+                                'concept': concept or (say[0][:20] if say else ''),
+                                'status': 'running',
+                                'created_at': datetime.now().isoformat()}
+        threading.Thread(target=_run_blenderjob,
+                         args=(job_id, concept,
+                               int(fl.get('n') or 1), say, fl),
+                         daemon=True).start()
+        return {'message': '3D 任务已提交（异步，LLM 规划中，可看日志面板跟踪）',
                 'job_id': job_id, 'poll': f'/api/h3shot/{job_id}', 'h3_job_id': job_id}
 
     # ── concat（多视频拼接，同步子进程）──

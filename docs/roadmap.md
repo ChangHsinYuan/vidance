@@ -330,7 +330,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
      - 渲染后端：Playwright/Chromium（需装）或 `resvg`/`cairosvg`（仅静态帧）；`node` 已就绪可走 puppeteer
      - 可选：LLM 直接给 SVG 代码 + 时长/分辨率 → 一条命令出片；后续可接 v9 模型提供商
   3. **LLM 生成 PPT → 渲染成片（✅ v15 已实现 2026-10-01，详见 §v15）**：LLM 规划 deck 结构化 JSON → Python 模板渲染 HTML 幻灯片 → 逐页渲染 → xfade 拼接 → mp4/PDF/PNG 多形态。纯 CPU，`ppt_llm.py` + `ppt_pipeline.py`
-  4. **Blender headless 渲染（🎯 待开发）**：Blender Python 脚本化 3D 场景/文字动效 → EEVEE 离屏渲染 → mp4，3D 信息动画/产品展示向；与 v3 mesh 渲染（pyrender）互补，可读 GLB 资产复用资产库
+  4. **Blender 3D 渲染（🔄 简单版已实现 2026-10-01）**：LLM 规划 3D 场景 JSON（模板 title3d/shapes/bars3d + 配色 scheme + 物体 text/cube/sphere/torus 等 + 材质 basic/metal/emission/glass + 关键帧 spin/pop + 运镜 dolly/pan/orbit）→ bpy 进程内构建（bpy 5.0.1 wheel，Python 3.11）→ EEVEE 逐帧渲染（宿主 GPU CUDA ~156ms/帧@720p，容器 CPU ~2.5s/帧）→ ffmpeg 拼帧 → TTS 旁白 → mp4。已落 `agents/generator/tools/blender_llm.py`（plan_scene/_norm_scene）+ `blender_pipeline.py`（bpy_build/render_frames/BlenderLine），CLI `vidance.py blender3d "主题" --duration 6 --voice cosy-default`，agent `generator.blender3d`，API `/api/tool/blender3d`（b3d_* job 复用 h3shot 轮询）。实测：宿主 5-6s 片段 38-58s 端到端（blender3d_20261001_191116/191913/192947/193101），容器 5s 片段约 6.5 分钟（blender3d_20261001_114559）。依赖：pip bpy（374MB，容器另需 apt libsm6/libxext6 等 X 库）
 - 模型层面轻量化（有模型加速路线）：小模型做预览/草稿、大模型做最终渲染；大模型**量化**（INT8/FP8/GPTQ/AWQ）/**蒸馏**小模型/**其他推理加速**（vLLM、连续批处理、KV cache 优化）按需引入
 - 按需加载：各步骤按需初始化，不预加载所有模型
 - Docker 轻量化部署：分离 CPU 服务（API/前端/调度）与 GPU 服务（生成）
