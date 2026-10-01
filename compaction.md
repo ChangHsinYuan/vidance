@@ -67,6 +67,20 @@
 2. 可选：下次 docker build 时 Dockerfile 加 `pip install bpy` + `apt-get install libsm6 libxext6 libxrender1 libgl1 libegl1`（否则容器重建后 blender3d 不可用）
 3. v16 视频处理与编辑（原 v19）：SAM 分割 M1 起步
 
+## Session 2026-10-01（续 2）：v13 轻量化收口 ✅ + roadmap 重排 + v14 移交队友
+
+### Done
+- **v13 收口 ✅**（用户拍板"标 ✅ 完成"）：无模型四线（营销号/SVG/PPT/Blender 3D）全部完成；模型加速路线标"按需后续，不阻塞 v13 关版"；纯 API 云端模式标"后续项"
+- **roadmap 重排**：v15 PPT 条目从待开发区块移入已实现区（v13 后），待开发条目（v16-v21）位置前移，**编号不变**；v14 标 `🔗 移交队友，暂不在本仓排期` + 移交说明块（utils/notify/ 骨架已预留，队友按原里程碑推进）
+- **顶部总览**：已实现加 v13 轻量化无模型四线 + v15 PPT；待开发去掉 v15、v14 标队友；三调注释
+- **AGENTS.md 同步**：状态行（v13 收口 + v14 队友）+ 版本路线（v13 ✅/v15 ✅/v14 🔗 队友）
+- **usage.md**：子命令表加 blender3d 行
+- compaction.md + docs/reports-20261001.md 记录
+
+### Next Steps
+1. v16 视频处理与编辑（原 v19）规划（SAM 分割起步）→ 用户拍板里程碑后开工 M0 spike
+2. 用户提交改动（v15+美化+blender+文档+收口一条 commit）
+
 ---
 
 # （以下为 2026-09-26 晚原记录）

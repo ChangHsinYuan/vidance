@@ -31,6 +31,7 @@
 | `hot` | 无（爬实时热点） | 同 fast | 爬虫自动选题 | 通用后期 | 一键热点出片，见 usage-v4.md M6 |
 | `svg` (v13) | 概念或 SVG 文件 | 无 GPU（纯 CPU） | LLM 生成动效 SVG | TTS/字幕（S5） | 秒级出片，见 usage-v-svg.md |
 | `ppt` (v15) | 概念或 deck.html | 无 GPU（纯 CPU） | LLM 规划页面/图表 | TTS 旁白/字幕/LUT/BGM | 幻灯片短片+PDF/PNG 交付 |
+| `blender3d` (v13) | 概念或 scene.json | bpy EEVEE（宿主 GPU/容器 CPU） | LLM 规划 3D 场景 | TTS 旁白/字幕 | 3D 质感短片（模板 title3d/shapes/bars3d） |
 | `compose` (v10) | 时间线 JSON | — | — | 时间线拼接特效 | 后端 CLI 剪辑，见 usage-v10.md |
 | `h3shot` | prompt + 参考图 | H3 ref2va | 整段式单镜 | 原生音频直出 | 整段式单镜（`--ref` 条件注入） |
 | `ask` (v6) | 一句概念 | — | LLM 追问核实 | — | 多轮补全增强概念，见 usage-v6.md |

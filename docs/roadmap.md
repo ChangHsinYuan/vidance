@@ -1,7 +1,7 @@
 # Vidance 总览与路线图
 
 > 视频生成 agent 系统：opencode 当"制片人"编排本地生图/生视频/生3D/语音引擎，从一句概念产出有声短片。
-> 原始规划稿见 `archive/roadmap_origin.md`。**已实现**：v0-v10 + t2c + v11 多智能体（原 v13）+ v12 三排正交 M1-M2（原 v17）+ v13 轻量化 S1-S5（原 v15）；**待开发**：v14 社交媒体（原 v11）/ v15 LLM 生成 PPT（原 v20）/ v16 视频处理编辑（原 v19）/ v17 开源整合（原 v12）/ v18 长视频质量（原 v14）/ v19 二创（原 v16）/ v20 生成中审核（原 v21）/ v21 交付形态（原 v18）。（2026-09-26 重排：已完成块前移，未完成块后移；2026-09-30 新增 v19-v21；2026-10-01 二次重排：PPT/视频编辑前移至 v14 后、生成中审核插至交付形态前——括号内为原号，v12/v14/v16 指最初编号，v18-v21 指 2026-09-30 编号，方便对照 commit）
+> 原始规划稿见 `archive/roadmap_origin.md`。**已实现**：v0-v10 + t2c + v11 多智能体（原 v13）+ v12 三排正交 M1-M2（原 v17）+ v13 轻量化无模型四线：营销号/SVG/PPT/Blender 3D（原 v15）+ v15 LLM 生成 PPT（原 v20）；**待开发**：v14 社交媒体（原 v11，🔗 已移交队友）/ v16 视频处理编辑（原 v19）/ v17 开源整合（原 v12）/ v18 长视频质量（原 v14）/ v19 二创（原 v16）/ v20 生成中审核（原 v21）/ v21 交付形态（原 v18）。（2026-09-26 重排：已完成块前移，未完成块后移；2026-09-30 新增 v19-v21；2026-10-01 二次重排：PPT/视频编辑前移至 v14 后、生成中审核插至交付形态前；2026-10-01 晚三调：v13/v15 关版 ✅（v15 条目移入已实现区，待开发条目前移）、v14 移交队友——括号内为原号，v12/v14/v16 指最初编号，v18-v21 指 2026-09-30 编号，方便对照 commit）
 
 ## 1. 定位
 
@@ -315,15 +315,15 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v13 — 轻量化（无 GPU 优先）（原 v15）（🔄 S1-S5 已实现）
+### v13 — 轻量化（无 GPU 优先）（原 v15）（✅ 无模型四线全部完成；模型加速按需后续）
 
 **详细设计**：[v-svg-pipeline.md](./v-svg-pipeline.md)、[usage-v-svg.md](./usage-v-svg.md)
 
 **目标**：降低/消除本地 GPU 依赖，纯 API 也能跑。
 
 **范围**：
-- 纯 API 模式：所有生成任务可切云端 API（SiliconFlow 等），完全不依赖本地 GPU（对接 v9 模型提供商）
-- Pipeline 轻量化：去除 GPU 依赖的处理。**无 GPU 出片三条线（全量=svg+ppt+blender，前两者已具备）**：
+- 纯 API 模式：所有生成任务可切云端 API（SiliconFlow 等），完全不依赖本地 GPU（对接 v9 模型提供商）（🎯 后续项）
+- Pipeline 轻量化：去除 GPU 依赖的处理。**无模型出片四线（✅ 全部已具备）**：
   1. **营销号流水线（已有）**：v4/v5 的生图/爬图 → zoompan 运镜 → TTS → 剪辑，零视频模型，已可用
   2. **LLM 生成 SVG → 渲染成片（✅ S1-S5 已实现 2026-09-24/26）**：LLM 产出带 CSS/SMIL 动画的自包含 SVG → 无头浏览器逐帧渲染 → ffmpeg 拼帧 → mp4。**纯 CPU、秒级、矢量清晰**，适合信息图/文字动画/数据可视化/科普短片。已落 `utils/svg_llm.py`（S1 概念→SVG + S5 plan_narration 旁白规划）+ `utils/svg_pipeline.py`（S2 单帧/S3 抽帧/S4 拼 mp4/**S5 SvgLine 有声流水线**：LLM 旁白→逐段 TTS（edge→cosy→静音降级）→逐段 SVG 渲染→字幕烧录→crossfade 拼接→可选 LUT/BGM），CLI `vidance.py svg --concept "…" [--voice 音色 -n 3 | --say "句1" --say "句2"]`；`/api/tool/svg` 无声同步/有声异步（svg_* job 复用 h3shot 轮询）。实测 `output/svg_e2e/s1.mp4`（音视频双流）。依赖 Playwright+Chromium（已装）
      - 关键设计：**确定性逐帧**（用 Web Animations API 把动画 `currentTime=t` 后 pause 再截图，而非 wall-clock `wait_for_timeout`），保证帧率精确无抖动
@@ -331,7 +331,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
      - 可选：LLM 直接给 SVG 代码 + 时长/分辨率 → 一条命令出片；后续可接 v9 模型提供商
   3. **LLM 生成 PPT → 渲染成片（✅ v15 已实现 2026-10-01，详见 §v15）**：LLM 规划 deck 结构化 JSON → Python 模板渲染 HTML 幻灯片 → 逐页渲染 → xfade 拼接 → mp4/PDF/PNG 多形态。纯 CPU，`ppt_llm.py` + `ppt_pipeline.py`
   4. **Blender 3D 渲染（🔄 简单版已实现 2026-10-01）**：LLM 规划 3D 场景 JSON（模板 title3d/shapes/bars3d + 配色 scheme + 物体 text/cube/sphere/torus 等 + 材质 basic/metal/emission/glass + 关键帧 spin/pop + 运镜 dolly/pan/orbit）→ bpy 进程内构建（bpy 5.0.1 wheel，Python 3.11）→ EEVEE 逐帧渲染（宿主 GPU CUDA ~156ms/帧@720p，容器 CPU ~2.5s/帧）→ ffmpeg 拼帧 → TTS 旁白 → mp4。已落 `agents/generator/tools/blender_llm.py`（plan_scene/_norm_scene）+ `blender_pipeline.py`（bpy_build/render_frames/BlenderLine），CLI `vidance.py blender3d "主题" --duration 6 --voice cosy-default`，agent `generator.blender3d`，API `/api/tool/blender3d`（b3d_* job 复用 h3shot 轮询）。实测：宿主 5-6s 片段 38-58s 端到端（blender3d_20261001_191116/191913/192947/193101），容器 5s 片段约 6.5 分钟（blender3d_20261001_114559）。依赖：pip bpy（374MB，容器另需 apt libsm6/libxext6 等 X 库）
-- 模型层面轻量化（有模型加速路线）：小模型做预览/草稿、大模型做最终渲染；大模型**量化**（INT8/FP8/GPTQ/AWQ）/**蒸馏**小模型/**其他推理加速**（vLLM、连续批处理、KV cache 优化）按需引入
+- 模型层面轻量化（有模型加速路线，🎯 按需后续，不阻塞 v13 关版）：小模型做预览/草稿、大模型做最终渲染；大模型**量化**（INT8/FP8/GPTQ/AWQ）/**蒸馏**小模型/**其他推理加速**（vLLM、连续批处理、KV cache 优化）按需引入
 - 按需加载：各步骤按需初始化，不预加载所有模型
 - Docker 轻量化部署：分离 CPU 服务（API/前端/调度）与 GPU 服务（生成）
 - 本地 ONNX 小模型：语义嵌入/分类等替代大模型调用
@@ -339,30 +339,6 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 **里程碑**：M1 纯 API 模式 → M2 按需加载+CPU 后处理 → M3 草稿/成片双档 → M4 Docker 分离部署
 
 **参考**：BigBanana Docker Compose、Toonflow ONNX、v9 模型提供商系统。
-
----
-
-<!-- ═══ 以下 🎯 待开发 ═══ -->
-
-### v14 — 接入社交媒体（原 v11）（🎯 待开发）
-
-**目标**：把成片一键分发到社交平台 / IM，任务完成可推送通知、可在 IM 里用 `/` 命令触发。
-
-**范围**：
-- 发布渠道适配：抖音/B站/视频号/小红书（人工审核后发布，或开放平台 API）
-- IM 机器人网关：`utils/notify/`（`Notifier` 抽象 + 企业微信 / 飞书 / 钉钉 / Slack / Telegram + factory 多通道并发推送）
-- 任务完成 post-hook 接入 v4 scheduler
-- 回调网关 `POST /api/notify/{channel}/callback`（解密→文本→复用 v9 `/api/tool/{name}`）
-- 富媒体卡片：IM 中展示视频预览卡片、进度条、候选方案选择
-- config.json 加 `notify` 节；个人微信不做
-
-**里程碑**：M1 Notifier 抽象+企微 → M2 飞书/钉钉+factory → M3 任务完成自动通知 → M4 回调网关 + 至少一个发布渠道
-
-**参考**：`lark-oapi`（飞书官方 SDK）、wechaty；BigBanana 多候选决策点；原 v9-design.md。
-
----
-
----
 
 ### v15 — LLM 生成 PPT（轻量化延伸：v13 姊妹篇）（原 v20，🔄 M1-M4 已完成 2026-10-01）
 
@@ -382,20 +358,42 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
+<!-- ═══ 以下 🎯 待开发 ═══ -->
+
+### v14 — 接入社交媒体（原 v11）（🔗 移交队友，暂不在本仓排期）
+
+**目标**：把成片一键分发到社交平台 / IM，任务完成可推送通知、可在 IM 里用 `/` 命令触发。
+
+**范围**：
+- 发布渠道适配：抖音/B站/视频号/小红书（人工审核后发布，或开放平台 API）
+- IM 机器人网关：`utils/notify/`（`Notifier` 抽象 + 企业微信 / 飞书 / 钉钉 / Slack / Telegram + factory 多通道并发推送）
+- 任务完成 post-hook 接入 v4 scheduler
+- 回调网关 `POST /api/notify/{channel}/callback`（解密→文本→复用 v9 `/api/tool/{name}`）
+- 富媒体卡片：IM 中展示视频预览卡片、进度条、候选方案选择
+- config.json 加 `notify` 节；个人微信不做
+
+**里程碑**：M1 Notifier 抽象+企微 → M2 飞书/钉钉+factory → M3 任务完成自动通知 → M4 回调网关 + 至少一个发布渠道
+
+> **🔗 移交说明**：v14（社交媒体/IM 网关）已移交队友负责，本仓暂停排期；`utils/notify/` 目录骨架已预留（base/factory 接口），队友接手时按上述里程碑推进即可。本仓后续聚焦 v16 视频处理与编辑。
+
+**参考**：`lark-oapi`（飞书官方 SDK）、wechaty；BigBanana 多候选决策点；原 v9-design.md。
+
+---
+
 ### v16 — 视频处理与编辑（SAM 分割 / 光流追踪 / AI 换脸 / 局部替换）（原 v19，🎯 待开发，2026-09-30 立项）
 
 **目标**：给流水线补上**帧级视频编辑能力**——分割、追踪、换脸、局部替换，既服务二创（v19 的画面改写），也让 custom/auto 的成片可后期精修。
 
 **范围**：
 - **SAM 分割**：Segment Anything（或 SAM2，带视频传播）对帧/片段做目标分割——抠主体/换背景/局部打码；`utils/sam_edit.py`（image/clip → mask → 抠图/换底/模糊），`--segment 主体` 一键
-- **光流追踪**：复用 v2 RIFE 光流模型做**目标轨迹追踪**（CoTracker/RIFE flow 聚焦）——镜头稳定/运动模糊修复/追踪局部打码；RIFE(8189) 已在线，增量改造
+- **光流追踪**：复用 v2 RIFE 光流模型做**目标轨迹追踪**（CoTracker/RIFE flow 聚焦）——镜头稳定/运动模糊修复/追踪局部打码；RIFE(8189) 已在线，增量改造（🎯 视频扩展阶段并入 M3，追踪打码优先）
 - **AI 换脸**：本地开源方案（FaceFusion/inswapper，参考图→目标视频换脸）——与 v1 角色锚结合（角色参考图→成片换脸），**明确仅用于已授权素材/虚构角色**；`utils/face_swap.py`（GPU，接 v21 档位 none 档禁用）
 - **局部替换（inpaint）**：帧内区域重绘（SDXL inpaint 8191 / FLUX fill）——去水印/替换物件/改背景；mask 来自 SAM 分割（SAM 分割 → inpaint 补全，两能力串联）
 - **ControlNet 参考（🎯 作为参考/可选）**：局部替换与二创改写时用 ControlNet（canny/depth/openpose/lineart）锁定构图/姿态/边缘——inpaint 重绘与改写质量更稳，避免结构漂移；与 v1 角色锚（参考图锁定）互补，SDXL 8191 可挂 ControlNet
 - **agent 化**：`audit.edit` 或 `post.edit` 薄包装 Agent（mask/sam/inpaint/face 四工具），链式调用：`{"agent":"post.edit","with":{"video":"${v.video}","op":"segment+inpaint","target":"背景"}}`
 - **档位接入**：新增能力进 v21 档位阶梯（`full` 档启用，编辑类全 GPU 依赖，none/flux 档降级提示）
 
-**里程碑**：M1 SAM 分割（图→mask→抠图/换底）→ M2 光流追踪+稳镜 → M3 局部替换（SAM mask→inpaint）→ M4 换脸（合规边界内）+ agent 化一条命令。
+**里程碑**（2026-10-01 规划，仿 blender 线 M0 起步）：M0 SAM2 环境 spike（pip sam2 + 权重下载 + CUDA/CPU 选卡 + 单图分割验证）→ M1 SAM 分割（图/帧 → mask → 抠主体/换底/打码，`sam_edit.py` + CLI）→ M2 局部替换（SAM mask → FLUX fill/SDXL inpaint 串联重绘：去水印/换物件/换背景）→ M3 视频扩展（SAM2 视频传播逐帧 mask → 追踪打码/换底 → 重拼帧）→ M4 agent 化 + 档位（`post.edit` agent + CLI `edit` 子命令 + `/api/tool/edit` + v21 档位接入 none 档降级）。**换脸**（合规边界内，FaceFusion/inswapper）作 backlog 按需启动，不进主里程碑。
 
 **参考**：SAM2（Meta，视频分割）、CoTracker（Meta，点追踪）、FaceFusion、ProPainter（视频修补）、ControlNet（构图/姿态条件控制）。
 
