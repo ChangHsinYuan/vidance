@@ -25,6 +25,23 @@ def svg(p):
                       trace=[{'step': 'svgline', 'video': video}])
 
 
+@register(name='generator.ppt', layer='generator', needs_gpu=False,
+          desc='概念 → LLM 规划 deck → HTML/PDF/mp4 幻灯片（PptLine 全链）',
+          inputs='{concept, n?, say?, voice?, video?, pdf?, pngs?, transition?, lut?, bgm?, out_path?}')
+def ppt(p):
+    from agents.generator.tools.ppt_pipeline import PptLine
+    kwargs = {k: p[k] for k in ('n', 'say', 'voice', 'video', 'pdf', 'pngs',
+                                'transition', 't_dur', 'duration', 'model',
+                                'lut', 'bgm', 'out_path')
+              if k in p}
+    meta = PptLine().run(p['concept'], **kwargs)
+    video = meta.get('output') or meta.get('out_path')
+    return TaskResult(ok=bool(meta.get('html') or video),
+                      artifacts={'video': video, 'html': meta.get('html'),
+                                 'pdf': meta.get('pdf'), 'meta': meta},
+                      trace=[{'step': 'pptline', 'output': video or meta.get('html')}])
+
+
 @register(name='generator.fast', layer='generator', needs_gpu=False,
           desc='概念 → 网图 + 运镜 + 旁白 + BGM（FastLine 全链）',
           inputs='{concept, n?, images_dir?, motion?, out_path?}')

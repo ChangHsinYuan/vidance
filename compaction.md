@@ -1,5 +1,47 @@
 # Vidance Compaction（2026-09-26 晚）
 
+## Session 2026-10-01：v15 PPT 完成（接续记录）
+
+### Done
+- **v15 PPT 美化（2026-10-01 晚，用户反馈"太简陋"）**：ppt_llm.py 重写视觉——`page_css()` 单一样式源（deck 放映/视频/PDF/PNG 四形态共用同一套设计，修复单页渲染缺全套 CSS 的根因）+ 深色渐变底+双光斑（body::before/after radial）+ 玻璃卡片要点（渐变底+边框+阴影+渐变序号块）+ 渐变标题（background-clip:text）+ 渐变顶条+品牌页脚（brand 字段）+ svg_chart 升级（渐变柱/面积折线/环形图带中心数值/网格线/uid 防多图渐变 id 撞）；PptLine sections 改用 SLIDE_TPL（顶条/品牌/页码与 deck 模式一致）
+- **美化验证**：Vidance 主题 6 页全形态（output/ppt_20261001_173114：final.mp4 77.4s + deck.html + deck.pdf + pngs/，像素 stdev 62 vs 旧版 11-25）；真 LLM CLI 4 页 32.8s（ppt_20261001_181312）；容器 docker cp 同步 + /api/tool/ppt 复测过（ppt_20261001_102118）
+- **slide_to_mp4 健壮性修复**：stdin 写入加 BrokenPipeError 捕获 + proc.poll() 存活检查（ffmpeg 中途死→立即报错，不再 stdin 管道无限阻塞——真实 LLM 测试中出现过 2 次渲染挂死，根因是负载 17-20 下 ffmpeg 偶死+管道阻塞）
+- **roadmap 两条新增（用户要求）**：v13 轻量化改为"无模型三线=svg+ppt+blender（前两已具备，blender headless 🎯）+ 模型加速路线（量化/蒸馏/小模型/推理优化）"；v16 加 ControlNet 参考条目（inpaint/二改锁定构图姿态，参考列表补 ControlNet）；AGENTS.md 版本路线两处同步
+- **残留清理**：4 个超时残留 ppt_ workdir 已删（174205/174622/175237/175552/175844/180340），保留有效产物
+- **concat bug 修复**：core/api_server.py 缺 `import subprocess`（容器 /api/tool/concat NameError）→ 已修，用户提交 a6458c6 后 docker build 新镜像 784b2fd41f56 + 容器切换，/concat 复测通过
+- **双栈功能测试 7 项全过（产物保留作证据）**：auto/svg/fast/chain/concat×3，详见 output/（auto_20260930_054117、svg_20260930_054545、fast20260930_135454、svg_20260930_140622、t5-t7_concat_*.mp4）
+- **roadmap v19-v21 三节新增 + 二次重排（2026-10-01）**：v15 PPT/v16 视频编辑/v17 开源整合/v18 长视频/v19 二创/v20 生成中审核/v21 交付形态；roadmap/AGENTS/deploy-tiers/deploy README 全同步
+- **v15 M1**：`agents/generator/tools/ppt_llm.py`（plan_deck LLM→结构化 JSON→_norm_plan + render_deck_html 五版式 title/toc/content/data/end + svg_chart bar/line/pie 数据驱动 SVG + extract_json 尾逗号容错）；离线测试过（PNG×5、mp4 2页+fade、PDF 5 页、图表页像素 stdev 25.9 验证非空白）
+- **v15 M3**：svg_chart() 接入 data 版式（LLM 只出数据不出图形）
+- **v15 M2**：PptLine 全链实测——LLM 规划 4 页（含 bar 图表页）+ cosy-default TTS 旁白 + 逐页渲染（页时长=max(旁白+0.8, 3s)）+ fade 拼接 → `output/ppt_20261001_122326/final.mp4`（42.9s，总 117.8s，产物齐全 deck.html/subtitle.srt/meta.json/slide_N.{html,mp4,wav}）
+- **v15 M4（含 _run_pptjob）**：CLI `ppt` 子命令（core/vidance.py cmd_ppt：一键/渲染双模式、--video/--pdf/--pngs/-n/--transition/--voice/--say/--no-html）+ `generator.ppt` agent（needs_gpu=False）+ config task_prefixes `ppt` + /api/tools ppt spec + tool_dispatch ppt 分发块（_parse_repeated say、ppt_ 时间戳 job_id、复用 h3shot 轮询）+ `_run_pptjob`（仿 _run_svgjob：stage_cb→stage、on_chunk→llm_text、on_frame→frames、PptLine().run、video_url 仅 .mp4）
+- **M4 测试 4 连全过**：CLI 一键 --say 2 页 19s（ppt_20261001_123718/final.mp4 6.72s）+ agent run generator.ppt 3 页 8.96s（ppt_20261001_123810）+ API /api/tool/ppt 宿主临时 8999 端口 75s（ppt_20261001_123959）+ 容器 :9401（docker cp 同步 6 文件 + restart）80s（ppt_20261001_044318/final.mp4 6.6s）
+- **文档同步**：roadmap.md v15 节 🎯→🔄 M1-M4 已完成 2026-10-01 + 里程碑标 ✅（M4 口径=PDF/PNG 导出+agent 化）；AGENTS.md 当前状态行加 v15 + 目录树加 ppt_llm/ppt_pipeline（agents/generator/tools 与 utils/ 双处）+ 运行命令加 ppt 块 + 修复 520-524 行旧顺序残留（v15 整合开源原 v12 → v15 PPT 原 v20、v16 原 v14 → v18 原 v14）；usage.md 子命令表加 ppt 行
+
+### Key Decisions
+- **v15 架构分工**：LLM 只出结构化 JSON（版式/要点/图表数据/旁白），Python 模板渲染 HTML（风格统一可控），图表纯 Python 数据驱动——与 v13 "LLM 产 SVG" 不同的更稳路线
+- **渲染复用 v13 确定性逐帧**：_freeze_and_advance 逐页截图 → image2pipe → concat_with_transitions 链式 xfade（签名 (clips, kinds, out_path, duration=0.4)，kinds 长度 N-1）
+- **PDF 导出**：render_deck_html(pdf=True) 原生模式，Playwright page.pdf 16:9
+- **PptLine 多形态并行**：run(video=/html_out=/pdf=/pngs=) 一次跑多交付形态；API 默认 video=True 当其余形态全关
+
+### Critical Context（更新）
+- git HEAD a6458c6（用户已提交 concat 修复）；**v15 全部改动未提交**（ppt_llm/ppt_pipeline/CLI/agent/API/config/文档/薄壳）
+- 容器 vidance :9401 已 docker cp 同步 v15+美化 8 文件并重启（health 200，ppt 链路复测通过）；镜像 784b2fd41f56 仍不含 v15（下次 build 才进镜像）
+- 宿主 api :8894 仍是旧代码进程；测试时用临时 8999 端口起新代码（已杀）
+- Playwright sync 坑：单会话渲染所有页（中途 break 撞 asyncio loop）；render_deck_html theme 空 dict KeyError 'bg' 已修（page_css 内 _norm 兜底）
+- **渲染挂死（偶发，环境性）**：系统负载 17-20 时 ffmpeg 偶发中途死→stdin 管道阻塞（已加 proc.poll 检查变报错）；killed 运行会留僵尸 chrome-headless（无害但堆积）；长链测试给足 timeout、失败重跑即可
+- PptLine 时长：每页 d_i = max(旁白+0.8, 3.0)；srt 按页累加
+- 本机模型（opencode）不支持看图——PNG 视觉验证用像素统计（stdev/角部均值）代替目检
+
+### Next Steps
+1. 用户提交 v15 改动（一条 commit）→ docker build 让 v15 进镜像
+2. v16 视频处理与编辑（原 v19）：SAM 分割 M1 起步
+3. 快赢备选：fast 爬图加搜索缓存（Pexels 网络瓶颈缓解）
+
+---
+
+# （以下为 2026-09-26 晚原记录）
+
 ## Goal
 - 本轮完成：全库版本号重排（已完成块前移 v11/v12/v13）+ usage/design 系文档审计补缺（6 处修复 + 新建 usage-v11.md）
 - 当前状态：**只收尾不开工**——4 个文档改动待提交（一条 commit），之后今天到此为止

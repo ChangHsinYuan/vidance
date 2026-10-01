@@ -323,13 +323,15 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 **范围**：
 - 纯 API 模式：所有生成任务可切云端 API（SiliconFlow 等），完全不依赖本地 GPU（对接 v9 模型提供商）
-- Pipeline 轻量化：去除 GPU 依赖的处理。**无 GPU 出片两条线**（均已具备或已规划）：
+- Pipeline 轻量化：去除 GPU 依赖的处理。**无 GPU 出片三条线（全量=svg+ppt+blender，前两者已具备）**：
   1. **营销号流水线（已有）**：v4/v5 的生图/爬图 → zoompan 运镜 → TTS → 剪辑，零视频模型，已可用
   2. **LLM 生成 SVG → 渲染成片（✅ S1-S5 已实现 2026-09-24/26）**：LLM 产出带 CSS/SMIL 动画的自包含 SVG → 无头浏览器逐帧渲染 → ffmpeg 拼帧 → mp4。**纯 CPU、秒级、矢量清晰**，适合信息图/文字动画/数据可视化/科普短片。已落 `utils/svg_llm.py`（S1 概念→SVG + S5 plan_narration 旁白规划）+ `utils/svg_pipeline.py`（S2 单帧/S3 抽帧/S4 拼 mp4/**S5 SvgLine 有声流水线**：LLM 旁白→逐段 TTS（edge→cosy→静音降级）→逐段 SVG 渲染→字幕烧录→crossfade 拼接→可选 LUT/BGM），CLI `vidance.py svg --concept "…" [--voice 音色 -n 3 | --say "句1" --say "句2"]`；`/api/tool/svg` 无声同步/有声异步（svg_* job 复用 h3shot 轮询）。实测 `output/svg_e2e/s1.mp4`（音视频双流）。依赖 Playwright+Chromium（已装）
      - 关键设计：**确定性逐帧**（用 Web Animations API 把动画 `currentTime=t` 后 pause 再截图，而非 wall-clock `wait_for_timeout`），保证帧率精确无抖动
      - 渲染后端：Playwright/Chromium（需装）或 `resvg`/`cairosvg`（仅静态帧）；`node` 已就绪可走 puppeteer
      - 可选：LLM 直接给 SVG 代码 + 时长/分辨率 → 一条命令出片；后续可接 v9 模型提供商
-- 模型层面轻量化：小模型做预览/草稿，大模型做最终渲染
+  3. **LLM 生成 PPT → 渲染成片（✅ v15 已实现 2026-10-01，详见 §v15）**：LLM 规划 deck 结构化 JSON → Python 模板渲染 HTML 幻灯片 → 逐页渲染 → xfade 拼接 → mp4/PDF/PNG 多形态。纯 CPU，`ppt_llm.py` + `ppt_pipeline.py`
+  4. **Blender headless 渲染（🎯 待开发）**：Blender Python 脚本化 3D 场景/文字动效 → EEVEE 离屏渲染 → mp4，3D 信息动画/产品展示向；与 v3 mesh 渲染（pyrender）互补，可读 GLB 资产复用资产库
+- 模型层面轻量化（有模型加速路线）：小模型做预览/草稿、大模型做最终渲染；大模型**量化**（INT8/FP8/GPTQ/AWQ）/**蒸馏**小模型/**其他推理加速**（vLLM、连续批处理、KV cache 优化）按需引入
 - 按需加载：各步骤按需初始化，不预加载所有模型
 - Docker 轻量化部署：分离 CPU 服务（API/前端/调度）与 GPU 服务（生成）
 - 本地 ONNX 小模型：语义嵌入/分类等替代大模型调用
@@ -362,7 +364,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v15 — LLM 生成 PPT（轻量化延伸：v13 姊妹篇）（原 v20，🎯 待开发，2026-09-30 立项）
+### v15 — LLM 生成 PPT（轻量化延伸：v13 姊妹篇）（原 v20，🔄 M1-M4 已完成 2026-10-01）
 
 **目标**：v13 已验证"LLM 产出结构化声明式产物（SVG）→ 无头浏览器确定性渲染 → mp4"这条纯 CPU 路线；v15 把它延伸到 **PPT/幻灯片**——LLM 生成 HTML 幻灯片 → 渲染成图/成片，零 GPU、秒级、矢量清晰。
 
@@ -374,7 +376,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 - **agent 化**：`generator.ppt` 薄包装（needs_gpu=False），链式：`{"agent":"generator.ppt","with":{"concept":"季度总结","n":5,"voice":"edge-moe"}}`
 - **模板系统**：常用 PPT 版式（标题页/目录/图文页/数据页/结尾页）LLM 按版式生成，风格统一（配色/字体全局约束）
 
-**里程碑**：M1 LLM→HTML 幻灯片→渲染 mp4（单页）→ M2 多页+页间转场+TTS 旁白 → M3 数据可视化图表 → M4 PDF/PPTX 导出 + agent 化。
+**里程碑**：M1 LLM→HTML 幻灯片→渲染 mp4（单页）✅ → M2 多页+页间转场+TTS 旁白 ✅ → M3 数据可视化图表 ✅ → M4 PDF/PNG 导出 + agent 化 ✅（2026-10-01 全部完成：`agents/generator/tools/ppt_llm.py`（plan_deck 规划 JSON + 模板渲染 + svg_chart bar/line/pie）+ `ppt_pipeline.py`（PptLine 多形态：deck.html/PDF/PNG/mp4 有声，页间 xfade 转场，TTS 旁白+字幕+LUT/BGM 复用 v10/v12）+ CLI `ppt` 子命令 + `generator.ppt` agent + API `/api/tool/ppt` 异步 job + config task_prefixes `ppt`；端到端验证：LLM 规划 4 页含 bar 图表页 42.9s 成片（117.8s），CLI --say 19s，agent 8.96s，API 宿主 75s，容器 80s 全通过）。
 
 **参考**：v13 svg_pipeline（同一渲染管线）、Marp（Markdown→幻灯片）、Slidev、reveal.js。
 
@@ -389,12 +391,13 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 - **光流追踪**：复用 v2 RIFE 光流模型做**目标轨迹追踪**（CoTracker/RIFE flow 聚焦）——镜头稳定/运动模糊修复/追踪局部打码；RIFE(8189) 已在线，增量改造
 - **AI 换脸**：本地开源方案（FaceFusion/inswapper，参考图→目标视频换脸）——与 v1 角色锚结合（角色参考图→成片换脸），**明确仅用于已授权素材/虚构角色**；`utils/face_swap.py`（GPU，接 v21 档位 none 档禁用）
 - **局部替换（inpaint）**：帧内区域重绘（SDXL inpaint 8191 / FLUX fill）——去水印/替换物件/改背景；mask 来自 SAM 分割（SAM 分割 → inpaint 补全，两能力串联）
+- **ControlNet 参考（🎯 作为参考/可选）**：局部替换与二创改写时用 ControlNet（canny/depth/openpose/lineart）锁定构图/姿态/边缘——inpaint 重绘与改写质量更稳，避免结构漂移；与 v1 角色锚（参考图锁定）互补，SDXL 8191 可挂 ControlNet
 - **agent 化**：`audit.edit` 或 `post.edit` 薄包装 Agent（mask/sam/inpaint/face 四工具），链式调用：`{"agent":"post.edit","with":{"video":"${v.video}","op":"segment+inpaint","target":"背景"}}`
 - **档位接入**：新增能力进 v21 档位阶梯（`full` 档启用，编辑类全 GPU 依赖，none/flux 档降级提示）
 
 **里程碑**：M1 SAM 分割（图→mask→抠图/换底）→ M2 光流追踪+稳镜 → M3 局部替换（SAM mask→inpaint）→ M4 换脸（合规边界内）+ agent 化一条命令。
 
-**参考**：SAM2（Meta，视频分割）、CoTracker（Meta，点追踪）、FaceFusion、ProPainter（视频修补）。
+**参考**：SAM2（Meta，视频分割）、CoTracker（Meta，点追踪）、FaceFusion、ProPainter（视频修补）、ControlNet（构图/姿态条件控制）。
 
 ---
 

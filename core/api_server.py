@@ -575,6 +575,67 @@ def _run_svgjob(job_id: str, concept, n: int, say: list, flags: dict, voiced: bo
         _agent_log(job_id, '✗ 失败: %s' % str(e)[:300])
 
 
+def _run_pptjob(job_id: str, concept, n: int, say: list, flags: dict,
+                want_video: bool, want_pdf: bool, want_pngs: bool):
+    """PPT 短片/deck（异步 job，复用 h3shot 轮询通道；回执 output/video_url）。
+
+    阶段/LLM 流式/帧进度写 job 字段（stage/llm_text/frames）+ agent.log。
+    """
+    def _pnum(k, d):
+        v = flags.get(k)
+        try:
+            return float(v) if k == 'duration' else int(v)
+        except (TypeError, ValueError):
+            return d
+
+    def _scb(s):
+        with _h3_jobs_lock:
+            if job_id in _h3_jobs:
+                _h3_jobs[job_id]['stage'] = s
+        _agent_log(job_id, '▶ ' + s)
+
+    def _on_chunk(delta):
+        with _h3_jobs_lock:
+            if job_id in _h3_jobs:
+                _h3_jobs[job_id]['llm_text'] = ((_h3_jobs[job_id].get('llm_text') or '')
+                                                + delta)[-600:]
+
+    def _on_frame(done, total):
+        with _h3_jobs_lock:
+            if job_id in _h3_jobs:
+                _h3_jobs[job_id]['frames'] = f'{done}/{total}'
+
+    try:
+        from agents.generator.tools.ppt_pipeline import PptLine
+        meta = PptLine().run(
+            concept or (say[0] if say else 'PPT'),
+            n=n, say=say or None,
+            voice=flags.get('voice') or None,
+            video=want_video or not (want_pdf or want_pngs),
+            html_out=flags.get('no-html') is None,
+            pdf=want_pdf, pngs=want_pngs,
+            out_path=flags.get('o') or flags.get('output'),
+            duration=_pnum('duration', 3.0),
+            transition=flags.get('transition') or 'fade',
+            lut=flags.get('lut'), bgm=flags.get('bgm'),
+            stage_cb=_scb, on_chunk=_on_chunk, on_frame=_on_frame)
+        out = meta.get('output') or meta.get('html') or meta.get('pdf')
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'completed', 'output': out,
+                'video_url': ('/api/file?path=' + out) if out and out.endswith('.mp4') else '',
+                'completed_at': datetime.now().isoformat(),
+            })
+        _agent_log(job_id, '■ 完成 %s' % (out or ''))
+    except Exception as e:
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'failed', 'error': str(e),
+                'completed_at': datetime.now().isoformat(),
+            })
+        _agent_log(job_id, '✗ 失败: %s' % str(e)[:300])
+
+
 @app.post('/api/h3shot')
 def h3shot(req: H3ShotRequest):
     if not req.prompt or not req.refs:
@@ -902,6 +963,21 @@ TOOLS = [
          {'key': '--n', 'type': 'number', 'desc': 'S5：LLM 规划旁白段数（默认 3）'},
          {'key': '--lut', 'type': 'text', 'desc': 'S5：调色风格'},
          {'key': '--bgm', 'type': 'text', 'desc': 'S5：BGM mood'},
+     ]},
+    {'name': 'ppt', 'help': 'PPT 流水线：概念→LLM 规划 deck→HTML/PDF/mp4（纯 CPU，秒级）',
+     'params': [
+         {'key': 'concept', 'type': 'text', 'required': True, 'desc': '主题/大纲（一键模式）'},
+         {'key': '-o', 'type': 'text', 'desc': '输出路径（缺省 output/ppt*/final.mp4）'},
+         {'key': '--video', 'type': 'text', 'desc': '渲染成 mp4（有声旁白）'},
+         {'key': '--pdf', 'type': 'text', 'desc': '导出 PDF'},
+         {'key': '--pngs', 'type': 'text', 'desc': '导出每页 PNG'},
+         {'key': '-n', 'type': 'number', 'desc': '页数（默认 5）'},
+         {'key': '--duration', 'type': 'number', 'desc': '无声页时长（秒，默认 3）'},
+         {'key': '--transition', 'type': 'text', 'desc': '页间转场 fade/slide/wipe/circleopen/crossfade/cut'},
+         {'key': '--voice', 'type': 'text', 'desc': '有声 mp4：配音音色'},
+         {'key': '--say', 'type': 'text', 'desc': '手动大纲（每元素一页标题，可重复多个）'},
+         {'key': '--lut', 'type': 'text', 'desc': '调色风格（mp4）'},
+         {'key': '--bgm', 'type': 'text', 'desc': 'BGM mood（mp4）'},
      ]},
     {'name': 'clip', 'help': 'FunClip：长素材 ASR 转写+语义裁剪',
      'params': [
@@ -1324,6 +1400,39 @@ def tool_dispatch(name: str, req: ToolRequest):
                          args=(job_id, concept, _num('n', 3), say, fl, voiced),
                          daemon=True).start()
         return {'message': 'SVG 任务已提交（异步，LLM 生成中，可看日志面板跟踪）',
+                'job_id': job_id, 'poll': f'/api/h3shot/{job_id}', 'h3_job_id': job_id}
+
+    # ── ppt（LLM 生成 PPT/幻灯片，异步 job，复用 h3shot 轮询通道）──
+    if name == 'ppt':
+        rr = _parse_repeated(req.args or '', {'say'})
+        fl, pos2 = rr['flags'], rr['pos']
+        say = rr['rep'].get('say') or []
+        concept = fl.get('concept') or (' '.join(pos2) if pos2 else None)
+
+        def _pnum(k, d):
+            try:
+                return int(fl.get(k))
+            except (TypeError, ValueError):
+                return d
+
+        if not concept and not say:
+            raise HTTPException(status_code=400,
+                                detail='用法: /ppt 主题 [-n 5 --voice 音色 --video --pdf] | /ppt --say "页标题" --say …')
+        # 布尔形态：--video/--pdf/--pngs 传了就 True（值随意）
+        want_video = fl.get('video') is not None
+        want_pdf = fl.get('pdf') is not None
+        want_pngs = fl.get('pngs') is not None
+        job_id = f'ppt_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        with _h3_jobs_lock:
+            _h3_jobs[job_id] = {'job_id': job_id,
+                                'concept': concept or (say[0][:20] if say else ''),
+                                'status': 'running',
+                                'created_at': datetime.now().isoformat()}
+        threading.Thread(target=_run_pptjob,
+                         args=(job_id, concept, _pnum('n', 5), say, fl,
+                               want_video, want_pdf, want_pngs),
+                         daemon=True).start()
+        return {'message': 'PPT 任务已提交（异步，LLM 规划中，可看日志面板跟踪）',
                 'job_id': job_id, 'poll': f'/api/h3shot/{job_id}', 'h3_job_id': job_id}
 
     # ── concat（多视频拼接，同步子进程）──

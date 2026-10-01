@@ -393,6 +393,45 @@ def cmd_svg(args):
         print('usage: svg --concept "鹈鹕骑自行车" | svg --svg scene.svg [--still|--frames]')
 
 
+def cmd_ppt(args):
+    """v15 PPT 流水线：概念→LLM 规划 deck→HTML/PDF/mp4（纯 CPU）
+
+    一键：ppt "主题" [--video --pdf --pngs -n 5 --voice cosy-xxx]
+    渲染：ppt --deck deck.html --video/--pdf/--pngs
+    """
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from agents.generator.tools import ppt_pipeline as pp
+
+    # 渲染模式：已有 deck.html → mp4/pdf/pngs
+    if args.deck:
+        with open(args.deck, 'r', encoding='utf-8') as f:
+            slides = pp.extract_slides(f.read())
+        out = args.output or args.deck.rsplit('.', 1)[0]
+        if args.video:
+            print(pp.deck_to_mp4(slides, out if out.endswith('.mp4') else out + '.mp4',
+                                 duration=args.duration, transition=args.transition))
+        if args.pdf:
+            print(pp.deck_to_pdf(slides, out if out.endswith('.pdf') else out + '.pdf'))
+        if args.pngs:
+            print(pp.render_slides_pngs(slides, out + '_pngs'))
+        if not (args.video or args.pdf or args.pngs):
+            print('usage: ppt --deck deck.html --video | --pdf | --pngs')
+        return
+
+    if not args.concept:
+        print('usage: ppt "主题" [--video --pdf --pngs] | ppt --deck deck.html --video')
+        return
+
+    line = pp.PptLine()
+    meta = line.run(args.concept, n=args.n, say=args.say, voice=args.voice,
+                    fps=24, duration=args.duration, transition=args.transition,
+                    model=args.model, lut=args.lut, bgm=args.bgm,
+                    video=args.video or not (args.pdf or args.pngs),
+                    html_out=not args.no_html, pdf=args.pdf, pngs=args.pngs)
+    print(meta.get('output') or meta.get('html') or '')
+
+
 def cmd_make(args):
     """v12（原 v17）M2 统一入口：--director × --generator 排列组合路由到现有实现（子命令变别名）"""
     gen = args.generator or 'wan'
@@ -725,6 +764,27 @@ def build_parser():
     p_svg.add_argument('--lut', default=None, help='S5：调色风格')
     p_svg.add_argument('--bgm', default=None, help='S5：BGM mood')
     p_svg.set_defaults(func=cmd_svg)
+
+    # ── ppt 子命令（v15：LLM 生成 PPT/幻灯片）──
+    p_ppt = sub.add_parser('ppt',
+        help='v15 PPT 流水线：概念→LLM 规划 deck→HTML/PDF/mp4（纯 CPU，秒级）')
+    p_ppt.add_argument('concept', nargs='?', default=None, help='主题/大纲（一键模式）')
+    p_ppt.add_argument('--deck', default=None, help='deck.html 路径（渲染模式：--video/--pdf）')
+    p_ppt.add_argument('-o', '--output', default=None, help='输出路径（mp4/pdf；缺省 output/ppt*/final.mp4）')
+    p_ppt.add_argument('--video', action='store_true', help='渲染成 mp4（有声旁白）')
+    p_ppt.add_argument('--pdf', action='store_true', help='导出 PDF')
+    p_ppt.add_argument('--pngs', action='store_true', help='导出每页 PNG')
+    p_ppt.add_argument('-n', type=int, default=5, help='页数（默认 5）')
+    p_ppt.add_argument('--duration', type=float, default=3.0, help='无声页时长（秒）')
+    p_ppt.add_argument('--transition', default='fade',
+                       help='页间转场 fade/slide/wipe/circleopen/crossfade/cut')
+    p_ppt.add_argument('--voice', default=None, help='有声 mp4：配音音色')
+    p_ppt.add_argument('--say', action='append', default=None, help='手动大纲（每元素一页标题，可重复）')
+    p_ppt.add_argument('--model', default=None, help='LLM 模型')
+    p_ppt.add_argument('--lut', default=None, help='调色风格（mp4）')
+    p_ppt.add_argument('--bgm', default=None, help='BGM mood（mp4）')
+    p_ppt.add_argument('--no-html', action='store_true', help='不落 deck.html')
+    p_ppt.set_defaults(func=cmd_ppt)
 
     # ── make 子命令（v12（原 v17）M2 三排正交统一入口） ──
     p_make = sub.add_parser('make', parents=[output_parent, post_parent],

@@ -75,7 +75,8 @@
     "hot": "hot",
     "custom": "custom",
     "make": "make",
-    "chain": "agent"
+    "chain": "agent",
+    "ppt": "ppt"
   },
   "wan_defaults": {
     "width": 1280,
