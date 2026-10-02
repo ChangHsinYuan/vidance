@@ -1,0 +1,559 @@
+#!/usr/bin/env python3
+"""v16 视频处理与编辑 — SAM2 分割 + 局部替换（M1 分割 / M2 inpaint / M3 视频传播）
+
+单图编辑（M1/M2）：
+  segment       任意图 → mask（点提示/自动主体）
+  cutout        抠主体 → 透明 PNG
+  replace_bg    换背景（纯色/模糊原图）
+  mosaic        区域打码（像素化/模糊）
+  inpaint       局部替换/去水印（SAM mask → cv2.inpaint，CPU 恒可用）
+
+视频编辑（M3）：
+  video         SAM2 视频传播：首帧点提示 → 逐帧 mask → 打码/换底/抠图 → 重拼 mp4
+
+用法:
+  python agents/post/tools/sam_edit.py segment 图.jpg --point 311,175 -o mask.png
+  python agents/post/tools/sam_edit.py cutout 图.jpg -o cut.png                # 自动主体
+  python agents/post/tools/sam_edit.py mosaic 图.jpg --point x,y --mode pixel
+  python agents/post/tools/sam_edit.py inpaint 图.jpg --point x,y -o out.png  # 去水印/替换
+  python agents/post/tools/sam_edit.py video in.mp4 --point x,y --op mosaic -o out.mp4
+"""
+
+import os as _os
+import sys as _sys
+_ROOT = _os.path.abspath(__file__)
+for _ in range(4):
+    _ROOT = _os.path.dirname(_ROOT)
+if _ROOT not in _sys.path:
+    _sys.path.insert(0, _ROOT)
+import argparse
+import io
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+import numpy as np
+from PIL import Image
+
+FFMPEG = 'ffmpeg'
+FFPROBE = 'ffprobe'
+
+# 权重/配置（models/sam2/ 下，*.pt 已 gitignore）
+_MODELS = {
+    'small': ('sam2.1_hiera_small.pt', 'configs/sam2.1/sam2.1_hiera_s.yaml'),
+    'tiny': ('sam2.1_hiera_tiny.pt', 'configs/sam2.1/sam2.1_hiera_t.yaml'),
+    'base': ('sam2.1_hiera_base_plus.pt', 'configs/sam2.1/sam2.1_hiera_b+.yaml'),
+}
+_SAM2_SRC_CANDIDATES = [
+    '/mnt/disk_sdb/zxy/sam2-src',        # 本仓永久位置（pip -e 装的就是它）
+]
+GPU_FALLBACK = True   # CUDA 建不出 context 时逐卡探测（同 v4 FunClip device='auto'）
+
+
+# ────────────────────────── 模型加载 ──────────────────────────
+
+def _pick_device(prefer: str = ''):
+    """选卡：prefer 指定（cuda:N/cpu）> 逐卡探测显存最多且可用 > cpu。"""
+    try:
+        import torch
+    except ImportError:
+        return 'cpu'
+    if prefer:
+        return prefer
+    if not torch.cuda.is_available():
+        return 'cpu'
+    best, best_free = None, -1
+    for i in range(torch.cuda.device_count()):
+        try:
+            free, _total = torch.cuda.mem_get_info(i)
+            if free > best_free:
+                best, best_free = f'cuda:{i}', free
+        except Exception:
+            continue  # context 建不出（满卡）→ 跳过
+    return best or 'cpu'
+
+
+def load_predictor(size: str = 'small', device: str = '', video: bool = False):
+    """SAM2 图像/视频 predictor（单例缓存）。size: tiny/small/base。"""
+    cache_key = ('video' if video else 'image', size, device)
+    if cache_key in load_predictor._cache:
+        return load_predictor._cache[cache_key]
+
+    src = None
+    for c in _SAM2_SRC_CANDIDATES:
+        if os.path.isdir(c):
+            src = c
+            break
+    if src and src not in sys.path:
+        sys.path.insert(0, src)
+
+    from sam2.build_sam import build_sam2
+    fname, cfg = _MODELS[size]
+    ckpt = os.path.join(_ROOT, 'models', 'sam2', fname)
+    if not os.path.isfile(ckpt):
+        raise FileNotFoundError(f'SAM2 权重不存在: {ckpt}（下载 dl.fbaipublicfiles.com/segment_anything_2/092824/{fname}）')
+
+    dev = _pick_device(device)
+    t0 = time.time()
+    model = build_sam2(cfg, ckpt, device=dev)
+    if video:
+        from sam2.build_sam import build_sam2_video_predictor
+        pred = build_sam2_video_predictor(cfg, ckpt, device=dev)
+    else:
+        from sam2.sam2_image_predictor import SAM2ImagePredictor
+        pred = SAM2ImagePredictor(model)
+    load_predictor._cache[cache_key] = (pred, dev)
+    print(f'[sam2] {size} 加载 {time.time()-t0:.1f}s device={dev}')
+    return pred, dev
+
+
+load_predictor._cache = {}
+
+
+# ────────────────────────── M1: 分割 ──────────────────────────
+
+def parse_points(spec):
+    """'x,y x,y' 或 'x,y;x,y' → [(x,y), ...]"""
+    pts = []
+    for tok in (spec or '').replace(';', ' ').split():
+        parts = tok.split(',')
+        if len(parts) == 2:
+            try:
+                pts.append((int(float(parts[0])), int(float(parts[1]))))
+            except ValueError:
+                pass
+    return pts
+
+
+def segment_image(img, points=None, size='small', device=''):
+    """单图分割。points: [(x,y)] 点提示；None → 自动主体（网格打点取最优掩膜并集）。
+
+    Returns (mask_bool HxW, score float)
+    """
+    predictor, dev = load_predictor(size=size, device=device)
+    predictor.set_image(img)
+    h, w = img.shape[:2]
+
+    if points:
+        coords = np.array(points, dtype=np.float32)
+        labels = np.ones(len(points), dtype=np.int64)
+    else:
+        # 自动主体：3x3 网格点提示，各自预测取 score 最高且面积合理的掩膜
+        coords, labels = [], []
+        for fy in (0.3, 0.5, 0.7):
+            for fx in (0.3, 0.5, 0.7):
+                coords.append((int(w * fx), int(h * fy)))
+                labels.append(1)
+        coords = np.array(coords, dtype=np.float32)
+        labels = np.array(labels, dtype=np.int64)
+
+    masks, scores, _ = predictor.predict(point_coords=coords, point_labels=labels)
+    if len(masks) == 0:
+        raise RuntimeError('SAM2 未产出掩膜')
+
+    if points:
+        best = int(np.argmax(scores))
+        return masks[best].astype(bool), float(scores[best])
+
+    # 自动：并集所有 score>0.7 的掩膜（多点同目标）——退化为最高分掩膜兜底
+    good = [masks[i] for i in range(len(masks)) if scores[i] > 0.7]
+    if not good:
+        best = int(np.argmax(scores))
+        return masks[best].astype(bool), float(scores[best])
+    union = np.zeros(img.shape[:2], dtype=bool)
+    for m in good:
+        union |= m.astype(bool)
+    return union, float(np.max(scores))
+
+
+# ────────────────────────── M1: 编辑操作 ──────────────────────────
+
+def cutout(img, mask, out_path):
+    """抠主体 → 透明 PNG。"""
+    rgba = np.dstack([img, np.where(mask, 255, 0).astype(np.uint8)])
+    Image.fromarray(rgba, 'RGBA').save(out_path)
+    return out_path
+
+
+def replace_bg(img, mask, out_path, color=(16, 18, 27), blur=False):
+    """换背景：纯色（默认深色）或高斯模糊原图。"""
+    if blur:
+        import cv2
+        bg = cv2.GaussianBlur(img, (0, 0), 18)
+    else:
+        bg = np.zeros_like(img)
+        bg[:] = color
+    out = np.where(mask[..., None], img, bg)
+    Image.fromarray(out.astype(np.uint8)).save(out_path)
+    return out_path
+
+
+def mosaic(img, mask, out_path, mode='pixel', strength=16):
+    """区域打码：pixel 像素化 / blur 高斯。mask 外不动。"""
+    import cv2
+    small = cv2.resize(img, (max(1, img.shape[1] // strength), max(1, img.shape[0] // strength)),
+                       interpolation=cv2.INTER_LINEAR)
+    pix = cv2.resize(small, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
+    blurred = cv2.GaussianBlur(img, (0, 0), strength)
+    alt = pix if mode == 'pixel' else blurred
+    out = np.where(mask[..., None], alt, img)
+    Image.fromarray(out.astype(np.uint8)).save(out_path)
+    return out_path
+
+
+# ────────────────────────── M2: inpaint 局部替换 ──────────────────────────
+
+def inpaint(img, mask, out_path, radius=6):
+    """局部替换/去水印：cv2.inpaint TELEA（CPU 恒可用，快速）。
+
+    大面积重绘质量有限——FLUX Fill 模型上线后可切 ComfyUI latent inpaint（可选）。
+    """
+    import cv2
+    m = (mask.astype(np.uint8)) * 255
+    # mask 膨胀 1 圈，覆盖边缘水印残迹
+    m = cv2.dilate(m, np.ones((5, 5), np.uint8), iterations=1)
+    out = cv2.inpaint(img, m, radius, cv2.INPAINT_TELEA)
+    Image.fromarray(out).save(out_path)
+    return out_path
+
+
+# ────────────────────────── 彩色多物体可视化 ──────────────────────────
+
+# SAM demo 风格调色板（高饱和区分色）
+PALETTE = [(255, 76, 76), (76, 195, 255), (120, 255, 96), (255, 200, 64),
+           (196, 110, 255), (64, 240, 224), (255, 128, 220), (176, 255, 64)]
+
+
+def _iou(a, b):
+    inter = (a & b).sum()
+    union = (a | b).sum()
+    return inter / union if union else 0.0
+
+
+def segment_multi(img, points=None, size='small', device='', grid=3, iou_dedupe=0.85):
+    """彩色多物体分割：每个点一个独立物体，逐点预测去重。
+
+    points None → grid x grid 网格自动打点。
+    Returns (masks[list of bool HxW], scores[list of float])
+    """
+    predictor, _dev = load_predictor(size=size, device=device)
+    predictor.set_image(img)
+    h, w = img.shape[:2]
+
+    if not points:
+        points = [(int(w * (i + 1) / (grid + 1)), int(h * (j + 1) / (grid + 1)))
+                  for j in range(grid) for i in range(grid)]
+
+    masks, scores = [], []
+    for pt in points:
+        try:
+            ms, ss, _ = predictor.predict(
+                point_coords=np.array([pt], dtype=np.float32),
+                point_labels=np.ones(1, dtype=np.int64))
+        except Exception:
+            continue
+        best = int(np.argmax(ss))
+        m = ms[best].astype(bool)
+        if ss[best] < 0.5 or m.sum() < 16:
+            continue  # 噪声/过小丢弃
+        if any(_iou(m, kept) > iou_dedupe for kept in masks):
+            continue  # 与已有物体重复
+        masks.append(m)
+        scores.append(float(ss[best]))
+    return masks, scores
+
+
+def visualize(img, masks, out_path, alpha=0.55):
+    """彩色多物体叠加（SAM demo 风格：每物体一色 + 半透明 + 边界描边）。"""
+    import cv2
+    out = img.copy()
+    for i, m in enumerate(masks):
+        color = PALETTE[i % len(PALETTE)]
+        out[m] = (out[m] * (1 - alpha) + np.array(color) * alpha).astype(np.uint8)
+        # 边界描边（mask 边缘找轮廓）
+        edges = m.astype(np.uint8) - cv2.erode(m.astype(np.uint8), np.ones((3, 3), np.uint8))
+        out[edges.astype(bool)] = color
+    Image.fromarray(out).save(out_path)
+    return out_path
+
+
+def video_color(in_path, out_path, points, size='small', device='', alpha=0.55,
+                on_frame=None, prompt_frame=0):
+    """视频彩色多物体：每个点一个独立 obj_id 传播 → 逐帧彩色叠加（SAM demo 风格）。
+
+    prompt_frame：提示帧索引（SAM2 支持任意帧提示，双向传播）。
+    """
+    import torch
+    import cv2
+
+    predictor, dev = load_predictor(size=size, device=device, video=True)
+
+    tmpd = tempfile.mkdtemp(prefix='sam2vid_')
+    fps = _probe_fps(in_path)
+    subprocess.run([FFMPEG, '-y', '-i', in_path, '-vf',
+                    'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+                    os.path.join(tmpd, '%06d.jpg'), '-q:v', '2'],
+                   capture_output=True, text=True, timeout=300)
+    names = sorted(f for f in os.listdir(tmpd) if f.endswith('.jpg'))
+    if not names:
+        raise RuntimeError('抽帧失败')
+
+    with torch.inference_mode(), torch.autocast('cuda', dtype=torch.bfloat16,
+                                                enabled=dev.startswith('cuda')):
+        state = predictor.init_state(video_path=tmpd)
+        f0 = cv2.imread(os.path.join(tmpd, names[0]))
+        fh, fw = f0.shape[:2]
+        labels = np.ones((1, len(points)), dtype=np.int64)
+        # 每个点一个独立物体（obj_id 1..n），提示帧 prompt_frame
+        for k, (x, y) in enumerate(points, start=1):
+            predictor.add_new_points_or_box(
+                state, obj_id=k, frame_idx=prompt_frame,
+                points=np.array([[(min(max(x, 0), fw - 1), min(max(y, 0), fh - 1))]],
+                                dtype=np.float32),
+                labels=np.ones((1, 1), dtype=np.int64))
+        # 多物体传播：propagate 产出 (frame, [obj_ids], [logits])
+        # 双向传播：提示帧向后 + 向前（reverse=True），覆盖全片
+        masks_by_frame = {}
+        for reverse in (False, True):
+            for fo, obj_ids, logits in predictor.propagate_in_video(state,
+                                                                    reverse=reverse):
+                d = masks_by_frame.get(fo, {})
+                for oi, oid in enumerate(obj_ids):
+                    m = (logits[oi] > 0).cpu().numpy()
+                    if m.ndim == 3:
+                        m = m[0]
+                    d[int(oid)] = m.astype(bool)
+                masks_by_frame[fo] = d
+
+    total = len(names)
+    frames_src = {fo: os.path.join(tmpd, n) for fo, n in enumerate(names)}
+
+    def _iter():
+        for fo in range(total):
+            img = cv2.cvtColor(cv2.imread(frames_src[fo]), cv2.COLOR_BGR2RGB)
+            per_obj = masks_by_frame.get(fo) or {}
+            out = img.copy()
+            for oid, m in per_obj.items():
+                if not m.any():
+                    continue
+                m = np.array(Image.fromarray(m.astype(np.uint8) * 255).resize(
+                    (img.shape[1], img.shape[0]), Image.NEAREST)) > 127
+                color = np.array(PALETTE[(oid - 1) % len(PALETTE)])
+                out[m] = (out[m] * (1 - alpha) + color * alpha).astype(np.uint8)
+                edges = m.astype(np.uint8) - cv2.erode(m.astype(np.uint8), np.ones((3, 3), np.uint8))
+                out[edges.astype(bool)] = color
+            yield out
+
+    try:
+        n = _encode_frames(_iter(), out_path, fps, total=total, on_frame=on_frame)
+    finally:
+        shutil.rmtree(tmpd, ignore_errors=True)
+    return {'output': out_path, 'frames': n, 'fps': fps, 'objects': len(points)}
+
+
+# ────────────────────────── M3: 视频传播 ──────────────────────────
+
+def _probe_fps(path):
+    try:
+        r = subprocess.run([FFPROBE, '-v', 'error', '-select_streams', 'v:0',
+                            '-show_entries', 'stream=r_frame_rate', '-of', 'csv=p=0', path],
+                           capture_output=True, text=True, timeout=30)
+        num, den = r.stdout.strip().split('/')
+        return int(num) / int(den) if int(den) else 24.0
+    except Exception:
+        return 24.0
+
+
+def _encode_frames(frames_iter, out_path, fps, total=0, on_frame=None):
+    """PNG 流 → mp4（image2pipe，同 v13/v15 blender_pipeline.frames_to_mp4 模式）。"""
+    cmd = [FFMPEG, '-y', '-f', 'image2pipe', '-vcodec', 'png', '-framerate', str(fps),
+           '-i', '-', '-vcodec', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+           out_path]
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.PIPE)
+    n = 0
+    try:
+        for f in frames_iter:
+            buf = _png_bytes(f)
+            try:
+                proc.stdin.write(buf)
+            except BrokenPipeError:
+                err = proc.stderr.read().decode('utf-8', 'ignore')[-400:]
+                raise RuntimeError(f'ffmpeg 中途退出: {err}')
+            n += 1
+            if on_frame:
+                on_frame(n, total)
+    finally:
+        if proc.stdin and not proc.stdin.closed:
+            try:
+                proc.stdin.close()
+            except BrokenPipeError:
+                pass
+        rc = proc.wait()
+    if rc != 0:
+        err = proc.stderr.read().decode('utf-8', 'ignore')[-400:]
+        raise RuntimeError(f'ffmpeg 退出码 {rc}: {err}')
+    return n
+
+
+def _png_bytes(arr):
+    b = io.BytesIO()
+    Image.fromarray(arr).save(b, format='PNG')
+    return b.getvalue()
+
+
+def video_edit(in_path, out_path, points, op='mosaic', size='small', device='',
+               mode='pixel', strength=16, bg_color=(16, 18, 27), on_frame=None,
+               prompt_frame=0):
+    """SAM2 视频传播：点提示 → 逐帧 mask → op 处理 → 重拼 mp4。
+
+    op: mosaic / blur_bg / cutout（cutout 输出 mp4 无 alpha，黑底）
+    prompt_frame：提示帧索引（SAM2 支持任意帧提示，双向传播）。
+    """
+    import torch
+    import cv2
+    from sam2.build_sam import build_sam2
+
+    predictor, dev = load_predictor(size=size, device=device, video=True)
+
+    # 抽帧到临时目录（jpeg 快）
+    tmpd = tempfile.mkdtemp(prefix='sam2vid_')
+    fps = _probe_fps(in_path)
+    extract = subprocess.run([FFMPEG, '-y', '-i', in_path, '-vf',
+                              'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+                              os.path.join(tmpd, '%06d.jpg'), '-q:v', '2'],
+                             capture_output=True, text=True, timeout=300)
+    names = sorted(f for f in os.listdir(tmpd) if f.endswith('.jpg'))
+    if not names:
+        raise RuntimeError(f'抽帧失败: {extract.stderr[-200:]}')
+
+    # 推理（inference_state 上下文）
+    with torch.inference_mode(), torch.autocast('cuda', dtype=torch.bfloat16,
+                                                enabled=dev.startswith('cuda')):
+        state = predictor.init_state(video_path=tmpd)
+        # 提示帧加点提示，obj_id=1
+        frame0 = cv2.imread(os.path.join(tmpd, names[min(prompt_frame, len(names) - 1)]))
+        fh, fw = frame0.shape[:2]
+        pts = np.array([[(min(max(x, 0), fw - 1), min(max(y, 0), fh - 1)) for x, y in points]],
+                       dtype=np.float32)
+        labels = np.ones((1, len(points)), dtype=np.int64)
+        predictor.add_new_points_or_box(state, obj_id=1, frame_idx=prompt_frame,
+                                        points=pts, labels=labels)
+
+        # 传播（双向：提示帧向后 + 向前，覆盖全片）
+        masks_by_frame = {}
+        for reverse in (False, True):
+            for fo, obj_ids, mask_logits in predictor.propagate_in_video(state,
+                                                                        reverse=reverse):
+                m = (mask_logits[0] > 0).cpu().numpy()
+                if m.ndim == 3:
+                    m = m[0]
+                masks_by_frame[fo] = m.astype(bool)
+
+    total = len(names)
+    frames_src = {fo: os.path.join(tmpd, n) for fo, n in enumerate(names)}
+
+    def _iter():
+        for fo in range(total):
+            img = cv2.imread(frames_src[fo])
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            m = masks_by_frame.get(fo)
+            if m is None or not m.any():
+                yield img
+                continue
+            m = np.array(Image.fromarray(m.astype(np.uint8) * 255).resize(
+                (img.shape[1], img.shape[0]), Image.NEAREST)) > 127
+            if op == 'mosaic':
+                yield np.where(m[..., None],
+                               cv2.resize(cv2.resize(img, (img.shape[1] // max(1, strength),
+                                                                  img.shape[0] // max(1, strength))),
+                                          (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST),
+                               img).astype(np.uint8)
+            elif op == 'blur_bg':
+                bg = cv2.GaussianBlur(img, (0, 0), 18)
+                yield np.where(m[..., None], img, bg).astype(np.uint8)
+            elif op == 'cutout':
+                out = img.copy()
+                out[~m] = bg_color
+                yield out
+            else:
+                yield img
+
+    try:
+        n = _encode_frames(_iter(), out_path, fps, total=total, on_frame=on_frame)
+    finally:
+        shutil.rmtree(tmpd, ignore_errors=True)
+    return {'output': out_path, 'frames': n, 'fps': fps, 'op': op}
+
+
+# ────────────────────────── CLI ──────────────────────────
+
+def main():
+    ap = argparse.ArgumentParser(description='v16 SAM2 分割 + 局部替换')
+    ap.add_argument('cmd', choices=['segment', 'cutout', 'replace_bg', 'mosaic', 'inpaint', 'visualize', 'video'])
+    ap.add_argument('input')
+    ap.add_argument('-o', '--output')
+    ap.add_argument('--point', help='点提示 x,y（可多个，空格分）', default='')
+    ap.add_argument('--size', choices=['tiny', 'small', 'base'], default='small')
+    ap.add_argument('--device', default='')
+    ap.add_argument('--mode', default='pixel', help='mosaic 模式 pixel/blur')
+    ap.add_argument('--strength', type=int, default=16)
+    ap.add_argument('--bg', default='', help='replace_bg: hex 色（如 101827）或 blur')
+    ap.add_argument('--op', default='mosaic', help='video: mosaic/blur_bg/cutout/color')
+    a = ap.parse_args()
+
+    out = a.output or os.path.join(
+        os.path.dirname(os.path.dirname(_ROOT)) and 'output',
+        f"edit_{time.strftime('%Y%m%d_%H%M%S')}.{'mp4' if a.cmd == 'video' else 'png'}")
+    out = a.output or out
+
+    if a.cmd == 'video':
+        pts = parse_points(a.point)
+        if not pts:
+            ap.error('video 需要 --point x,y（首帧目标点）')
+        if a.op == 'color':
+            r = video_color(a.input, out, pts, size=a.size, device=a.device)
+            print(f"✅ {r['output']}（{r['frames']} 帧 @{r['fps']:.1f}fps, {r['objects']} 物体彩色）")
+            return
+        r = video_edit(a.input, out, pts, op=a.op, size=a.size, device=a.device,
+                       mode=a.mode, strength=a.strength)
+        print(f"✅ {r['output']}（{r['frames']} 帧 @{r['fps']:.1f}fps op={r['op']}）")
+        return
+
+    img = np.array(Image.open(a.input).convert('RGB'))
+    pts = parse_points(a.point)
+    if a.cmd == 'visualize':
+        masks, scores = segment_multi(img, points=pts or None, size=a.size, device=a.device)
+        print(f'[sam2] 彩色多物体: {len(masks)} 个物体, scores '
+              + ', '.join(f'{s:.2f}' for s in scores))
+        visualize(img, masks, out)
+        print(f'✅ {out}')
+        return
+    mask, score = segment_image(img, points=pts or None, size=a.size, device=a.device)
+    print(f'[sam2] mask score={score:.3f} coverage={mask.mean():.3f}')
+
+    if a.cmd == 'segment':
+        Image.fromarray(mask.astype(np.uint8) * 255).save(out)
+    elif a.cmd == 'cutout':
+        cutout(img, mask, out)
+    elif a.cmd == 'replace_bg':
+        if a.bg == 'blur':
+            replace_bg(img, mask, out, blur=True)
+        elif a.bg:
+            c = a.bg.lstrip('#')
+            col = tuple(int(c[i:i + 2], 16) for i in (0, 2, 4)) if len(c) >= 6 else (16, 18, 27)
+            replace_bg(img, mask, out, color=col)
+        else:
+            replace_bg(img, mask, out)
+    elif a.cmd == 'mosaic':
+        mosaic(img, mask, out, mode=a.mode, strength=a.strength)
+    elif a.cmd == 'inpaint':
+        inpaint(img, mask, out)
+    print(f'✅ {out}')
+
+
+if __name__ == '__main__':
+    main()

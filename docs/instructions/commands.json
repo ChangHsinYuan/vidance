@@ -1,716 +1,794 @@
 {
- "version": "v0-v18",
- "title": "Vidance 命令指令库",
- "overview_hint": "输入 /help 看全部命令一句话说明；输入 /help 命令名 看该命令的详细参数与示例。",
- "commands": [
-  {
-   "name": "auto",
-   "version": "v0-v2",
-   "brief": "一句概念 → LLM 编剧 → 视频模型生成 → 后处理（完整流水线）",
-   "detail": "完整自动出片流水线：LLM 自动编剧 → 角色锚（可选 3DGS/mesh/flux）→ 逐镜 Wan I2V/T2V 生成 → 多模态审片 → RIFE 过渡 → LUT 调色 → BGM ducking → STT 字幕。适合无素材、要一条完整故事片。耗时最长。",
-   "params": [
+  "version": "v0-v18",
+  "title": "Vidance 命令指令库",
+  "overview_hint": "输入 /help 看全部命令一句话说明；输入 /help 命令名 看该命令的详细参数与示例。",
+  "commands": [
     {
-     "key": "concept",
-     "desc": "视频概念（中文）",
-     "required": true
+      "name": "auto",
+      "version": "v0-v2",
+      "brief": "一句概念 → LLM 编剧 → 视频模型生成 → 后处理（完整流水线）",
+      "detail": "完整自动出片流水线：LLM 自动编剧 → 角色锚（可选 3DGS/mesh/flux）→ 逐镜 Wan I2V/T2V 生成 → 多模态审片 → RIFE 过渡 → LUT 调色 → BGM ducking → STT 字幕。适合无素材、要一条完整故事片。耗时最长。",
+      "params": [
+        {
+          "key": "concept",
+          "desc": "视频概念（中文）",
+          "required": true
+        },
+        {
+          "key": "--character",
+          "desc": "角色描述（中文），不传则纯 T2V"
+        },
+        {
+          "key": "--character-mode",
+          "desc": "角色锚模式：auto/flux/3dgs/mesh",
+          "choices": [
+            "auto",
+            "flux",
+            "3dgs",
+            "mesh"
+          ]
+        },
+        {
+          "key": "--voice",
+          "desc": "TTS 音色（edge-* / cosy-*）"
+        },
+        {
+          "key": "--duration",
+          "desc": "目标总时长（秒），自动调整镜头数"
+        },
+        {
+          "key": "--slowmo",
+          "desc": "全局慢动作倍率（2=2x 慢放）"
+        },
+        {
+          "key": "--lut",
+          "desc": "调色风格",
+          "choices": [
+            "cinematic",
+            "warm",
+            "cool",
+            "vintage",
+            "vivid",
+            "soft"
+          ]
+        },
+        {
+          "key": "--bgm",
+          "desc": "BGM 情绪",
+          "choices": [
+            "calm",
+            "uplifting",
+            "mysterious",
+            "dramatic",
+            "playful",
+            "epic"
+          ]
+        },
+        {
+          "key": "--no-rife / --no-color / --no-bgm",
+          "desc": "禁用对应后处理"
+        }
+      ],
+      "examples": [
+        "/auto 一只猫在月球上跳舞",
+        "/auto 深海探险 --character 蓝色水母 --character-mode flux --lut cool --bgm mysterious",
+        "/auto 雪山日出：小狐狸的冒险 --character 红色小狐狸 --duration 60 --stt"
+      ]
     },
     {
-     "key": "--character",
-     "desc": "角色描述（中文），不传则纯 T2V"
+      "name": "arch",
+      "brief": "架构总览：编排→D/G/P/V 四层 Agent + 五个人格化服务 + 在线状态",
+      "detail": "渲染系统架构图：编排宿主（CLI/API/scheduler）→ director（决策）/ generator（生成）/ post（后期）/ audit（审核）四层 + common 共享基础设施，每层列出已注册 Agent 与实现模块；顶部显示主数据流与各模型服务端口在线状态（绿=在线）。所有 Agent 运行记录写入台账（output/tasks.sqlite 的 agent_runs 表），chain 任务时间线即从此读取。",
+      "params": [],
+      "examples": [
+        "输入 /arch 查看分层架构图与全部 Agent"
+      ]
     },
     {
-     "key": "--character-mode",
-     "desc": "角色锚模式：auto/flux/3dgs/mesh",
-     "choices": [
-      "auto",
-      "flux",
-      "3dgs",
-      "mesh"
-     ]
+      "name": "make",
+      "version": "v12",
+      "brief": "统一入口：导演(llm/manual/scout) × 生成器(wan/fast/svg/h3) 排列组合",
+      "detail": "v12（原 v17）三排正交统一入口。导演层：--director llm(LLM编脚本,默认)/manual(--say/--prompt)/scout(爬热点自动选题)；生成层：--generator wan(带--character走auto全管线,否则quick)/fast(爬图+生图营销号)/svg(矢量动画,--voice出有声)/h3(--prompt整段式+--ref,或--script走custom)。后期参数 --voice/--lut/--bgm/--stt 通用。见 docs/v12-modules.md。",
+      "params": [
+        {
+          "key": "concept",
+          "desc": "概念（--director scout 时可省）",
+          "required": true
+        },
+        {
+          "key": "--director",
+          "desc": "llm/manual/scout",
+          "choices": [
+            "llm",
+            "manual",
+            "scout"
+          ]
+        },
+        {
+          "key": "--generator",
+          "desc": "wan/fast/svg/h3",
+          "choices": [
+            "wan",
+            "fast",
+            "svg",
+            "h3"
+          ]
+        },
+        {
+          "key": "--say",
+          "desc": "manual 旁白段（可重复）"
+        },
+        {
+          "key": "--character",
+          "desc": "wan 角色描述（给→auto）"
+        },
+        {
+          "key": "--voice",
+          "desc": "配音音色"
+        },
+        {
+          "key": "--n",
+          "desc": "段数"
+        },
+        {
+          "key": "--lut",
+          "desc": "调色"
+        },
+        {
+          "key": "--bgm",
+          "desc": "BGM mood"
+        }
+      ],
+      "examples": [
+        "make 月夜散步 --generator svg --say \"为什么月亮总跟着人走\" --say \"远处没有参照物\" --voice cosy-default",
+        "make --director scout --generator fast --account 影视解说",
+        "make 雪山小狐狸 --character 红色小狐狸 --generator wan --lut warm --bgm uplifting",
+        "make --generator h3 --prompt input/prompt1.txt --ref input/豆包.jpg --fast"
+      ]
     },
     {
-     "key": "--voice",
-     "desc": "TTS 音色（edge-* / cosy-*）"
+      "name": "fast",
+      "version": "v4",
+      "brief": "快速营销号链路：爬图/FLUX 出图 + Ken Burns 运镜 + TTS（分钟级出片）",
+      "detail": "跳过视频模型：LLM 规划 N 段旁白+运镜 → 图片（crawl 爬图+多模态审核 或 flux 文生图 或 --images 自供）→ ffmpeg zoompan 伪动态 → 逐段 TTS → crossfade 拼接 → LUT/BGM/STT。最快出片方式。",
+      "params": [
+        {
+          "key": "concept",
+          "desc": "话题概念/旁白主题（中文）",
+          "required": true
+        },
+        {
+          "key": "-n",
+          "desc": "图片/段落数（≤5）"
+        },
+        {
+          "key": "--images-source",
+          "desc": "图片来源：crawl/flux",
+          "choices": [
+            "crawl",
+            "flux"
+          ]
+        },
+        {
+          "key": "--images",
+          "desc": "自备图片目录"
+        },
+        {
+          "key": "--effects",
+          "desc": "v5 特效：auto/off",
+          "choices": [
+            "auto",
+            "off"
+          ]
+        },
+        {
+          "key": "--lut / --bgm",
+          "desc": "调色 / BGM 情绪"
+        },
+        {
+          "key": "--stt",
+          "desc": "STT 字幕对齐"
+        },
+        {
+          "key": "--slowmo",
+          "desc": "另出 RIFE 慢放版"
+        },
+        {
+          "key": "--source-topic",
+          "desc": "热搜标题（写入 meta + 角标）"
+        }
+      ],
+      "examples": [
+        "/fast 深夜灯塔的故事 -n 3 --effects auto",
+        "/fast 雪山日出小狐狸 --images-source flux -n 5 --bgm epic",
+        "/fast 概念 --images dir/ --lut warm --stt --slowmo 2"
+      ]
     },
     {
-     "key": "--duration",
-     "desc": "目标总时长（秒），自动调整镜头数"
+      "name": "hot",
+      "version": "v4",
+      "brief": "爬实时热点 → LLM 自动选题 → 直接出片（一步到位）",
+      "detail": "fast 的一键版：先爬 B站/微博/知乎等实时热点，LLM scout 选出高分概念，再走 fast 出片。",
+      "params": [
+        {
+          "key": "-n",
+          "desc": "图片/段落数（≤5）"
+        },
+        {
+          "key": "--top-each",
+          "desc": "每源抓取热点条数"
+        },
+        {
+          "key": "--account",
+          "desc": "账号定位（热门资讯/影视解说/萌宠/情感）"
+        },
+        {
+          "key": "--images-source",
+          "desc": "图片来源：crawl/flux"
+        },
+        {
+          "key": "--effects",
+          "desc": "v5 特效：auto/off"
+        }
+      ],
+      "examples": [
+        "/hot -n 5 --top-each 10 --account 影视解说"
+      ]
     },
     {
-     "key": "--slowmo",
-     "desc": "全局慢动作倍率（2=2x 慢放）"
+      "name": "ask",
+      "version": "v6",
+      "brief": "多轮核实：AI 追问补齐概念缺失维度 → 生成增强概念",
+      "detail": "6 维完整度评估（主体/场景/情绪/风格/时长/镜头感），缺失就追问，≤3 轮，全齐才放行。用于把模糊概念变详细后再喂 auto/fast。",
+      "params": [
+        {
+          "key": "concept",
+          "desc": "原始概念（中文）",
+          "required": true
+        }
+      ],
+      "examples": [
+        "/ask 深海探险",
+        "/ask 深夜灯塔"
+      ]
     },
     {
-     "key": "--lut",
-     "desc": "调色风格",
-     "choices": [
-      "cinematic",
-      "warm",
-      "cool",
-      "vintage",
-      "vivid",
-      "soft"
-     ]
+      "name": "compose",
+      "version": "v10",
+      "brief": "时间线拼接：JSON 时间线 → 成片（特效/转场/画中画/文字/关键帧/掩码/贴纸/混音，纯 ffmpeg）",
+      "detail": "对已生成素材做剪辑后处理，不调生成模型，秒级。时间线含 main（主轨）/overlay（画中画·文字）/sticker（贴纸轨：PNG/GIF 循环贴图）/audio（混音+ducking）；元素支持 keyframes（x/y/scale/opacity/rotation + easing）与 mask（circle/rounded/rect/image + feather）；文字支持描边/阴影/底框。见 docs/usage-v10.md 效果总表。也可直接跟多个视频文件做快捷拼接；单文件用 python utils/compose.py split --at 2 5 --precise 分割。",
+      "params": [
+        {
+          "key": "timeline",
+          "desc": "时间线 JSON 路径",
+          "required": true
+        },
+        {
+          "key": "--output",
+          "desc": "输出路径（缺省落 output_dir/<时间戳>/final.mp4）"
+        },
+        {
+          "key": "--transition",
+          "desc": "快捷拼接转场：fade/slideleft/circleopen/wipeleft…"
+        },
+        {
+          "key": "--transition-duration",
+          "desc": "转场时长（默认 0.4）"
+        },
+        {
+          "key": "--init",
+          "desc": "生成时间线模板后退出"
+        }
+      ],
+      "examples": [
+        "/compose docs/example/v10_effects_demo.json",
+        "/compose a.mp4 b.mp4 --transition fade --transition-duration 0.5",
+        "/compose --init timeline.json",
+        "# 关键帧+掩码贴纸（写在时间线 sticker[] 里）\n{\"id\":\"s1\",\"source\":\"star.png\",\"start\":0.3,\"duration\":4.6,\"keyframes\":[{\"t\":0,\"x\":780,\"y\":-130,\"opacity\":0,\"scale\":0.3},{\"t\":3.6,\"x\":60,\"y\":250,\"opacity\":0.7,\"scale\":0.35}],\"mask\":{\"kind\":\"circle\",\"feather\":4}}",
+        "# 分割（单文件 CLI）\npython utils/compose.py split clip.mp4 --at 2 5 --precise -o part"
+      ]
     },
     {
-     "key": "--bgm",
-     "desc": "BGM 情绪",
-     "choices": [
-      "calm",
-      "uplifting",
-      "mysterious",
-      "dramatic",
-      "playful",
-      "epic"
-     ]
+      "name": "svg",
+      "version": "v13",
+      "brief": "SVG 流水线：概念→LLM→动效SVG→有声成片（可配音/字幕/BGM，纯CPU）",
+      "detail": "无声：概念→LLM生成SVG→逐帧渲染→mp4。加 --voice 或 --say 进入有声模式：LLM规划旁白→逐段TTS→逐段SVG渲染→字幕烧录→crossfade拼接→可选 LUT/BGM。前端走异步轮询。",
+      "params": [
+        {
+          "key": "--concept",
+          "desc": "概念（一键：LLM 生成 SVG→mp4）"
+        },
+        {
+          "key": "--svg",
+          "desc": "SVG 文件路径（渲染模式）"
+        },
+        {
+          "key": "-o",
+          "desc": "输出 mp4 路径"
+        },
+        {
+          "key": "--duration",
+          "desc": "动画时长（秒，默认 3）"
+        },
+        {
+          "key": "--width / --height",
+          "desc": "分辨率（默认 800x450）"
+        },
+        {
+          "key": "--fps",
+          "desc": "帧率（默认 24）"
+        },
+        {
+          "key": "--still",
+          "desc": "只渲染单帧 PNG（调试）"
+        },
+        {
+          "key": "--frames",
+          "desc": "抽帧成 PNG 序列"
+        },
+        {
+          "key": "--voice",
+          "desc": "配音音色（给定即出有声片）"
+        },
+        {
+          "key": "--say",
+          "desc": "手动旁白段（可重复）"
+        },
+        {
+          "key": "--n",
+          "desc": "旁白段数（默认3）"
+        },
+        {
+          "key": "--lut",
+          "desc": "调色风格"
+        },
+        {
+          "key": "--bgm",
+          "desc": "BGM mood"
+        }
+      ],
+      "examples": [
+        "/svg --concept \"鹈鹕骑自行车\"",
+        "/svg --svg output/svg/pelican_bike.svg -o output/svg_demo/out.mp4 --duration 3",
+        "/svg 鹈鹕骑自行车",
+        "/svg --concept 三分钟讲清复利 --voice cosy-default --n 3 --bgm calm",
+        "/svg --say \"第一句\" --say \"第二句\" --voice cosy-jieshuo1"
+      ]
     },
     {
-     "key": "--no-rife / --no-color / --no-bgm",
-     "desc": "禁用对应后处理"
+      "name": "custom",
+      "version": "v1.1",
+      "brief": "参考图 + 分镜脚本 → MiniMax-H3 ref2va 逐镜生成（原生音频）",
+      "detail": "用角色参考图锁定身份（<Picture i> 绑定），按预写多镜分镜脚本（旧格式【XX｜标题｜约X秒】+ 生成提示词：）逐镜生成，再 RIFE 过渡 → 拼接 → LUT/BGM/STT。适合已有分镜脚本、要角色一致的多镜短片。",
+      "params": [
+        {
+          "key": "--ref",
+          "desc": "角色参考图（可重复，顺序对应 <Picture i>）",
+          "required": true
+        },
+        {
+          "key": "--script",
+          "desc": "分镜脚本路径（旧多镜格式）",
+          "required": true
+        },
+        {
+          "key": "--ref-image-size",
+          "desc": "参考图尺寸：match（快）/max（2048px 最佳保真）",
+          "choices": [
+            "match",
+            "max"
+          ]
+        },
+        {
+          "key": "--lut / --bgm / --stt",
+          "desc": "调色 / BGM / 字幕"
+        },
+        {
+          "key": "--no-rife",
+          "desc": "禁用 RIFE 过渡"
+        }
+      ],
+      "examples": [
+        "/custom --ref input/doubao.jpg --ref input/naiwa.jpg --script input/prompt_old.txt",
+        "/custom --ref input/徽派布衣奶蛙.png --script input/prompt_old.txt --lut cinematic --bgm dramatic"
+      ]
+    },
+    {
+      "name": "h3shot",
+      "version": "v1.1",
+      "brief": "整段式 prompt + 参考图 → H3 单镜（原生音频直出，无后处理）",
+      "detail": "把「一整段自包含 prompt」（新格式：统一画面与角色/场景与首帧/镜头与动作/生成约束）当单镜直接喂 H3 ref2va，自动加 <Picture i> 标签绑定参考图，自动从「约N秒」解析时长。H3 原生带音效，不做 LUT/BGM/STT。适合一镜到底的短段（如《奶蛙徽商》逐集）。",
+      "params": [
+        {
+          "key": "--prompt",
+          "desc": "整段式 prompt 文件（如 input/prompt1.txt）",
+          "required": true
+        },
+        {
+          "key": "--ref",
+          "desc": "参考图（可重复，顺序对应 <Picture i>）",
+          "required": true
+        },
+        {
+          "key": "--name",
+          "desc": "参考图角色名（与 --ref 对齐；缺省用文件名）"
+        },
+        {
+          "key": "-o",
+          "desc": "输出路径（相对→output_dir，如 prompt01/01.mp4）"
+        },
+        {
+          "key": "--fast",
+          "desc": "快速档：steps=14 + 1024x576（约省一半时间，质量略降）"
+        },
+        {
+          "key": "--seconds",
+          "desc": "时长（秒）；缺省从 prompt「约N秒」解析"
+        },
+        {
+          "key": "--ref-image-size",
+          "desc": "参考图尺寸：match/max",
+          "choices": [
+            "match",
+            "max"
+          ]
+        },
+        {
+          "key": "--steps",
+          "desc": "采样步数（默认 20）"
+        },
+        {
+          "key": "--no-describe",
+          "desc": "跳过 LLM 看图描述，直接用角色名做标签"
+        }
+      ],
+      "examples": [
+        "/h3shot --prompt input/prompt1.txt --ref input/徽派布衣奶蛙.png --name 奶蛙 --ref input/豆包.jpg --name 豆包 -o prompt01/01.mp4",
+        "/h3shot --prompt input/prompt6.txt --ref input/成功徽商奶蛙.png --name 奶蛙 --ref input/豆包.jpg --name 豆包 -o prompt06/06.mp4",
+        "/h3shot --prompt input/prompt2.txt --ref input/徽派布衣奶蛙.png --name 奶蛙 --ref input/豆包.jpg --name 豆包 --fast -o prompt02/02.mp4"
+      ]
+    },
+    {
+      "name": "quick",
+      "version": "v0",
+      "brief": "纯 T2V：一句概念 → Wan 生成，无角色锚、无后处理（最快出素材）",
+      "detail": "跳过 LLM 编剧/角色锚/审片/LUT/BGM/STT，只用 Wan T2V 生成一条短片。适合快速试镜头、做拼接素材。需 GPU2:8189 (wan)。",
+      "params": [
+        {
+          "key": "concept",
+          "desc": "视频概念（中文）",
+          "required": true
+        },
+        {
+          "key": "--voice",
+          "desc": "TTS 音色（可选，一般不需要）"
+        },
+        {
+          "key": "-o",
+          "desc": "输出路径"
+        }
+      ],
+      "examples": [
+        "/quick 一只猫在月球上跳舞"
+      ]
+    },
+    {
+      "name": "concat",
+      "version": "v2.1",
+      "brief": "多视频拼接：cut 硬切 / crossfade 交叉淡化 / rife 光流过渡",
+      "detail": "把多个视频按顺序拼成一条。cut 用 ffmpeg stream copy（秒级、保留各段原生音轨）；crossfade 交叉淡化（moviepy，CPU）；rife 光流插帧过渡（最丝滑，需 GPU2:8189 wan）。规格不一致会自动处理。",
+      "params": [
+        {
+          "key": "videos",
+          "desc": "待拼接视频列表（可多个）",
+          "required": true
+        },
+        {
+          "key": "-o",
+          "desc": "输出路径"
+        },
+        {
+          "key": "--transition",
+          "desc": "cut(硬切) / crossfade(交叉淡化) / rife(光流)",
+          "choices": [
+            "cut",
+            "crossfade",
+            "rife"
+          ]
+        },
+        {
+          "key": "--crossfade-duration",
+          "desc": "交叉淡化时长（秒，默认 0.5）"
+        }
+      ],
+      "examples": [
+        "/concat output/output/prompt01/01.mp4 output/output/prompt02/02.mp4 -o merged.mp4 --transition cut",
+        "/concat a.mp4 b.mp4 c.mp4 -o merged.mp4 --transition crossfade --crossfade-duration 0.5",
+        "/concat a.mp4 b.mp4 -o merged.mp4 --transition rife"
+      ]
+    },
+    {
+      "name": "clip",
+      "version": "v4",
+      "brief": "FunClip：长音/视频 ASR 转写 + 语义裁剪（按一句话描述保留/删除）",
+      "detail": "FunASR 字级时间戳转写 → 字级聚合成句 → LLM 按自然语言指令决定 keep/drop → ffmpeg 时段裁剪拼接。",
+      "params": [
+        {
+          "key": "input",
+          "desc": "音频/视频路径",
+          "required": true
+        },
+        {
+          "key": "-i",
+          "desc": "保留什么（自然语言指令）",
+          "required": true
+        }
+      ],
+      "examples": [
+        "/clip /path/long.wav -i \"只要讲龙的部分，去掉口误\""
+      ]
+    },
+    {
+      "name": "scout",
+      "version": "v4",
+      "brief": "爬实时热点 → LLM 概念候选排序（不直接出片）",
+      "detail": "爬多源热点，LLM 按账号定位打分成概念候选，返回分数+概念，供人工挑选。",
+      "params": [
+        {
+          "key": "--account",
+          "desc": "账号定位"
+        },
+        {
+          "key": "-n",
+          "desc": "候选数"
+        }
+      ],
+      "examples": [
+        "/scout --account 萌宠 -n 5"
+      ]
+    },
+    {
+      "name": "trends",
+      "version": "v4",
+      "brief": "爬取实时热点热榜（不选题，直接看）",
+      "detail": "抓 B站/微博/知乎等实时热点原榜，看流行趋势用。",
+      "params": [
+        {
+          "key": "--top",
+          "desc": "每源条数（默认 10）"
+        }
+      ],
+      "examples": [
+        "/trends --top 15"
+      ]
+    },
+    {
+      "name": "voices",
+      "version": "v4",
+      "brief": "列出已注册音色（含自定义克隆）",
+      "detail": "列出 edge-*（微软在线）与 cosy-*（本地/克隆）全部可用音色及描述。",
+      "params": [],
+      "examples": [
+        "/voices"
+      ]
+    },
+    {
+      "name": "luts",
+      "version": "v2",
+      "brief": "列出可用调色风格（3D LUT）",
+      "detail": "列出 6 种程序生成的 3D LUT 风格，可作 auto/fast 的 --lut 取值。",
+      "params": [],
+      "examples": [
+        "/luts"
+      ]
+    },
+    {
+      "name": "moods",
+      "version": "v2",
+      "brief": "列出可用 BGM 配乐情绪",
+      "detail": "列出可用 BGM mood，可作 auto/fast 的 --bgm 取值。",
+      "params": [],
+      "examples": [
+        "/moods"
+      ]
+    },
+    {
+      "name": "video",
+      "version": "v7",
+      "brief": "播放指定任务的成片",
+      "detail": "按 task_id 取成片视频流并嵌入播放器。",
+      "params": [
+        {
+          "key": "task_id",
+          "desc": "任务 ID",
+          "required": true
+        }
+      ],
+      "examples": [
+        "/video 20260924_090728"
+      ]
+    },
+    {
+      "name": "tasks",
+      "version": "v7",
+      "brief": "列出最近任务",
+      "detail": "列出任务队列最近记录，可按状态筛选。",
+      "params": [
+        {
+          "key": "-n",
+          "desc": "条数（默认 10）"
+        },
+        {
+          "key": "--status",
+          "desc": "状态筛选：queued/running/completed/failed"
+        }
+      ],
+      "examples": [
+        "/tasks -n 5",
+        "/tasks --status failed"
+      ]
+    },
+    {
+      "name": "status",
+      "version": "v7",
+      "brief": "查询单个任务详情",
+      "detail": "显示某任务的阶段/进度/输出/错误，可直接播放或跟踪。",
+      "params": [
+        {
+          "key": "task_id",
+          "desc": "任务 ID",
+          "required": true
+        }
+      ],
+      "examples": [
+        "/status 20260924_090728"
+      ]
+    },
+    {
+      "name": "clean",
+      "version": "v7",
+      "brief": "清理旧任务输出（默认保留最近 10 个）",
+      "detail": "删除 output 目录下旧任务目录，保留最近 N 个。",
+      "params": [
+        {
+          "key": "--keep",
+          "desc": "保留最近 N 个（默认 10）"
+        }
+      ],
+      "examples": [
+        "/clean --keep 20"
+      ]
+    },
+    {
+      "name": "ppt",
+      "version": "v15",
+      "brief": "PPT 流水线：概念→LLM 规划→HTML 幻灯片→mp4/PDF/PNG（纯 CPU）",
+      "detail": "一键：概念→LLM 规划 deck JSON（页面/图表）→模板渲染 HTML→逐页渲染→xfade 拼接→mp4（TTS 旁白+字幕+LUT/BGM）。多形态：--video/--pdf/--pngs。渲染模式：--deck deck.html。美化：深色渐变底+玻璃卡片+渐变标题+图表（bar/line/pie）。",
+      "params": [
+        {
+          "key": "concept",
+          "desc": "主题/大纲（一键模式）"
+        },
+        {
+          "key": "--video",
+          "desc": "渲染成 mp4（有声旁白）"
+        },
+        {
+          "key": "--pdf",
+          "desc": "导出 PDF"
+        },
+        {
+          "key": "--pngs",
+          "desc": "导出每页 PNG"
+        },
+        {
+          "key": "--deck",
+          "desc": "deck.html 路径（渲染模式）"
+        },
+        {
+          "key": "-n",
+          "desc": "页数（默认 5）"
+        },
+        {
+          "key": "--voice",
+          "desc": "配音音色"
+        },
+        {
+          "key": "--say",
+          "desc": "手动大纲（可重复）"
+        }
+      ],
+      "example": "ppt \"Vidance 项目介绍\" --video"
+    },
+    {
+      "name": "edit",
+      "version": "v16",
+      "brief": "SAM2 编辑：分割/抠图/换底/打码/去水印（图）/彩色多物体/视频追踪传播",
+      "detail": "图六模式：segment（mask）/cutout（透明抠图）/replace_bg（换底：hex 色或 blur）/mosaic（打码 pixel/blur）/inpaint（去水印 cv2 TELEA）/visualize（彩色多物体可视化，SAM demo 风格）。视频：首帧 --point 点目标→SAM2 传播逐帧 mask→mosaic/blur_bg/cutout/color（彩色多物体）重拼 mp4。省略 --point 自动主体（网格打点并集）。视频异步 job（画布轮询）。",
+      "params": [
+        {
+          "key": "input",
+          "desc": "图/视频路径"
+        },
+        {
+          "key": "op",
+          "desc": "segment/cutout/replace_bg/mosaic/inpaint/visualize/video（位置参数）"
+        },
+        {
+          "key": "--point",
+          "desc": "点提示 x,y（多点分号分：x1,y1;x2,y2）"
+        },
+        {
+          "key": "--op",
+          "desc": "video 模式：mosaic/blur_bg/cutout/color"
+        },
+        {
+          "key": "--bg",
+          "desc": "replace_bg：hex 色（101827）或 blur"
+        },
+        {
+          "key": "--strength",
+          "desc": "打码强度（默认 16）"
+        },
+        {
+          "key": "--size",
+          "desc": "SAM2 权重 tiny/small/base"
+        }
+      ],
+      "example": "edit output/xxx.jpg visualize | edit output/xxx.mp4 video --point \"x,y\" --op color"
+    },
+    {
+      "name": "help",
+      "version": "v7",
+      "brief": "列出全部命令 / 查看某命令详情",
+      "detail": "不带参数列出全部命令一句话说明；带命令名查看该命令的详细参数与示例。",
+      "params": [
+        {
+          "key": "command",
+          "desc": "命令名（可选）"
+        }
+      ],
+      "examples": [
+        "/help",
+        "/help auto"
+      ]
+    },
+    {
+      "name": "agent",
+      "brief": "Agent：list 注册表 / run 单跑 / chain 链式 / board 查台账",
+      "detail": "Agent 体系（薄包装）四层共 28 个 Agent，运行记录落台账（output/tasks.sqlite 的 agent_runs 表）。四个子命令：list 注册表；run <name> --with '<参数JSON>' 单跑；chain --steps '<JSON>' 链式跑（steps:[{agent,with,as?,optional?}]，${别名.产物} 引用上一步输出，整体引用保类型）；board 查运行台账（--n 条数 --task 任务id）。${} 引用也支持 ${key} 与 ${ctx.key} 两种写法。",
+      "params": [
+        {
+          "key": "list",
+          "desc": "列出全部已注册 Agent（层级/说明/是否需GPU）"
+        },
+        {
+          "key": "run <name> --with '<json>'",
+          "desc": "单独运行一个 Agent，如 run post.fx --with '{\"video\":\"a.mp4\",\"effect\":\"zoom\"}'",
+          "required": false
+        },
+        {
+          "key": "chain '<json|file>'",
+          "desc": "运行 Agent 链：{\"steps\":[{\"agent\":\"post.fx\",\"with\":{...},\"as\":\"fx1\"}, ...]}，${fx1.video} 引用产物",
+          "required": false
+        },
+        {
+          "key": "--task-id",
+          "desc": "黑板归属 task_id（默认 cli）"
+        }
+      ],
+      "examples": [
+        "/agent list",
+        "/agent board --n 20",
+        "/agent run director.brain --with {\"prompt\":\"用五个字形容月亮\"}",
+        "/agent run post.lut --with {\"video\":\"in.mp4\",\"lut\":\"warm\",\"out_path\":\"out.mp4\"}",
+        "/agent chain --steps {\"steps\":[{\"agent\":\"post.lut\",\"as\":\"c\",\"with\":{\"video\":\"in.mp4\",\"lut\":\"warm\",\"out_path\":\"/tmp/l.mp4\"}},{\"agent\":\"post.fx\",\"with\":{\"video\":\"${c.video}\",\"effect\":\"zoom\",\"out_path\":\"/tmp/f.mp4\"}}]}",
+        "chain --steps {\"steps\":[{\"agent\":\"generator.svg\",\"as\":\"v\",\"with\":{\"concept\":\"柴犬宇航员\",\"voice\":\"edge-moe\"}},{\"agent\":\"post.fx\",\"as\":\"g\",\"with\":{\"video\":\"${v.video}\",\"effect\":\"glitch\"}},{\"agent\":\"post.pip\",\"with\":{\"video\":\"${v.video}\",\"overlay\":\"${g.video}\"}}]}"
+      ]
     }
-   ],
-   "examples": [
-    "/auto 一只猫在月球上跳舞",
-    "/auto 深海探险 --character 蓝色水母 --character-mode flux --lut cool --bgm mysterious",
-    "/auto 雪山日出：小狐狸的冒险 --character 红色小狐狸 --duration 60 --stt"
-   ]
-  },
-  {
-   "name": "arch",
-   "brief": "架构总览：编排→D/G/P/V 四层 Agent + 五个人格化服务 + 在线状态",
-   "detail": "渲染系统架构图：编排宿主（CLI/API/scheduler）→ director（决策）/ generator（生成）/ post（后期）/ audit（审核）四层 + common 共享基础设施，每层列出已注册 Agent 与实现模块；顶部显示主数据流与各模型服务端口在线状态（绿=在线）。所有 Agent 运行记录写入台账（output/tasks.sqlite 的 agent_runs 表），chain 任务时间线即从此读取。",
-   "params": [],
-   "examples": [
-    "输入 /arch 查看分层架构图与全部 Agent"
-   ]
-  },
-  {
-   "name": "make",
-   "version": "v12",
-   "brief": "统一入口：导演(llm/manual/scout) × 生成器(wan/fast/svg/h3) 排列组合",
-   "detail": "v12（原 v17）三排正交统一入口。导演层：--director llm(LLM编脚本,默认)/manual(--say/--prompt)/scout(爬热点自动选题)；生成层：--generator wan(带--character走auto全管线,否则quick)/fast(爬图+生图营销号)/svg(矢量动画,--voice出有声)/h3(--prompt整段式+--ref,或--script走custom)。后期参数 --voice/--lut/--bgm/--stt 通用。见 docs/v12-modules.md。",
-   "params": [
-    {
-     "key": "concept",
-     "desc": "概念（--director scout 时可省）",
-     "required": true
-    },
-    {
-     "key": "--director",
-     "desc": "llm/manual/scout",
-     "choices": [
-      "llm",
-      "manual",
-      "scout"
-     ]
-    },
-    {
-     "key": "--generator",
-     "desc": "wan/fast/svg/h3",
-     "choices": [
-      "wan",
-      "fast",
-      "svg",
-      "h3"
-     ]
-    },
-    {
-     "key": "--say",
-     "desc": "manual 旁白段（可重复）"
-    },
-    {
-     "key": "--character",
-     "desc": "wan 角色描述（给→auto）"
-    },
-    {
-     "key": "--voice",
-     "desc": "配音音色"
-    },
-    {
-     "key": "--n",
-     "desc": "段数"
-    },
-    {
-     "key": "--lut",
-     "desc": "调色"
-    },
-    {
-     "key": "--bgm",
-     "desc": "BGM mood"
-    }
-   ],
-   "examples": [
-    "make 月夜散步 --generator svg --say \"为什么月亮总跟着人走\" --say \"远处没有参照物\" --voice cosy-default",
-    "make --director scout --generator fast --account 影视解说",
-    "make 雪山小狐狸 --character 红色小狐狸 --generator wan --lut warm --bgm uplifting",
-    "make --generator h3 --prompt input/prompt1.txt --ref input/豆包.jpg --fast"
-   ]
-  },
-  {
-   "name": "fast",
-   "version": "v4",
-   "brief": "快速营销号链路：爬图/FLUX 出图 + Ken Burns 运镜 + TTS（分钟级出片）",
-   "detail": "跳过视频模型：LLM 规划 N 段旁白+运镜 → 图片（crawl 爬图+多模态审核 或 flux 文生图 或 --images 自供）→ ffmpeg zoompan 伪动态 → 逐段 TTS → crossfade 拼接 → LUT/BGM/STT。最快出片方式。",
-   "params": [
-    {
-     "key": "concept",
-     "desc": "话题概念/旁白主题（中文）",
-     "required": true
-    },
-    {
-     "key": "-n",
-     "desc": "图片/段落数（≤5）"
-    },
-    {
-     "key": "--images-source",
-     "desc": "图片来源：crawl/flux",
-     "choices": [
-      "crawl",
-      "flux"
-     ]
-    },
-    {
-     "key": "--images",
-     "desc": "自备图片目录"
-    },
-    {
-     "key": "--effects",
-     "desc": "v5 特效：auto/off",
-     "choices": [
-      "auto",
-      "off"
-     ]
-    },
-    {
-     "key": "--lut / --bgm",
-     "desc": "调色 / BGM 情绪"
-    },
-    {
-     "key": "--stt",
-     "desc": "STT 字幕对齐"
-    },
-    {
-     "key": "--slowmo",
-     "desc": "另出 RIFE 慢放版"
-    },
-    {
-     "key": "--source-topic",
-     "desc": "热搜标题（写入 meta + 角标）"
-    }
-   ],
-   "examples": [
-    "/fast 深夜灯塔的故事 -n 3 --effects auto",
-    "/fast 雪山日出小狐狸 --images-source flux -n 5 --bgm epic",
-    "/fast 概念 --images dir/ --lut warm --stt --slowmo 2"
-   ]
-  },
-  {
-   "name": "hot",
-   "version": "v4",
-   "brief": "爬实时热点 → LLM 自动选题 → 直接出片（一步到位）",
-   "detail": "fast 的一键版：先爬 B站/微博/知乎等实时热点，LLM scout 选出高分概念，再走 fast 出片。",
-   "params": [
-    {
-     "key": "-n",
-     "desc": "图片/段落数（≤5）"
-    },
-    {
-     "key": "--top-each",
-     "desc": "每源抓取热点条数"
-    },
-    {
-     "key": "--account",
-     "desc": "账号定位（热门资讯/影视解说/萌宠/情感）"
-    },
-    {
-     "key": "--images-source",
-     "desc": "图片来源：crawl/flux"
-    },
-    {
-     "key": "--effects",
-     "desc": "v5 特效：auto/off"
-    }
-   ],
-   "examples": [
-    "/hot -n 5 --top-each 10 --account 影视解说"
-   ]
-  },
-  {
-   "name": "ask",
-   "version": "v6",
-   "brief": "多轮核实：AI 追问补齐概念缺失维度 → 生成增强概念",
-   "detail": "6 维完整度评估（主体/场景/情绪/风格/时长/镜头感），缺失就追问，≤3 轮，全齐才放行。用于把模糊概念变详细后再喂 auto/fast。",
-   "params": [
-    {
-     "key": "concept",
-     "desc": "原始概念（中文）",
-     "required": true
-    }
-   ],
-   "examples": [
-    "/ask 深海探险",
-    "/ask 深夜灯塔"
-   ]
-  },
-  {
-   "name": "compose",
-   "version": "v10",
-   "brief": "时间线拼接：JSON 时间线 → 成片（特效/转场/画中画/文字/关键帧/掩码/贴纸/混音，纯 ffmpeg）",
-   "detail": "对已生成素材做剪辑后处理，不调生成模型，秒级。时间线含 main（主轨）/overlay（画中画·文字）/sticker（贴纸轨：PNG/GIF 循环贴图）/audio（混音+ducking）；元素支持 keyframes（x/y/scale/opacity/rotation + easing）与 mask（circle/rounded/rect/image + feather）；文字支持描边/阴影/底框。见 docs/usage-v10.md 效果总表。也可直接跟多个视频文件做快捷拼接；单文件用 python utils/compose.py split --at 2 5 --precise 分割。",
-   "params": [
-    {
-     "key": "timeline",
-     "desc": "时间线 JSON 路径",
-     "required": true
-    },
-    {
-     "key": "--output",
-     "desc": "输出路径（缺省落 output_dir/<时间戳>/final.mp4）"
-    },
-    {
-     "key": "--transition",
-     "desc": "快捷拼接转场：fade/slideleft/circleopen/wipeleft…"
-    },
-    {
-     "key": "--transition-duration",
-     "desc": "转场时长（默认 0.4）"
-    },
-    {
-     "key": "--init",
-     "desc": "生成时间线模板后退出"
-    }
-   ],
-   "examples": [
-    "/compose docs/example/v10_effects_demo.json",
-    "/compose a.mp4 b.mp4 --transition fade --transition-duration 0.5",
-    "/compose --init timeline.json",
-    "# 关键帧+掩码贴纸（写在时间线 sticker[] 里）\n{\"id\":\"s1\",\"source\":\"star.png\",\"start\":0.3,\"duration\":4.6,\"keyframes\":[{\"t\":0,\"x\":780,\"y\":-130,\"opacity\":0,\"scale\":0.3},{\"t\":3.6,\"x\":60,\"y\":250,\"opacity\":0.7,\"scale\":0.35}],\"mask\":{\"kind\":\"circle\",\"feather\":4}}",
-    "# 分割（单文件 CLI）\npython utils/compose.py split clip.mp4 --at 2 5 --precise -o part"
-   ]
-  },
-  {
-   "name": "svg",
-   "version": "v13",
-   "brief": "SVG 流水线：概念→LLM→动效SVG→有声成片（可配音/字幕/BGM，纯CPU）",
-   "detail": "无声：概念→LLM生成SVG→逐帧渲染→mp4。加 --voice 或 --say 进入有声模式：LLM规划旁白→逐段TTS→逐段SVG渲染→字幕烧录→crossfade拼接→可选 LUT/BGM。前端走异步轮询。",
-   "params": [
-    {
-     "key": "--concept",
-     "desc": "概念（一键：LLM 生成 SVG→mp4）"
-    },
-    {
-     "key": "--svg",
-     "desc": "SVG 文件路径（渲染模式）"
-    },
-    {
-     "key": "-o",
-     "desc": "输出 mp4 路径"
-    },
-    {
-     "key": "--duration",
-     "desc": "动画时长（秒，默认 3）"
-    },
-    {
-     "key": "--width / --height",
-     "desc": "分辨率（默认 800x450）"
-    },
-    {
-     "key": "--fps",
-     "desc": "帧率（默认 24）"
-    },
-    {
-     "key": "--still",
-     "desc": "只渲染单帧 PNG（调试）"
-    },
-    {
-     "key": "--frames",
-     "desc": "抽帧成 PNG 序列"
-    },
-    {
-     "key": "--voice",
-     "desc": "配音音色（给定即出有声片）"
-    },
-    {
-     "key": "--say",
-     "desc": "手动旁白段（可重复）"
-    },
-    {
-     "key": "--n",
-     "desc": "旁白段数（默认3）"
-    },
-    {
-     "key": "--lut",
-     "desc": "调色风格"
-    },
-    {
-     "key": "--bgm",
-     "desc": "BGM mood"
-    }
-   ],
-   "examples": [
-    "/svg --concept \"鹈鹕骑自行车\"",
-    "/svg --svg output/svg/pelican_bike.svg -o output/svg_demo/out.mp4 --duration 3",
-    "/svg 鹈鹕骑自行车",
-    "/svg --concept 三分钟讲清复利 --voice cosy-default --n 3 --bgm calm",
-    "/svg --say \"第一句\" --say \"第二句\" --voice cosy-jieshuo1"
-   ]
-  },
-  {
-   "name": "custom",
-   "version": "v1.1",
-   "brief": "参考图 + 分镜脚本 → MiniMax-H3 ref2va 逐镜生成（原生音频）",
-   "detail": "用角色参考图锁定身份（<Picture i> 绑定），按预写多镜分镜脚本（旧格式【XX｜标题｜约X秒】+ 生成提示词：）逐镜生成，再 RIFE 过渡 → 拼接 → LUT/BGM/STT。适合已有分镜脚本、要角色一致的多镜短片。",
-   "params": [
-    {
-     "key": "--ref",
-     "desc": "角色参考图（可重复，顺序对应 <Picture i>）",
-     "required": true
-    },
-    {
-     "key": "--script",
-     "desc": "分镜脚本路径（旧多镜格式）",
-     "required": true
-    },
-    {
-     "key": "--ref-image-size",
-     "desc": "参考图尺寸：match（快）/max（2048px 最佳保真）",
-     "choices": [
-      "match",
-      "max"
-     ]
-    },
-    {
-     "key": "--lut / --bgm / --stt",
-     "desc": "调色 / BGM / 字幕"
-    },
-    {
-     "key": "--no-rife",
-     "desc": "禁用 RIFE 过渡"
-    }
-   ],
-   "examples": [
-    "/custom --ref input/doubao.jpg --ref input/naiwa.jpg --script input/prompt_old.txt",
-    "/custom --ref input/徽派布衣奶蛙.png --script input/prompt_old.txt --lut cinematic --bgm dramatic"
-   ]
-  },
-  {
-   "name": "h3shot",
-   "version": "v1.1",
-   "brief": "整段式 prompt + 参考图 → H3 单镜（原生音频直出，无后处理）",
-   "detail": "把「一整段自包含 prompt」（新格式：统一画面与角色/场景与首帧/镜头与动作/生成约束）当单镜直接喂 H3 ref2va，自动加 <Picture i> 标签绑定参考图，自动从「约N秒」解析时长。H3 原生带音效，不做 LUT/BGM/STT。适合一镜到底的短段（如《奶蛙徽商》逐集）。",
-   "params": [
-    {
-     "key": "--prompt",
-     "desc": "整段式 prompt 文件（如 input/prompt1.txt）",
-     "required": true
-    },
-    {
-     "key": "--ref",
-     "desc": "参考图（可重复，顺序对应 <Picture i>）",
-     "required": true
-    },
-    {
-     "key": "--name",
-     "desc": "参考图角色名（与 --ref 对齐；缺省用文件名）"
-    },
-    {
-     "key": "-o",
-     "desc": "输出路径（相对→output_dir，如 prompt01/01.mp4）"
-    },
-    {
-     "key": "--fast",
-     "desc": "快速档：steps=14 + 1024x576（约省一半时间，质量略降）"
-    },
-    {
-     "key": "--seconds",
-     "desc": "时长（秒）；缺省从 prompt「约N秒」解析"
-    },
-    {
-     "key": "--ref-image-size",
-     "desc": "参考图尺寸：match/max",
-     "choices": [
-      "match",
-      "max"
-     ]
-    },
-    {
-     "key": "--steps",
-     "desc": "采样步数（默认 20）"
-    },
-    {
-     "key": "--no-describe",
-     "desc": "跳过 LLM 看图描述，直接用角色名做标签"
-    }
-   ],
-   "examples": [
-    "/h3shot --prompt input/prompt1.txt --ref input/徽派布衣奶蛙.png --name 奶蛙 --ref input/豆包.jpg --name 豆包 -o prompt01/01.mp4",
-    "/h3shot --prompt input/prompt6.txt --ref input/成功徽商奶蛙.png --name 奶蛙 --ref input/豆包.jpg --name 豆包 -o prompt06/06.mp4",
-    "/h3shot --prompt input/prompt2.txt --ref input/徽派布衣奶蛙.png --name 奶蛙 --ref input/豆包.jpg --name 豆包 --fast -o prompt02/02.mp4"
-   ]
-  },
-  {
-   "name": "quick",
-   "version": "v0",
-   "brief": "纯 T2V：一句概念 → Wan 生成，无角色锚、无后处理（最快出素材）",
-   "detail": "跳过 LLM 编剧/角色锚/审片/LUT/BGM/STT，只用 Wan T2V 生成一条短片。适合快速试镜头、做拼接素材。需 GPU2:8189 (wan)。",
-   "params": [
-    {
-     "key": "concept",
-     "desc": "视频概念（中文）",
-     "required": true
-    },
-    {
-     "key": "--voice",
-     "desc": "TTS 音色（可选，一般不需要）"
-    },
-    {
-     "key": "-o",
-     "desc": "输出路径"
-    }
-   ],
-   "examples": [
-    "/quick 一只猫在月球上跳舞"
-   ]
-  },
-  {
-   "name": "concat",
-   "version": "v2.1",
-   "brief": "多视频拼接：cut 硬切 / crossfade 交叉淡化 / rife 光流过渡",
-   "detail": "把多个视频按顺序拼成一条。cut 用 ffmpeg stream copy（秒级、保留各段原生音轨）；crossfade 交叉淡化（moviepy，CPU）；rife 光流插帧过渡（最丝滑，需 GPU2:8189 wan）。规格不一致会自动处理。",
-   "params": [
-    {
-     "key": "videos",
-     "desc": "待拼接视频列表（可多个）",
-     "required": true
-    },
-    {
-     "key": "-o",
-     "desc": "输出路径"
-    },
-    {
-     "key": "--transition",
-     "desc": "cut(硬切) / crossfade(交叉淡化) / rife(光流)",
-     "choices": [
-      "cut",
-      "crossfade",
-      "rife"
-     ]
-    },
-    {
-     "key": "--crossfade-duration",
-     "desc": "交叉淡化时长（秒，默认 0.5）"
-    }
-   ],
-   "examples": [
-    "/concat output/output/prompt01/01.mp4 output/output/prompt02/02.mp4 -o merged.mp4 --transition cut",
-    "/concat a.mp4 b.mp4 c.mp4 -o merged.mp4 --transition crossfade --crossfade-duration 0.5",
-    "/concat a.mp4 b.mp4 -o merged.mp4 --transition rife"
-   ]
-  },
-  {
-   "name": "clip",
-   "version": "v4",
-   "brief": "FunClip：长音/视频 ASR 转写 + 语义裁剪（按一句话描述保留/删除）",
-   "detail": "FunASR 字级时间戳转写 → 字级聚合成句 → LLM 按自然语言指令决定 keep/drop → ffmpeg 时段裁剪拼接。",
-   "params": [
-    {
-     "key": "input",
-     "desc": "音频/视频路径",
-     "required": true
-    },
-    {
-     "key": "-i",
-     "desc": "保留什么（自然语言指令）",
-     "required": true
-    }
-   ],
-   "examples": [
-    "/clip /path/long.wav -i \"只要讲龙的部分，去掉口误\""
-   ]
-  },
-  {
-   "name": "scout",
-   "version": "v4",
-   "brief": "爬实时热点 → LLM 概念候选排序（不直接出片）",
-   "detail": "爬多源热点，LLM 按账号定位打分成概念候选，返回分数+概念，供人工挑选。",
-   "params": [
-    {
-     "key": "--account",
-     "desc": "账号定位"
-    },
-    {
-     "key": "-n",
-     "desc": "候选数"
-    }
-   ],
-   "examples": [
-    "/scout --account 萌宠 -n 5"
-   ]
-  },
-  {
-   "name": "trends",
-   "version": "v4",
-   "brief": "爬取实时热点热榜（不选题，直接看）",
-   "detail": "抓 B站/微博/知乎等实时热点原榜，看流行趋势用。",
-   "params": [
-    {
-     "key": "--top",
-     "desc": "每源条数（默认 10）"
-    }
-   ],
-   "examples": [
-    "/trends --top 15"
-   ]
-  },
-  {
-   "name": "voices",
-   "version": "v4",
-   "brief": "列出已注册音色（含自定义克隆）",
-   "detail": "列出 edge-*（微软在线）与 cosy-*（本地/克隆）全部可用音色及描述。",
-   "params": [],
-   "examples": [
-    "/voices"
-   ]
-  },
-  {
-   "name": "luts",
-   "version": "v2",
-   "brief": "列出可用调色风格（3D LUT）",
-   "detail": "列出 6 种程序生成的 3D LUT 风格，可作 auto/fast 的 --lut 取值。",
-   "params": [],
-   "examples": [
-    "/luts"
-   ]
-  },
-  {
-   "name": "moods",
-   "version": "v2",
-   "brief": "列出可用 BGM 配乐情绪",
-   "detail": "列出可用 BGM mood，可作 auto/fast 的 --bgm 取值。",
-   "params": [],
-   "examples": [
-    "/moods"
-   ]
-  },
-  {
-   "name": "video",
-   "version": "v7",
-   "brief": "播放指定任务的成片",
-   "detail": "按 task_id 取成片视频流并嵌入播放器。",
-   "params": [
-    {
-     "key": "task_id",
-     "desc": "任务 ID",
-     "required": true
-    }
-   ],
-   "examples": [
-    "/video 20260924_090728"
-   ]
-  },
-  {
-   "name": "tasks",
-   "version": "v7",
-   "brief": "列出最近任务",
-   "detail": "列出任务队列最近记录，可按状态筛选。",
-   "params": [
-    {
-     "key": "-n",
-     "desc": "条数（默认 10）"
-    },
-    {
-     "key": "--status",
-     "desc": "状态筛选：queued/running/completed/failed"
-    }
-   ],
-   "examples": [
-    "/tasks -n 5",
-    "/tasks --status failed"
-   ]
-  },
-  {
-   "name": "status",
-   "version": "v7",
-   "brief": "查询单个任务详情",
-   "detail": "显示某任务的阶段/进度/输出/错误，可直接播放或跟踪。",
-   "params": [
-    {
-     "key": "task_id",
-     "desc": "任务 ID",
-     "required": true
-    }
-   ],
-   "examples": [
-    "/status 20260924_090728"
-   ]
-  },
-  {
-   "name": "clean",
-   "version": "v7",
-   "brief": "清理旧任务输出（默认保留最近 10 个）",
-   "detail": "删除 output 目录下旧任务目录，保留最近 N 个。",
-   "params": [
-    {
-     "key": "--keep",
-     "desc": "保留最近 N 个（默认 10）"
-    }
-   ],
-   "examples": [
-    "/clean --keep 20"
-   ]
-  },
-  {
-   "name": "help",
-   "version": "v7",
-   "brief": "列出全部命令 / 查看某命令详情",
-   "detail": "不带参数列出全部命令一句话说明；带命令名查看该命令的详细参数与示例。",
-   "params": [
-    {
-     "key": "command",
-     "desc": "命令名（可选）"
-    }
-   ],
-   "examples": [
-    "/help",
-    "/help auto"
-   ]
-  },
-  {
-   "name": "agent",
-   "brief": "Agent：list 注册表 / run 单跑 / chain 链式 / board 查台账",
-   "detail": "Agent 体系（薄包装）四层共 28 个 Agent，运行记录落台账（output/tasks.sqlite 的 agent_runs 表）。四个子命令：list 注册表；run <name> --with '<参数JSON>' 单跑；chain --steps '<JSON>' 链式跑（steps:[{agent,with,as?,optional?}]，${别名.产物} 引用上一步输出，整体引用保类型）；board 查运行台账（--n 条数 --task 任务id）。${} 引用也支持 ${key} 与 ${ctx.key} 两种写法。",
-   "params": [
-    {
-     "key": "list",
-     "desc": "列出全部已注册 Agent（层级/说明/是否需GPU）"
-    },
-    {
-     "key": "run <name> --with '<json>'",
-     "desc": "单独运行一个 Agent，如 run post.fx --with '{\"video\":\"a.mp4\",\"effect\":\"zoom\"}'",
-     "required": false
-    },
-    {
-     "key": "chain '<json|file>'",
-     "desc": "运行 Agent 链：{\"steps\":[{\"agent\":\"post.fx\",\"with\":{...},\"as\":\"fx1\"}, ...]}，${fx1.video} 引用产物",
-     "required": false
-    },
-    {
-     "key": "--task-id",
-     "desc": "黑板归属 task_id（默认 cli）"
-    }
-   ],
-   "examples": [
-    "/agent list",
-    "/agent board --n 20",
-    "/agent run director.brain --with {\"prompt\":\"用五个字形容月亮\"}",
-    "/agent run post.lut --with {\"video\":\"in.mp4\",\"lut\":\"warm\",\"out_path\":\"out.mp4\"}",
-    "/agent chain --steps {\"steps\":[{\"agent\":\"post.lut\",\"as\":\"c\",\"with\":{\"video\":\"in.mp4\",\"lut\":\"warm\",\"out_path\":\"/tmp/l.mp4\"}},{\"agent\":\"post.fx\",\"with\":{\"video\":\"${c.video}\",\"effect\":\"zoom\",\"out_path\":\"/tmp/f.mp4\"}}]}",
-    "chain --steps {\"steps\":[{\"agent\":\"generator.svg\",\"as\":\"v\",\"with\":{\"concept\":\"柴犬宇航员\",\"voice\":\"edge-moe\"}},{\"agent\":\"post.fx\",\"as\":\"g\",\"with\":{\"video\":\"${v.video}\",\"effect\":\"glitch\"}},{\"agent\":\"post.pip\",\"with\":{\"video\":\"${v.video}\",\"overlay\":\"${g.video}\"}}]}"
-   ]
+  ],
+  "v10_effects": {
+    "note": "v10 时间线剪辑的细分指令（效果组合）见 compose-commands.json",
+    "file": "docs/instructions/compose-commands.json"
   }
- ],
- "v10_effects": {
-  "note": "v10 时间线剪辑的细分指令（效果组合）见 compose-commands.json",
-  "file": "docs/instructions/compose-commands.json"
- }
 }

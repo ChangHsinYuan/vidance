@@ -160,3 +160,67 @@ def pip(p):
               t0=float(p.get('t0', 0)), dur=p.get('dur'))
     return TaskResult(ok=bool(ok), artifacts={'video': out},
                       error='' if ok else 'pip 输出失败')
+
+
+@register(name='post.edit', layer='post',
+          desc='SAM2 编辑：分割/抠图/换底/打码/inpaint/彩色多物体（图）或视频传播（video）',
+          inputs='{image|video, out_path?, point?="x,y x,y", op=segment|cutout|replace_bg|mosaic|inpaint|visualize|video, vop=mosaic|blur_bg|cutout|color, bg?, mode?, strength?, size?}')
+def edit(p):
+    from agents.post.tools import sam_edit as se
+    import numpy as np
+    from PIL import Image
+
+    if p.get('video'):
+        pts = se.parse_points(p.get('point') or '')
+        if not pts:
+            return TaskResult(ok=False, error='video 模式需要 point="x,y"（首帧目标点）')
+        out = p.get('out_path') or (os.path.splitext(p['video'])[0] + '_edit.mp4')
+        if p.get('vop') == 'color':
+            r = se.video_color(p['video'], out, pts, size=p.get('size', 'small'),
+                               device=p.get('device', ''))
+            return TaskResult(ok=True, artifacts={'video': r['output'],
+                                                  'frames': r['frames'],
+                                                  'objects': r['objects'], 'op': 'color'})
+        r = se.video_edit(p['video'], out, pts, op=p.get('vop', 'mosaic'),
+                          size=p.get('size', 'small'), device=p.get('device', ''),
+                          mode=p.get('mode', 'pixel'), strength=int(p.get('strength', 16)))
+        return TaskResult(ok=True, artifacts={'video': r['output'],
+                                              'frames': r['frames'], 'op': r['op']})
+    if not p.get('image'):
+        return TaskResult(ok=False, error='需要 image（图路径）或 video（视频路径）')
+    img = np.array(Image.open(p['image']).convert('RGB'))
+    pts = se.parse_points(p.get('point') or '')
+    out = p.get('out_path') or (os.path.splitext(p['image'])[0] + '_edit.png')
+    if p.get('op') == 'visualize':
+        masks, scores = se.segment_multi(img, points=pts or None,
+                                         size=p.get('size', 'small'),
+                                         device=p.get('device', ''))
+        se.visualize(img, masks, out)
+        return TaskResult(ok=True, artifacts={'image': out, 'objects': len(masks),
+                                              'scores': [round(s, 2) for s in scores]})
+    mask, score = se.segment_image(img, points=pts or None, size=p.get('size', 'small'),
+                                   device=p.get('device', ''))
+    op = p.get('op', 'mosaic')
+    out = p.get('out_path') or (os.path.splitext(p['image'])[0] + '_edit.png')
+    if op == 'segment':
+        Image.fromarray(mask.astype(np.uint8) * 255).save(out)
+    elif op == 'cutout':
+        se.cutout(img, mask, out)
+    elif op == 'replace_bg':
+        bg = p.get('bg') or ''
+        if bg == 'blur':
+            se.replace_bg(img, mask, out, blur=True)
+        elif bg:
+            c = bg.lstrip('#')
+            col = tuple(int(c[i:i + 2], 16) for i in (0, 2, 4)) if len(c) >= 6 else (16, 18, 27)
+            se.replace_bg(img, mask, out, color=col)
+        else:
+            se.replace_bg(img, mask, out)
+    elif op == 'mosaic':
+        se.mosaic(img, mask, out, mode=p.get('mode', 'pixel'),
+                  strength=int(p.get('strength', 16)))
+    elif op == 'inpaint':
+        se.inpaint(img, mask, out)
+    else:
+        return TaskResult(ok=False, error=f'未知 op: {op}')
+    return TaskResult(ok=True, artifacts={'image': out, 'mask_score': round(score, 3)})

@@ -77,7 +77,8 @@
     "make": "make",
     "chain": "agent",
     "ppt": "ppt",
-    "blender3d": "blender3d"
+    "blender3d": "blender3d",
+    "edit": "edit"
   },
   "wan_defaults": {
     "width": 1280,

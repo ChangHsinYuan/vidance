@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -457,6 +458,65 @@ def cmd_blender3d(args):
     print(meta.get('output') or '')
 
 
+def cmd_edit(args):
+    """v16（原 v19）SAM2 编辑：分割/抠图/换底/打码/inpaint（图）/视频传播打码换底"""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from agents.post.tools import sam_edit as se
+
+    pts = se.parse_points(args.point)
+    if args.cmd == 'video':
+        if not pts:
+            print('usage: edit video in.mp4 --point x,y [--op mosaic|blur_bg|cutout|color] -o out.mp4')
+            return
+        if args.op == 'color':
+            r = se.video_color(args.input, args.output or
+                               os.path.join('output', 'edit_%s.mp4' % time.strftime('%Y%m%d_%H%M%S')),
+                               pts, size=args.size, device=args.device,
+                               prompt_frame=getattr(args, 'frame', 0))
+            print(f"{r['output']}（{r['frames']} 帧, {r['objects']} 物体彩色）")
+            return
+        r = se.video_edit(args.input, args.output or
+                          os.path.join('output', 'edit_%s.mp4' % time.strftime('%Y%m%d_%H%M%S')),
+                          pts, op=args.op, size=args.size, device=args.device,
+                          mode=args.mode, strength=args.strength,
+                          prompt_frame=getattr(args, 'frame', 0))
+        print(r['output'])
+        return
+    import numpy as np
+    from PIL import Image
+    img = np.array(Image.open(args.input).convert('RGB'))
+    pts = se.parse_points(args.point)
+    if args.cmd == 'visualize':
+        masks, scores = se.segment_multi(img, points=pts or None, size=args.size, device=args.device)
+        print(f"[edit] 彩色多物体: {len(masks)} 个, scores " + ', '.join(f'{s:.2f}' for s in scores))
+        out = args.output or os.path.join('output', 'edit_%s.png' % time.strftime('%Y%m%d_%H%M%S'))
+        se.visualize(img, masks, out)
+        print(out)
+        return
+    mask, score = se.segment_image(img, points=pts or None, size=args.size, device=args.device)
+    print(f'[edit] mask score={score:.3f} coverage={mask.mean():.3f}')
+    out = args.output or os.path.join('output', 'edit_%s.png' % time.strftime('%Y%m%d_%H%M%S'))
+    if args.cmd == 'segment':
+        Image.fromarray(mask.astype(np.uint8) * 255).save(out)
+    elif args.cmd == 'cutout':
+        se.cutout(img, mask, out)
+    elif args.cmd == 'replace_bg':
+        if args.bg == 'blur':
+            se.replace_bg(img, mask, out, blur=True)
+        elif args.bg:
+            c = args.bg.lstrip('#')
+            col = tuple(int(c[i:i + 2], 16) for i in (0, 2, 4)) if len(c) >= 6 else (16, 18, 27)
+            se.replace_bg(img, mask, out, color=col)
+        else:
+            se.replace_bg(img, mask, out)
+    elif args.cmd == 'mosaic':
+        se.mosaic(img, mask, out, mode=args.mode, strength=args.strength)
+    elif args.cmd == 'inpaint':
+        se.inpaint(img, mask, out)
+    print(out)
+
+
 def cmd_make(args):
     gen = args.generator or 'wan'
     director = args.director or ('manual' if (args.say or args.prompt or args.script) else 'llm')
@@ -822,6 +882,22 @@ def build_parser():
     p_b3d.add_argument('--say', action='append', default=None, help='手动旁白（第一句为副标题+旁白）')
     p_b3d.add_argument('--model', default=None, help='LLM 模型')
     p_b3d.set_defaults(func=cmd_blender3d)
+
+    # ── edit 子命令（v16（原 v19）：SAM2 分割/抠图/换底/打码/inpaint + 视频传播）──
+    p_edit = sub.add_parser('edit',
+        help='v16 SAM2 编辑：图（segment/cutout/replace_bg/mosaic/inpaint）或视频传播（video）')
+    p_edit.add_argument('cmd', choices=['segment', 'cutout', 'replace_bg', 'mosaic', 'inpaint', 'visualize', 'video'])
+    p_edit.add_argument('input', help='输入图/视频路径')
+    p_edit.add_argument('-o', '--output', default=None, help='输出路径（缺省 output/edit_*.png|mp4）')
+    p_edit.add_argument('--point', default='', help='点提示 x,y（空格分可多点；省略=自动主体；visualize/video 每点一物体）')
+    p_edit.add_argument('--op', default='mosaic', help='video 模式 op：mosaic/blur_bg/cutout/color')
+    p_edit.add_argument('--frame', type=int, default=0, help='video 提示帧索引（SAM2 任意帧双向传播，猫狗同框帧更准）')
+    p_edit.add_argument('--size', default='small', choices=['tiny', 'small', 'base'])
+    p_edit.add_argument('--device', default='', help='cuda:N / cpu（缺省自动选卡）')
+    p_edit.add_argument('--mode', default='pixel', help='mosaic：pixel/blur')
+    p_edit.add_argument('--strength', type=int, default=16, help='mosaic/blur 强度')
+    p_edit.add_argument('--bg', default='', help='replace_bg：hex 色（如 101827）或 blur')
+    p_edit.set_defaults(func=cmd_edit)
 
     # ── make 子命令（v12（原 v17）M2 三排正交统一入口） ──
     p_make = sub.add_parser('make', parents=[output_parent, post_parent],

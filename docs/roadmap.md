@@ -380,7 +380,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v16 — 视频处理与编辑（SAM 分割 / 光流追踪 / AI 换脸 / 局部替换）（原 v19，🎯 待开发，2026-09-30 立项）
+### v16 — 视频处理与编辑（SAM 分割 / 光流追踪 / AI 换脸 / 局部替换）（原 v19，🔄 M0-M4 已完成 2026-10-02，2026-09-30 立项）
 
 **目标**：给流水线补上**帧级视频编辑能力**——分割、追踪、换脸、局部替换，既服务二创（v19 的画面改写），也让 custom/auto 的成片可后期精修。
 
@@ -393,7 +393,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 - **agent 化**：`audit.edit` 或 `post.edit` 薄包装 Agent（mask/sam/inpaint/face 四工具），链式调用：`{"agent":"post.edit","with":{"video":"${v.video}","op":"segment+inpaint","target":"背景"}}`
 - **档位接入**：新增能力进 v21 档位阶梯（`full` 档启用，编辑类全 GPU 依赖，none/flux 档降级提示）
 
-**里程碑**（2026-10-01 规划，仿 blender 线 M0 起步）：M0 SAM2 环境 spike（pip sam2 + 权重下载 + CUDA/CPU 选卡 + 单图分割验证）→ M1 SAM 分割（图/帧 → mask → 抠主体/换底/打码，`sam_edit.py` + CLI）→ M2 局部替换（SAM mask → FLUX fill/SDXL inpaint 串联重绘：去水印/换物件/换背景）→ M3 视频扩展（SAM2 视频传播逐帧 mask → 追踪打码/换底 → 重拼帧）→ M4 agent 化 + 档位（`post.edit` agent + CLI `edit` 子命令 + `/api/tool/edit` + v21 档位接入 none 档降级）。**换脸**（合规边界内，FaceFusion/inswapper）作 backlog 按需启动，不进主里程碑。
+**里程碑**（2026-10-01 规划，仿 blender 线 M0 起步；2026-10-02 M0-M4 全部完成 ✅）：M0 SAM2 环境 spike ✅（SAM-2 1.0 源码装 /mnt/disk_sdb/zxy/sam2-src + 权重 models/sam2/ tiny+small + 单图验证：build 1.1s/预测 0.2s/显存 201MB）→ M1 SAM 分割 ✅（`agents/post/tools/sam_edit.py`：segment/cutout/replace_bg/mosaic/inpaint/visualize 六模式（visualize=彩色多物体叠加，SAM demo 风格 8 色调色板+边界描边+IoU 去重）+ 自动主体 3x3 网格打点并集（coverage 66.8% vs 单点 29%）+ _pick_device 逐卡探测）→ M2 局部替换 ✅（cv2.inpaint TELEA + mask 膨胀盖边缘；FLUX 服务器无 Fill 模型，latent inpaint 留可选）→ M3 视频扩展 ✅（SAM2 视频传播 build_sam2_video_predictor + 首帧点提示逐帧 mask + mosaic/blur_bg/cutout/color（彩色多物体，每点独立 obj_id）重拼 mp4，144 帧 @48it/s 传播 ~3s）→ M4 agent 化 ✅（CLI `vidance.py edit` 子命令 + `post.edit` agent + `/api/tool/edit`（图同步/视频异步 edit_* job 复用 h3shot 轮询）+ utils 薄壳 + config task_prefixes edit）。**换脸**（合规边界内，FaceFusion/inswapper）作 backlog 按需启动。实测：CLI inpaint/agent mosaic（mask_score 0.946）/API cutout 同步/视频 job 144 帧 6.0s 全通过（像素统计验证 mask 内变化、外不变）。**容器档位**：编辑类全 GPU 依赖（torch），容器（none 档）仅同步代码不装 sam2——编辑能力留宿主 GPU 档
 
 **参考**：SAM2（Meta，视频分割）、CoTracker（Meta，点追踪）、FaceFusion、ProPainter（视频修补）、ControlNet（构图/姿态条件控制）。
 

@@ -81,6 +81,37 @@
 1. v16 视频处理与编辑（原 v19）规划（SAM 分割起步）→ 用户拍板里程碑后开工 M0 spike
 2. 用户提交改动（v15+美化+blender+文档+收口一条 commit）
 
+## Session 2026-10-02：v16 SAM2 编辑完成（M0-M4 全部）
+
+### Goal
+- v16 视频处理与编辑（原 v19）：SAM 分割/inpaint/视频传播，用户拍板"按计划执行直到成功，中间不停但定时汇报"
+
+### Done
+- **M0 spike ✅**：SAM-2 1.0（PyPI 无包→git clone /mnt/disk_sdb/zxy/sam2-src + pip -e --no-build-isolation，pypi 构建依赖卡死 10 分钟的坑）；权重 models/sam2/ tiny(156MB)+small(184MB 断点续传)；单图验证 build 1.1s/预测 0.2s/显存 201MB
+- **M1 分割 ✅**：agents/post/tools/sam_edit.py 五模式（segment/cutout/replace_bg/mosaic/inpaint）+ 自动主体（3x3 网格打点 score>0.7 并集，coverage 66.8% vs 单点 29%）+ _pick_device 逐卡探测（同 v4 FunClip）
+- **M2 inpaint ✅**：cv2.inpaint TELEA + mask 膨胀盖边缘；FLUX 服务器无 Fill 模型（只有 flux1-dev-fp8 T2I），latent inpaint 留可选
+- **M3 视频传播 ✅**：build_sam2_video_predictor（SAM2VideoPredictor 不能包图像模型）+ 首帧点提示逐帧 mask + mosaic/blur_bg/cutout 重拼 mp4（144 帧 @48it/s ~3s 传播）
+- **M4 交付 ✅**：CLI `vidance.py edit`（6 模式子命令）+ `post.edit` agent + `/api/tool/edit`（图同步/视频异步 edit_* job 复用 h3shot 轮询）+ utils/sam_edit.py 薄壳 + config task_prefixes edit
+- **测试全过**：CLI inpaint / agent mosaic（mask_score 0.946）/ API cutout 同步 / API 视频 job 144/144 帧 6.0s（scene_edit.mp4）；像素统计验证 mask 内变化/外不变、cutout alpha 内 255/外 0
+- **容器**：无 torch（SAM2 需 ~2GB+）→ 按档位设计只同步代码（docker cp 7 文件）不装 sam2，编辑能力留宿主 GPU 档
+
+### Key Decisions
+- **cv2.inpaint 主路线**（CPU 恒可用），ComfyUI latent inpaint 可选（FLUX 无 Fill 模型）
+- **换脸 backlog**（合规敏感，不进主里程碑）
+- 视频传播用官方 build_sam2_video_predictor 入口
+- opencv 5.0 会拉 numpy 2.x 破坏 bpy → 固定 opencv<5 + numpy 1.26.4
+
+### Critical Context
+- sam2 源码 /mnt/disk_sdb/zxy/sam2-src（vidance 仓外，*.pt 已 gitignore）；权重 /mnt/disk_sdb/zxy/vidance/models/sam2/
+- opencv-python-headless 4.11 新增依赖（comfyui env）
+- 容器镜像仍不含 v15/blender/v16（代码是 docker cp 同步；重建后丢 bpy/apt X 库；sam2 本就不进容器——GPU 档能力）
+- 测试产物：/tmp/opencode/v16/（mask/cutout/mosaic/inpaint/replace_bg.png + video_mosaic.mp4/video_mosaic2.mp4/video_blurbg.mp4）+ output/blender3d_20261001_191913/scene_edit.mp4 + output/fast20260930_135454/*_edit.png
+
+### Next Steps
+1. 用户提交（v15+blender+v16+文档一条 commit）
+2. 换脸 backlog（FaceFusion/inswapper，按需启动）
+3. 下一个版本：v17 整合开源仓库（断点续跑/JSON 容错/RAG/五维提示词）或按 roadmap 顺序
+
 ---
 
 # （以下为 2026-09-26 晚原记录）

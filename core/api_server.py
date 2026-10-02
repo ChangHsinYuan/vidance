@@ -687,6 +687,55 @@ def _run_blenderjob(job_id: str, concept, n: int, say: list, flags: dict):
         _agent_log(job_id, '✗ 失败: %s' % str(e)[:300])
 
 
+def _run_editjob(job_id: str, video: str, points: list, op: str, flags: dict):
+    """SAM2 视频编辑（异步 job，复用 h3shot 轮询通道；回执 output/video_url）。"""
+    def _on_frame(done, total):
+        with _h3_jobs_lock:
+            if job_id in _h3_jobs:
+                _h3_jobs[job_id]['frames'] = f'{done}/{total}'
+
+    try:
+        from agents.post.tools import sam_edit as se
+        with _h3_jobs_lock:
+            if job_id in _h3_jobs:
+                _h3_jobs[job_id]['stage'] = 'SAM2 视频传播中'
+        if op == 'color':
+            r = se.video_color(video, os.path.splitext(video)[0] + '_edit.mp4',
+                               points, size=flags.get('size') or 'small',
+                               device=flags.get('device') or '', on_frame=_on_frame)
+            out = r['output']
+            with _h3_jobs_lock:
+                _h3_jobs[job_id].update({
+                    'status': 'completed', 'output': out,
+                    'video_url': '/api/file?path=' + out,
+                    'objects': r.get('objects'),
+                    'completed_at': datetime.now().isoformat(),
+                })
+            _agent_log(job_id, '■ 完成 %s（%s 物体彩色）' % (out, r.get('objects')))
+            return
+        r = se.video_edit(video, os.path.splitext(video)[0] + '_edit.mp4',
+                          points, op=op, size=flags.get('size') or 'small',
+                          device=flags.get('device') or '',
+                          mode=flags.get('mode') or 'pixel',
+                          strength=int(flags.get('strength') or 16),
+                          on_frame=_on_frame)
+        out = r['output']
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'completed', 'output': out,
+                'video_url': '/api/file?path=' + out,
+                'completed_at': datetime.now().isoformat(),
+            })
+        _agent_log(job_id, '■ 完成 %s' % out)
+    except Exception as e:
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'failed', 'error': str(e),
+                'completed_at': datetime.now().isoformat(),
+            })
+        _agent_log(job_id, '✗ 失败: %s' % str(e)[:300])
+
+
 @app.post('/api/h3shot')
 def h3shot(req: H3ShotRequest):
     if not req.prompt or not req.refs:
@@ -1037,6 +1086,16 @@ TOOLS = [
           {'key': '--voice', 'type': 'text', 'desc': '配音音色'},
           {'key': '--say', 'type': 'text', 'desc': '手动旁白（副标题+旁白）'},
           {'key': '-n', 'type': 'number', 'desc': '物体数提示（约 n*4 个）'},
+      ]},
+     {'name': 'edit', 'help': 'v16 SAM2 编辑：分割/抠图/换底/打码/inpaint（图同步）/视频传播（异步）',
+      'params': [
+          {'key': 'input', 'type': 'text', 'required': True, 'desc': '图/视频路径'},
+          {'key': 'op', 'type': 'text', 'desc': 'segment/cutout/replace_bg/mosaic/inpaint/video（位置参数，缺省 mosaic）'},
+          {'key': '--point', 'type': 'text', 'desc': '点提示 x,y（省略=自动主体；video 必填）'},
+          {'key': '--bg', 'type': 'text', 'desc': 'replace_bg：hex 色（101827）或 blur'},
+          {'key': '--mode', 'type': 'text', 'desc': 'mosaic：pixel/blur'},
+          {'key': '--strength', 'type': 'number', 'desc': '打码强度（默认 16）'},
+          {'key': '--size', 'type': 'text', 'desc': 'SAM2 权重 tiny/small/base（默认 small）'},
       ]},
     {'name': 'clip', 'help': 'FunClip：长素材 ASR 转写+语义裁剪',
      'params': [
@@ -1515,6 +1574,86 @@ def tool_dispatch(name: str, req: ToolRequest):
                          daemon=True).start()
         return {'message': '3D 任务已提交（异步，LLM 规划中，可看日志面板跟踪）',
                 'job_id': job_id, 'poll': f'/api/h3shot/{job_id}', 'h3_job_id': job_id}
+
+    # ── edit（v16 SAM2 编辑：图同步 / 视频异步 job，复用 h3shot 轮询通道）──
+    if name == 'edit':
+        rr = _parse_repeated(req.args or '', {})
+        fl, pos2 = rr['flags'], rr['pos']
+        if not pos2:
+            raise HTTPException(status_code=400,
+                                detail='用法: /edit 图.jpg [segment|cutout|replace_bg|mosaic|inpaint] [--point x,y] | /edit 视频.mp4 video --point x,y')
+        inp = pos2[0]
+        cmd = pos2[1] if len(pos2) > 1 else fl.get('op') or 'mosaic'
+        if cmd == 'video':
+            pts = []
+            for tok in (fl.get('point') or '').replace(';', ' ').split():
+                parts = tok.split(',')
+                if len(parts) == 2:
+                    try:
+                        pts.append((int(float(parts[0])), int(float(parts[1]))))
+                    except ValueError:
+                        pass
+            if not pts:
+                raise HTTPException(status_code=400, detail='video 需要 --point x,y（首帧目标点）')
+            job_id = f'edit_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+            with _h3_jobs_lock:
+                _h3_jobs[job_id] = {'job_id': job_id, 'concept': os.path.basename(inp),
+                                    'status': 'running',
+                                    'created_at': datetime.now().isoformat()}
+            threading.Thread(target=_run_editjob,
+                             args=(job_id, inp, pts, fl.get('op') or 'mosaic', fl),
+                             daemon=True).start()
+            return {'message': '视频编辑任务已提交（异步，SAM2 传播中）',
+                    'job_id': job_id, 'poll': f'/api/h3shot/{job_id}', 'h3_job_id': job_id}
+        # 图编辑：同步（秒级）
+        from agents.post.tools import sam_edit as se
+        import numpy as _np
+        from PIL import Image as _Image
+        img = _np.array(_Image.open(inp).convert('RGB'))
+        pts = []
+        for tok in (fl.get('point') or '').replace(';', ' ').split():
+            parts = tok.split(',')
+            if len(parts) == 2:
+                try:
+                    pts.append((int(float(parts[0])), int(float(parts[1]))))
+                except ValueError:
+                    pass
+        mask, score = se.segment_image(img, points=pts or None,
+                                       size=fl.get('size') or 'small',
+                                       device=fl.get('device') or '')
+        out = fl.get('output') or fl.get('o') or (
+            os.path.splitext(inp)[0] + '_edit.png')
+        if cmd == 'visualize':
+            masks, scores = se.segment_multi(img, points=pts or None,
+                                             size=fl.get('size') or 'small',
+                                             device=fl.get('device') or '')
+            se.visualize(img, masks, out)
+            return {'message': f'彩色多物体可视化完成（{len(masks)} 物体）',
+                    'output': out, 'objects': len(masks),
+                    'scores': [round(s, 2) for s in scores]}
+        if cmd == 'segment':
+            _Image.fromarray(mask.astype(_np.uint8) * 255).save(out)
+        elif cmd == 'cutout':
+            se.cutout(img, mask, out)
+        elif cmd == 'replace_bg':
+            bg = fl.get('bg') or ''
+            if bg == 'blur':
+                se.replace_bg(img, mask, out, blur=True)
+            elif bg:
+                c = bg.lstrip('#')
+                col = tuple(int(c[i:i + 2], 16) for i in (0, 2, 4)) if len(c) >= 6 else (16, 18, 27)
+                se.replace_bg(img, mask, out, color=col)
+            else:
+                se.replace_bg(img, mask, out)
+        elif cmd == 'mosaic':
+            se.mosaic(img, mask, out, mode=fl.get('mode') or 'pixel',
+                      strength=int(fl.get('strength') or 16))
+        elif cmd == 'inpaint':
+            se.inpaint(img, mask, out)
+        else:
+            raise HTTPException(status_code=400, detail=f'未知 op: {cmd}')
+        return {'message': f'编辑完成（{cmd}，mask score {score:.3f}）',
+                'output': out, 'score': round(score, 3)}
 
     # ── concat（多视频拼接，同步子进程）──
     if name == 'concat':
