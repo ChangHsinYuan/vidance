@@ -2605,10 +2605,13 @@ def agent_stream(req: AgentStreamReq):
         agen, rj = parts[0], (parts[1] if len(parts) > 1 else '{}')
         if rj.startswith('--with'):
             rj = rj[6:].strip()
-        k = rj.find('{')
+        # JSON 边界提取（外壳引号/前后缀杂物都剥：'{...}'、--with {...} 均可）
+        k, j = rj.find('{'), rj.rfind('}')
         if k < 0:
             rj = '{}'
-        elif k > 0:
+        elif j > k:
+            rj = rj[k:j + 1]
+        else:
             rj = rj[k:]
         try:
             params = _json.loads(_unq(rj))

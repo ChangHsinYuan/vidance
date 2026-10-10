@@ -207,6 +207,15 @@ def edit(p):
                                               'frames': r['frames'], 'op': r['op']})
     if not p.get('image'):
         return TaskResult(ok=False, error='需要 image（图路径）或 video（视频路径）')
+    # M8 指令式编辑：整图自然语言修改，无需 SAM mask（Qwen-Image-Edit）
+    if p.get('op') == 'instruct':
+        if not p.get('prompt'):
+            return TaskResult(ok=False, error='instruct 需要 prompt 编辑指令（如 把猫换成狗）')
+        out = p.get('out_path') or (os.path.splitext(p['image'])[0] + '_instruct.png')
+        se.qwen_edit(p['image'], p['prompt'], out,
+                     steps=int(p.get('steps') or 20),
+                     cfg=float(p.get('cfg') or 2.5))
+        return TaskResult(ok=True, artifacts={'image': out, 'op': 'instruct'})
     img = np.array(Image.open(p['image']).convert('RGB'))
     pts = se.parse_points(p.get('point') or '')
     boxes = se.parse_boxes(p.get('box') or '')
