@@ -687,6 +687,143 @@ def _run_blenderjob(job_id: str, concept, n: int, say: list, flags: dict):
         _agent_log(job_id, '✗ 失败: %s' % str(e)[:300])
 
 
+def _run_editimagejob(job_id: str, inp: str, cmd: str, fl: dict):
+    """图编辑统一异步（agent post.edit）：CV 秒级 op / flux 生成式 / instruct 全走 job。
+
+    阶段/结果写 job 字段（stage/output/image_url）+ agent.log，前端 pollH3 有得显示。
+    """
+    try:
+        from agents.post.tools import sam_edit as se
+        import numpy as _np
+        from PIL import Image as _Image
+
+        def _stage(s):
+            with _h3_jobs_lock:
+                if job_id in _h3_jobs:
+                    _h3_jobs[job_id]['stage'] = s
+
+        out = fl.get('output') or fl.get('o') or (
+            os.path.splitext(inp)[0] + '_edit.png')
+
+        # M8 指令式编辑：整图自然语言修改，无需 SAM mask
+        if cmd == 'instruct':
+            _stage('Qwen-Image-Edit 生成中（约 1-2 分钟）')
+            se.qwen_edit(inp, fl.get('prompt'), out,
+                         steps=int(fl.get('steps') or 20),
+                         cfg=float(fl.get('cfg') or 2.5))
+            with _h3_jobs_lock:
+                _h3_jobs[job_id].update({
+                    'status': 'completed', 'output': out,
+                    'image_url': '/api/file?path=' + out,
+                    'completed_at': datetime.now().isoformat(),
+                })
+            _agent_log(job_id, '■ 完成 %s（instruct）' % out)
+            return
+
+        _stage('SAM2 分割中')
+        img = _np.array(_Image.open(inp).convert('RGB'))
+        pts = []
+        for tok in (fl.get('point') or '').replace(';', ' ').split():
+            parts = tok.split(',')
+            if len(parts) == 2:
+                try:
+                    pts.append((int(float(parts[0])), int(float(parts[1]))))
+                except ValueError:
+                    pass
+        boxes = []
+        labels = None
+        for tok in (fl.get('box') or '').replace(';', ' ').split():
+            parts = tok.split(',')
+            if len(parts) == 4:
+                try:
+                    boxes.append(tuple(int(float(v)) for v in parts))
+                except ValueError:
+                    pass
+        if str(fl.get('yolo') or '').lower() in ('true', '1', 'yes') or fl.get('classes'):
+            _stage('YOLO 检测中')
+            dets = se.detect_objects(img,
+                                     classes=[c for c in (fl.get('classes') or '').split(',') if c] or None,
+                                     conf=float(fl.get('conf') or 0.25))
+            boxes = [d[2] for d in dets]
+            labels = [d[0] for d in dets]
+            _agent_log(job_id, '▶ YOLO 检出 %d 目标' % len(boxes))
+        if boxes:
+            masks, scores, labels = se.segment_from_boxes(img, boxes, labels=labels,
+                                                          size=fl.get('size') or 'small',
+                                                          device=fl.get('device') or '')
+            if not masks:
+                raise ValueError('SAM2 框提示未产出掩膜')
+            mask, score = masks[0], scores[0]
+        else:
+            mask, score = se.segment_image(img, points=pts or None,
+                                           size=fl.get('size') or 'small',
+                                           device=fl.get('device') or '')
+
+        def _done(extra=None):
+            with _h3_jobs_lock:
+                _h3_jobs[job_id].update({
+                    'status': 'completed', 'output': out,
+                    'image_url': '/api/file?path=' + out,
+                    'completed_at': datetime.now().isoformat(),
+                    **(extra or {})})
+            _agent_log(job_id, '■ 完成 %s' % out)
+
+        if cmd == 'visualize':
+            if not boxes:
+                masks, scores = se.segment_multi(img, points=pts or None,
+                                                 size=fl.get('size') or 'small',
+                                                 device=fl.get('device') or '')
+                labels = ['物体%d' % (i + 1) for i in range(len(masks))]
+            se.visualize(img, masks, out, labels=labels)
+            _done({'objects': len(masks), 'labels': labels,
+                   'scores': [round(s, 2) for s in scores]})
+            return
+        if cmd == 'segment':
+            _Image.fromarray(mask.astype(_np.uint8) * 255).save(out)
+        elif cmd == 'cutout':
+            se.cutout(img, mask, out)
+        elif cmd == 'replace_bg':
+            bg = fl.get('bg') or ''
+            if (fl.get('engine') or 'cv') == 'flux':
+                _stage('FLUX Fill 生成中（约 1-2 分钟）')
+                se.inpaint_flux(img, mask, fl.get('prompt') or 'clean empty background', out,
+                                invert=True, steps=int(fl.get('steps') or 30),
+                                guidance=float(fl.get('guidance') or 30.0))
+            elif bg == 'blur':
+                se.replace_bg(img, mask, out, blur=True)
+            elif bg:
+                c = bg.lstrip('#')
+                col = tuple(int(c[i:i + 2], 16) for i in (0, 2, 4)) if len(c) >= 6 else (16, 18, 27)
+                se.replace_bg(img, mask, out, color=col)
+            else:
+                se.replace_bg(img, mask, out)
+        elif cmd == 'mosaic':
+            se.mosaic(img, mask, out, mode=fl.get('mode') or 'pixel',
+                      strength=int(fl.get('strength') or 16))
+        elif cmd == 'inpaint':
+            if (fl.get('engine') or 'cv') == 'flux':
+                if not fl.get('prompt'):
+                    raise ValueError('flux 引擎需要 --prompt 描述重绘内容')
+                _stage('FLUX Fill 生成中（约 1-2 分钟）')
+                se.inpaint_flux(img, mask, fl['prompt'], out,
+                                steps=int(fl.get('steps') or 30),
+                                guidance=float(fl.get('guidance') or 30.0),
+                                controlnet=fl.get('controlnet') or '',
+                                controlnet_strength=float(fl.get('controlnet_strength') or 0.5))
+            else:
+                se.inpaint(img, mask, out)
+        else:
+            raise ValueError('未知 op: %s' % cmd)
+        _done({'score': round(score, 3)})
+    except Exception as e:
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'failed', 'error': str(e)[:400],
+                'completed_at': datetime.now().isoformat(),
+            })
+        _agent_log(job_id, '✗ 失败: %s' % str(e)[:300])
+
+
 def _run_editjob(job_id: str, video: str, points: list, op: str, flags: dict):
     """SAM2 视频编辑（异步 job，复用 h3shot 轮询通道；回执 output/video_url）。"""
     def _on_frame(done, total):
@@ -695,6 +832,7 @@ def _run_editjob(job_id: str, video: str, points: list, op: str, flags: dict):
                 _h3_jobs[job_id]['frames'] = f'{done}/{total}'
 
     try:
+        _agent_log(job_id, '▶ 调用 agent post.edit · video（SAM2 双向传播）')
         from agents.post.tools import sam_edit as se
         fr_idx = int(flags.get('frame') or 0)
         boxes = []
@@ -1619,18 +1757,30 @@ def tool_dispatch(name: str, req: ToolRequest):
                                 detail='用法: /edit 图.jpg [segment|cutout|replace_bg|mosaic|inpaint] [--point x,y] | /edit 视频.mp4 video --point x,y')
         inp = pos2[0]
         cmd = pos2[1] if len(pos2) > 1 else fl.get('op') or 'mosaic'
-        # M8 指令式编辑：整图自然语言修改，无需 SAM mask
+        # 兼容 CLI 参数序（edit instruct 图.jpg / edit video in.mp4）：首 token 是已知命令名时交换
+        _EDIT_CMDS = ('segment', 'cutout', 'replace_bg', 'mosaic', 'inpaint',
+                      'visualize', 'video', 'instruct')
+        if inp in _EDIT_CMDS and cmd not in _EDIT_CMDS:
+            inp, cmd = cmd, inp
+        # M8 指令式编辑：整图自然语言修改，无需 SAM mask（异步 job）
         if cmd == 'instruct':
             if not fl.get('prompt'):
                 raise HTTPException(status_code=400,
                                     detail='instruct 需要 --prompt 编辑指令（如 把猫换成狗）')
-            from agents.post.tools import sam_edit as se
-            out = fl.get('output') or fl.get('o') or (
-                os.path.splitext(inp)[0] + '_instruct.png')
-            se.qwen_edit(inp, fl.get('prompt'), out,
-                         steps=int(fl.get('steps') or 20),
-                         cfg=float(fl.get('cfg') or 2.5))
-            return {'message': '指令编辑完成（Qwen-Image-Edit 2509）', 'output': out}
+            if not os.path.exists(inp):
+                raise HTTPException(status_code=400, detail=f'文件不存在: {inp}')
+            job_id = f'edit_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+            with _h3_jobs_lock:
+                _h3_jobs[job_id] = {'job_id': job_id, 'concept': fl['prompt'][:40],
+                                    'status': 'running',
+                                    'created_at': datetime.now().isoformat()}
+            _agent_log(job_id, '▶ 调用 agent post.edit · instruct（Qwen-Image-Edit）')
+            threading.Thread(target=_run_editimagejob,
+                             args=(job_id, inp, 'instruct', fl),
+                             daemon=True).start()
+            return {'message': '编辑任务已提交（agent post.edit · Qwen-Image-Edit，约 1-2 分钟）',
+                    'job_id': job_id, 'h3_job_id': job_id,
+                    'poll': f'/api/h3shot/{job_id}'}
         if cmd == 'video':
             pts = []
             for tok in (fl.get('point') or '').replace(';', ' ').split():
@@ -1680,97 +1830,21 @@ def tool_dispatch(name: str, req: ToolRequest):
                              daemon=True).start()
             return {'message': '视频编辑任务已提交（异步，SAM2 传播中）',
                     'job_id': job_id, 'poll': f'/api/h3shot/{job_id}', 'h3_job_id': job_id}
-        # 图编辑：同步（秒级）
-        from agents.post.tools import sam_edit as se
-        import numpy as _np
-        from PIL import Image as _Image
-        img = _np.array(_Image.open(inp).convert('RGB'))
-        pts = []
-        for tok in (fl.get('point') or '').replace(';', ' ').split():
-            parts = tok.split(',')
-            if len(parts) == 2:
-                try:
-                    pts.append((int(float(parts[0])), int(float(parts[1]))))
-                except ValueError:
-                    pass
-        boxes = []
-        labels = None
-        for tok in (fl.get('box') or '').replace(';', ' ').split():
-            parts = tok.split(',')
-            if len(parts) == 4:
-                try:
-                    boxes.append(tuple(int(float(v)) for v in parts))
-                except ValueError:
-                    pass
-        if str(fl.get('yolo') or '').lower() in ('true', '1', 'yes') or fl.get('classes'):
-            dets = se.detect_objects(img,
-                                     classes=[c for c in (fl.get('classes') or '').split(',') if c] or None,
-                                     conf=float(fl.get('conf') or 0.25))
-            boxes = [d[2] for d in dets]
-            labels = [d[0] for d in dets]
-        if boxes:
-            masks, scores, labels = se.segment_from_boxes(img, boxes, labels=labels,
-                                                          size=fl.get('size') or 'small',
-                                                          device=fl.get('device') or '')
-            if not masks:
-                raise HTTPException(status_code=400, detail='SAM2 框提示未产出掩膜')
-            mask, score = masks[0], scores[0]
-        else:
-            mask, score = se.segment_image(img, points=pts or None,
-                                           size=fl.get('size') or 'small',
-                                           device=fl.get('device') or '')
-        out = fl.get('output') or fl.get('o') or (
-            os.path.splitext(inp)[0] + '_edit.png')
-        if cmd == 'visualize':
-            if boxes:
-                pass  # masks/scores/labels 已算好
-            else:
-                masks, scores = se.segment_multi(img, points=pts or None,
-                                                 size=fl.get('size') or 'small',
-                                                 device=fl.get('device') or '')
-                labels = ['物体%d' % (i + 1) for i in range(len(masks))]
-            se.visualize(img, masks, out, labels=labels)
-            return {'message': f'彩色多物体可视化完成（{len(masks)} 物体）',
-                    'output': out, 'objects': len(masks),
-                    'labels': labels,
-                    'scores': [round(s, 2) for s in scores]}
-        if cmd == 'segment':
-            _Image.fromarray(mask.astype(_np.uint8) * 255).save(out)
-        elif cmd == 'cutout':
-            se.cutout(img, mask, out)
-        elif cmd == 'replace_bg':
-            bg = fl.get('bg') or ''
-            if (fl.get('engine') or 'cv') == 'flux':
-                se.inpaint_flux(img, mask, fl.get('prompt') or 'clean empty background', out,
-                                invert=True, steps=int(fl.get('steps') or 30),
-                                guidance=float(fl.get('guidance') or 30.0))
-            elif bg == 'blur':
-                se.replace_bg(img, mask, out, blur=True)
-            elif bg:
-                c = bg.lstrip('#')
-                col = tuple(int(c[i:i + 2], 16) for i in (0, 2, 4)) if len(c) >= 6 else (16, 18, 27)
-                se.replace_bg(img, mask, out, color=col)
-            else:
-                se.replace_bg(img, mask, out)
-        elif cmd == 'mosaic':
-            se.mosaic(img, mask, out, mode=fl.get('mode') or 'pixel',
-                      strength=int(fl.get('strength') or 16))
-        elif cmd == 'inpaint':
-            if (fl.get('engine') or 'cv') == 'flux':
-                if not fl.get('prompt'):
-                    raise HTTPException(status_code=400,
-                                        detail='flux 引擎需要 --prompt 描述重绘内容（如 empty wooden floor）')
-                se.inpaint_flux(img, mask, fl['prompt'], out,
-                                steps=int(fl.get('steps') or 30),
-                                guidance=float(fl.get('guidance') or 30.0),
-                                controlnet=fl.get('controlnet') or '',
-                                controlnet_strength=float(fl.get('controlnet_strength') or 0.5))
-            else:
-                se.inpaint(img, mask, out)
-        else:
-            raise HTTPException(status_code=400, detail=f'未知 op: {cmd}')
-        return {'message': f'编辑完成（{cmd}，mask score {score:.3f}）',
-                'output': out, 'score': round(score, 3)}
+        # 图编辑：统一异步 job（CV 秒级 / flux 生成式，前端 pollH3 转圈 + 日志面板）
+        if not os.path.exists(inp):
+            raise HTTPException(status_code=400, detail=f'文件不存在: {inp}')
+        job_id = f'edit_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        with _h3_jobs_lock:
+            _h3_jobs[job_id] = {'job_id': job_id, 'concept': os.path.basename(inp),
+                                'status': 'running',
+                                'created_at': datetime.now().isoformat()}
+        _agent_log(job_id, '▶ 调用 agent post.edit · %s' % cmd)
+        threading.Thread(target=_run_editimagejob,
+                         args=(job_id, inp, cmd, fl),
+                         daemon=True).start()
+        return {'message': f'编辑任务已提交（agent post.edit · {cmd}）',
+                'job_id': job_id, 'h3_job_id': job_id,
+                'poll': f'/api/h3shot/{job_id}'}
 
     # ── vace（v16.x M7：Wan2.1 VACE 参考图生视频，异步）──
     if name == 'vace':
@@ -1786,7 +1860,9 @@ def tool_dispatch(name: str, req: ToolRequest):
         job_id = f'vace_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
         with _h3_jobs_lock:
             _h3_jobs[job_id] = {'job_id': job_id, 'concept': vprompt[:40],
-                                'status': 'running', 'created_at': datetime.now().isoformat()}
+                                'status': 'running', 'stage': 'Wan2.1 VACE 生成中',
+                                'created_at': datetime.now().isoformat()}
+        _agent_log(job_id, '▶ 调用 Wan2.1 VACE（wan 8189，约 5-10 分钟）')
 
         def _run_vacejob():
             try:
@@ -1802,15 +1878,20 @@ def tool_dispatch(name: str, req: ToolRequest):
                                               flags.get('vace-strength')
                                               or flags.get('vace_strength') or 1.0),
                                           output_path=out)
+                vout = r['video_path']
                 with _h3_jobs_lock:
                     _h3_jobs[job_id].update({'status': 'completed',
-                                             'output': r['video_path']})
+                                             'output': vout,
+                                             'video_url': '/api/file?path=' + vout})
+                _agent_log(job_id, '■ 完成 %s' % vout)
             except Exception as e:
                 with _h3_jobs_lock:
                     _h3_jobs[job_id].update({'status': 'failed', 'error': str(e)[:400]})
+                _agent_log(job_id, '✗ 失败: %s' % str(e)[:300])
 
         threading.Thread(target=_run_vacejob, daemon=True).start()
-        return {'message': 'VACE 视频生成任务已提交（异步）', 'job_id': job_id,
+        return {'message': 'VACE 视频生成任务已提交（Wan2.1 VACE，约 5-10 分钟）',
+                'job_id': job_id, 'h3_job_id': job_id,
                 'poll': f'/api/h3shot/{job_id}'}
 
     # ── concat（多视频拼接，同步子进程）──

@@ -635,7 +635,13 @@
           "desc": "输出路径（缺省 output/vace_*.mp4）"
         }
       ],
-      "example": "vace output/ref/dog.png \"a dog running on grass\" --length 81 -o output/vace_dog.mp4"
+      "example": "vace output/test_inputs/_vace_ref_dog.png \"a dog running on grass\" --length 45 -o output/vace_my.mp4",
+      "examples": [
+        "# M7 VACE 参考图生视频（主体一致，~5-10min，wan 8189 需在线）",
+        "vace output/test_inputs/_vace_ref_dog.png \"a dog running on grass\" --length 45 -o output/vace_my.mp4",
+        "# 短一点的快速测试（45帧≈3s@16fps）",
+        "vace ref.png \"a dog running on the beach\" --length 45"
+      ]
     },
     {
       "name": "video",
@@ -757,7 +763,7 @@
         },
         {
           "key": "op",
-          "desc": "segment/cutout/replace_bg/mosaic/inpaint/visualize/video（位置参数）"
+          "desc": "segment/cutout/replace_bg/mosaic/inpaint/visualize/video/instruct（位置参数）"
         },
         {
           "key": "--point",
@@ -828,7 +834,28 @@
           "desc": "Qwen Edit CFG（默认 2.5）"
         }
       ],
-      "example": "edit output/xxx.jpg visualize | edit output/xxx.jpg --yolo --classes \"cat,dog\" | edit output/xxx.mp4 video --point \"x,y\" --op color --frame 30 | edit output/xxx.mp4 video --yolo --frame 30 --op color"
+      "example": "edit output/xxx.jpg visualize | edit output/xxx.jpg --yolo --classes \"cat,dog\" | edit output/xxx.mp4 video --point \"x,y\" --op color --frame 30 | edit output/xxx.mp4 video --yolo --frame 30 --op color",
+      "examples": [
+        "# ── 经典编辑（秒级，纯 CV/SAM） ──",
+        "edit 图.jpg visualize                                  # 彩色多物体可视化（省略提示=自动）",
+        "edit 图.jpg visualize --yolo --classes \"cat,dog\"      # YOLO 自动检测→SAM 框提示",
+        "edit 图.jpg cutout --point 311,175 -o out.png          # 抠主体→透明 PNG",
+        "edit 图.jpg mosaic --point x,y --mode pixel            # 打码",
+        "edit 视频.mp4 video --point \"x1,y1;x2,y2\" --op color --frame 30   # 视频彩色多物体（双向传播）",
+        "# ── 生成式编辑 v16.x（需 flux 8192 / wan 8189 在线，~1min） ──",
+        "# M8 指令式编辑：中文指令全局生效，无需 mask（Qwen-Image-Edit 2509）",
+        "edit output/test_inputs/scene_cat_dog.png instruct --prompt \"把猫换成金毛犬\" -o output/edit_demo/my_instruct.png",
+        "# M5 FLUX Fill 去物体：YOLO 自动找目标→生成式填补",
+        "edit output/test_inputs/scene_cat_dog.png inpaint --yolo --classes cat --engine flux --prompt \"empty ground\" -o output/edit_demo/my_fill.png",
+        "# M6 结构保持改物种：canny 联动（误伤降 10 倍）",
+        "edit output/test_inputs/scene_cat_dog.png inpaint --yolo --classes cat --engine flux --prompt \"a golden retriever puppy\" --controlnet canny --controlnet-strength 0.55 -o output/edit_demo/my_canny.png",
+        "# M5 生成式换底",
+        "edit 图.jpg replace_bg --box \"x1,y1,x2,y2\" --engine flux --prompt \"a sunny beach\" -o out.png",
+        "# ── M7 VACE 参考图生视频（单独命令，见 vace 条目） ──",
+        "vace output/test_inputs/_vace_ref_dog.png \"a dog running on grass\" --length 45 -o output/vace_my.mp4",
+        "# ── API 路径（注意：参数序是 图.jpg instruct 输入在前，与 CLI 相反） ──",
+        "curl -X POST http://127.0.0.1:9401/api/tool/edit -H 'Content-Type: application/json' -d '{\"args\":\"/app/output/test_inputs/scene_cat_dog.png instruct --prompt 把猫换成金毛犬\"}'"
+      ]
     },
     {
       "name": "help",

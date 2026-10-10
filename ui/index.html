@@ -125,6 +125,7 @@
     max-height: 260px; overflow-y: auto; padding: 10px; border-radius: 8px; margin-top: 10px; }
   .card video { width: 100%; border-radius: 8px; margin-top: 10px; max-height: 320px; background: #000; }
   .card .cand, .msg.bot .cand { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; font-size: 13px; }
+  .msg.bot .img-prev { max-width: 100%; max-height: 320px; border-radius: 8px; margin-top: 6px; display: block; }
   .card .score, .msg.bot .score { color: var(--ok); font-weight: 700; min-width: 24px; }
   .kv { display: flex; gap: 8px; padding: 2px 0; font-size: 13px; }
   .kv .k { color: var(--fg-dim); min-width: 44px; }
@@ -348,7 +349,7 @@
       <div id="messages">
         <div class="empty-hint" id="empty-hint">
           <h1>Vidance</h1>
-          <p>一句话生成有声短片。直接输入概念，或用 <code>/fast</code> <code>/hot</code> 等命令</p>
+    <p>一句话生成有声短片。直接输入概念，或用 <code>/fast</code> <code>/edit</code> <code>/vace</code> 等命令</p>
           <p>输入 <code>/</code> 查看全部命令</p>
         </div>
       </div>
@@ -359,7 +360,7 @@
             <textarea id="msg-input" rows="1" placeholder="输入概念或 / 命令…（回车发送）"></textarea>
             <button id="btn-send" onclick="send()">↑</button>
           </div>
-          <div class="hint">/fast 秒级出片 · /hot 热点一步到位 · /ask 补全概念 · /auto 完整流水线</div>
+          <div class="hint">/fast 秒级出片 · /hot 热点一步到位 · /edit 图片编辑 · /vace 参考图生视频 · /auto 完整流水线</div>
         </div>
       </div>
     </div>
@@ -1154,10 +1155,15 @@ function pollClip(jobId) {
 /* H3 单镜 / custom 异步轮询（长耗时，60s 一次） */
 function pollH3(jobId) {
   const isSvg = /^svg_/.test(jobId);
+  const isEdit = /^edit_/.test(jobId);
+  const isVace = /^vace_/.test(jobId);
+  const hint = isEdit ? '编辑中，通常 1-2 分钟，agent 日志见左侧面板…'
+    : isVace ? 'VACE 视频生成中，约 5-10 分钟，可离开页面稍后回来…'
+    : isSvg ? 'LLM 生成中…' : 'H3 生成中，通常 15-20 分钟，可离开页面稍后回来…';
   addBot('<div class="stream-log" id="jl-' + jobId + '">' +
-    '<div class="live"><span class="spin"></span><span class="live-t">⌁ ' +
-    (isSvg ? 'LLM 生成中…' : 'H3 生成中，通常 15-20 分钟，可离开页面稍后回来…') +
+    '<div class="live"><span class="spin"></span><span class="live-t">⌁ ' + hint +
     '</span></div></div>');
+  if (isSvg || isEdit || isVace) setLogTask(jobId);
   const root = document.getElementById('jl-' + jobId);
   const liveEl = root.querySelector('.live');
   const t0 = Date.now();
@@ -1191,7 +1197,7 @@ function pollH3(jobId) {
     if (d.status === 'completed') {
       addBot(`输出: ${escapeHtml(d.output || '')}` + (d.seed ? `\nseed: ${d.seed}` : ''));
       if (d.video_url) addComposeCard(d.output, d.video_url);
-      if (isSvg) setLogTask(jobId);
+      else if (d.image_url) addBot(`<img class="img-prev" src="${escapeHtml(d.image_url)}" alt="编辑结果">`);
     }
   }, isSvg ? 3000 : 5000);
 }
@@ -1591,7 +1597,7 @@ function newSession() {
   activeDialog = null;
   messages.innerHTML = `<div class="empty-hint" id="empty-hint">
     <h1>Vidance</h1>
-    <p>一句话生成有声短片。直接输入概念，或用 <code>/fast</code> <code>/hot</code> 等命令</p>
+    <p>一句话生成有声短片。直接输入概念，或用 <code>/fast</code> <code>/edit</code> <code>/vace</code> 等命令</p>
     <p>输入 <code>/</code> 查看全部命令</p></div>`;
   $('#session-title').textContent = '新会话';
   input.focus();

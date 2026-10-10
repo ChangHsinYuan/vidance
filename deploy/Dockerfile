@@ -16,11 +16,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY . /app
 
+# 重依赖层在 COPY 前（代码改动只作废 COPY 层，pip/Chromium 缓存复用）
 RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple \
     fastapi uvicorn pydantic requests edge-tts pillow numpy scipy moviepy bs4 feedparser playwright \
     && PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright playwright install chromium
+
+COPY . /app
 
 # 缺省最小档（无 GPU）；挂宿主服务/换档用 compose 或 -e 覆盖
 ENV VIDANCE_TIER=none \
