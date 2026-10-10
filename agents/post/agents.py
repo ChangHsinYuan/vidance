@@ -163,8 +163,8 @@ def pip(p):
 
 
 @register(name='post.edit', layer='post',
-          desc='SAM2 编辑：分割/抠图/换底/打码/inpaint/彩色多物体（图）或视频传播（video）',
-          inputs='{image|video, out_path?, point?="x,y x,y", op=segment|cutout|replace_bg|mosaic|inpaint|visualize|video, vop=mosaic|blur_bg|cutout|color, bg?, mode?, strength?, size?}')
+          desc='SAM2 编辑：分割/抠图/换底/打码/inpaint/彩色多物体（图）或视频传播（video）；YOLO 自动（yolo/classes）+ 框提示（box）+ 提示帧（frame）+ FLUX Fill 生成式重绘（engine=flux + prompt，v16.x M5）',
+          inputs='{image|video, out_path?, point?="x,y x,y", box?="x1,y1,x2,y2", yolo?, classes?="cat,dog", conf?, frame?, op=segment|cutout|replace_bg|mosaic|inpaint|visualize|video, vop=mosaic|blur_bg|cutout|color, bg?, mode?, strength?, size?, engine?=cv|flux, prompt?, steps?, guidance?, controlnet?=canny, controlnet_strength?}')
 def edit(p):
     from agents.post.tools import sam_edit as se
     import numpy as np
@@ -172,34 +172,74 @@ def edit(p):
 
     if p.get('video'):
         pts = se.parse_points(p.get('point') or '')
-        if not pts:
-            return TaskResult(ok=False, error='video 模式需要 point="x,y"（首帧目标点）')
+        boxes = se.parse_boxes(p.get('box') or '')
+        if p.get('yolo'):
+            import cv2
+            probe = cv2.VideoCapture(p['video'])
+            fr_idx = max(0, int(p.get('frame') or 0))
+            probe.set(cv2.CAP_PROP_POS_FRAMES, fr_idx)
+            ok, fr = probe.read()
+            if not ok:
+                return TaskResult(ok=False, error='提示帧读取失败（frame 超出视频帧数？）')
+            dets = se.detect_objects(fr[:, :, ::-1],
+                                     classes=[c for c in (p.get('classes') or '').split(',') if c] or None,
+                                     conf=float(p.get('conf') or 0.25))
+            boxes = [d[2] for d in dets]
+            if not boxes:
+                return TaskResult(ok=False, error='YOLO 未检出目标（调低 conf 或换 frame）')
+        if not pts and not boxes:
+            return TaskResult(ok=False, error='video 模式需要 point="x,y" / box="x1,y1,x2,y2" / yolo=true')
         out = p.get('out_path') or (os.path.splitext(p['video'])[0] + '_edit.mp4')
         if p.get('vop') == 'color':
             r = se.video_color(p['video'], out, pts, size=p.get('size', 'small'),
-                               device=p.get('device', ''))
+                               device=p.get('device', ''),
+                               prompt_frame=int(p.get('frame') or 0),
+                               boxes=boxes or None)
             return TaskResult(ok=True, artifacts={'video': r['output'],
                                                   'frames': r['frames'],
                                                   'objects': r['objects'], 'op': 'color'})
         r = se.video_edit(p['video'], out, pts, op=p.get('vop', 'mosaic'),
                           size=p.get('size', 'small'), device=p.get('device', ''),
-                          mode=p.get('mode', 'pixel'), strength=int(p.get('strength', 16)))
+                          mode=p.get('mode', 'pixel'), strength=int(p.get('strength', 16)),
+                          prompt_frame=int(p.get('frame') or 0),
+                          boxes=boxes or None)
         return TaskResult(ok=True, artifacts={'video': r['output'],
                                               'frames': r['frames'], 'op': r['op']})
     if not p.get('image'):
         return TaskResult(ok=False, error='需要 image（图路径）或 video（视频路径）')
     img = np.array(Image.open(p['image']).convert('RGB'))
     pts = se.parse_points(p.get('point') or '')
+    boxes = se.parse_boxes(p.get('box') or '')
+    labels = None
+    if p.get('yolo'):
+        dets = se.detect_objects(img,
+                                 classes=[c for c in (p.get('classes') or '').split(',') if c] or None,
+                                 conf=float(p.get('conf') or 0.25))
+        boxes = [d[2] for d in dets]
+        labels = [d[0] for d in dets]
     out = p.get('out_path') or (os.path.splitext(p['image'])[0] + '_edit.png')
     if p.get('op') == 'visualize':
-        masks, scores = se.segment_multi(img, points=pts or None,
-                                         size=p.get('size', 'small'),
-                                         device=p.get('device', ''))
-        se.visualize(img, masks, out)
+        if boxes:
+            masks, scores, labels = se.segment_from_boxes(img, boxes, labels=labels,
+                                                          size=p.get('size', 'small'),
+                                                          device=p.get('device', ''))
+        else:
+            masks, scores = se.segment_multi(img, points=pts or None,
+                                             size=p.get('size', 'small'),
+                                             device=p.get('device', ''))
+            labels = ['物体%d' % (i + 1) for i in range(len(masks))]
+        se.visualize(img, masks, out, labels=labels)
         return TaskResult(ok=True, artifacts={'image': out, 'objects': len(masks),
                                               'scores': [round(s, 2) for s in scores]})
-    mask, score = se.segment_image(img, points=pts or None, size=p.get('size', 'small'),
-                                   device=p.get('device', ''))
+    if boxes:
+        masks, scores, _ = se.segment_from_boxes(img, boxes, size=p.get('size', 'small'),
+                                                 device=p.get('device', ''))
+        if not masks:
+            return TaskResult(ok=False, error='SAM2 框提示未产出掩膜')
+        mask, score = masks[0], scores[0]
+    else:
+        mask, score = se.segment_image(img, points=pts or None, size=p.get('size', 'small'),
+                                       device=p.get('device', ''))
     op = p.get('op', 'mosaic')
     out = p.get('out_path') or (os.path.splitext(p['image'])[0] + '_edit.png')
     if op == 'segment':
@@ -208,7 +248,11 @@ def edit(p):
         se.cutout(img, mask, out)
     elif op == 'replace_bg':
         bg = p.get('bg') or ''
-        if bg == 'blur':
+        if p.get('engine') == 'flux':
+            se.inpaint_flux(img, mask, p.get('prompt') or 'clean empty background', out,
+                            invert=True, steps=int(p.get('steps') or 30),
+                            guidance=float(p.get('guidance') or 30.0))
+        elif bg == 'blur':
             se.replace_bg(img, mask, out, blur=True)
         elif bg:
             c = bg.lstrip('#')
@@ -220,7 +264,15 @@ def edit(p):
         se.mosaic(img, mask, out, mode=p.get('mode', 'pixel'),
                   strength=int(p.get('strength', 16)))
     elif op == 'inpaint':
-        se.inpaint(img, mask, out)
+        if p.get('engine') == 'flux':
+            if not p.get('prompt'):
+                return TaskResult(ok=False, error='flux 引擎需要 prompt 描述重绘内容（如 empty wooden floor）')
+            se.inpaint_flux(img, mask, p['prompt'], out, steps=int(p.get('steps') or 30),
+                            guidance=float(p.get('guidance') or 30.0),
+                            controlnet=p.get('controlnet') or '',
+                            controlnet_strength=float(p.get('controlnet_strength') or 0.5))
+        else:
+            se.inpaint(img, mask, out)
     else:
         return TaskResult(ok=False, error=f'未知 op: {op}')
     return TaskResult(ok=True, artifacts={'image': out, 'mask_score': round(score, 3)})

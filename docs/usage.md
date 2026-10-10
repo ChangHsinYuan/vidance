@@ -32,7 +32,8 @@
 | `svg` (v13) | 概念或 SVG 文件 | 无 GPU（纯 CPU） | LLM 生成动效 SVG | TTS/字幕（S5） | 秒级出片，见 usage-v-svg.md |
 | `ppt` (v15) | 概念或 deck.html | 无 GPU（纯 CPU） | LLM 规划页面/图表 | TTS 旁白/字幕/LUT/BGM | 幻灯片短片+PDF/PNG 交付 |
 | `blender3d` (v13) | 概念或 scene.json | bpy EEVEE（宿主 GPU/容器 CPU） | LLM 规划 3D 场景 | TTS 旁白/字幕 | 3D 质感短片（模板 title3d/shapes/bars3d） |
-| `edit` (v16) | 图/视频路径 | SAM2（GPU 档） | SAM2 分割+inpaint/传播 | — | 抠图/换底/打码/去水印/视频追踪编辑 |
+| `edit` (v16) | 图/视频路径 | SAM2+YOLO+FLUX Fill/VACE/Qwen-Edit（GPU 档） | SAM2 分割+inpaint/传播/彩色多物体/YOLO 自动 + 生成式重绘/换底/参考图生视频/指令式编辑 | — | 抠图/换底/打码/去水印/视频双向追踪/框提示 + 生成式编辑（v16.x），详见 [v16-design.md](./v16-design.md) |
+| `vace` (v16.x) | 参考图 + prompt | Wan2.1 VACE（wan 8189） | 参考图→主体一致视频 | — | 角色参考图生成 5s 视频（480×832@16fps） |
 | `compose` (v10) | 时间线 JSON | — | — | 时间线拼接特效 | 后端 CLI 剪辑，见 usage-v10.md |
 | `h3shot` | prompt + 参考图 | H3 ref2va | 整段式单镜 | 原生音频直出 | 整段式单镜（`--ref` 条件注入） |
 | `ask` (v6) | 一句概念 | — | LLM 追问核实 | — | 多轮补全增强概念，见 usage-v6.md |

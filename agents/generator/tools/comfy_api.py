@@ -27,6 +27,7 @@ import string
 import mimetypes
 import urllib.request
 import urllib.error
+from PIL import Image
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), 'config', 'config.json')
 WORKFLOW_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), 'utils', 'workflows')
@@ -272,6 +273,132 @@ class ComfyClient:
 
         return result
 
+    def generate_vace_video(self, ref_path: str, prompt: str, seed: int = None,
+                            width: int = 832, height: int = 480, length: int = 81,
+                            steps: int = 25, cfg: float = 5.0, vace_strength: float = 1.0,
+                            fps: int = 16, negative_prompt: str = None,
+                            filename_prefix: str = 'vidance/vace', output_path: str = None) -> dict:
+        """Wan2.1 VACE 参考图生视频（reference_image + prompt → 主体一致视频）。
+
+        返回 {video_path, seed, params}。
+        """
+        if seed is None:
+            seed = random.randint(0, 2**32 - 1)
+        if negative_prompt is None:
+            negative_prompt = NEGATIVE_PROMPT
+
+        ref_filename = self.upload_image(ref_path, overwrite=True)
+
+        template_path = os.path.join(WORKFLOW_DIR, 'wan_vace.json')
+        with open(template_path, 'r') as f:
+            template = f.read()
+
+        params = {
+            'prompt': prompt,
+            'negative_prompt': negative_prompt,
+            'ref': ref_filename,
+            'width': width,
+            'height': height,
+            'length': length,
+            'steps': steps,
+            'cfg': cfg,
+            'vace_strength': vace_strength,
+            'seed': seed,
+            'fps': fps,
+            'filename_prefix': filename_prefix,
+        }
+        workflow = render_template(template, params)
+
+        if not self.wait_ready(timeout=60):
+            raise RuntimeError('ComfyUI server not ready')
+
+        prompt_id = self.queue_prompt(workflow)
+        outputs = self.wait_result(prompt_id)
+
+        video_info = outputs.get('14', {}).get('images', [{}])[0]
+        filename = video_info.get('filename', '')
+        subfolder = video_info.get('subfolder', '')
+        file_type = video_info.get('type', 'output')
+
+        if not filename:
+            raise RuntimeError(f'No video in outputs: {outputs}')
+
+        result = {
+            'prompt_id': prompt_id,
+            'seed': seed,
+            'params': params,
+            'filename': filename,
+            'subfolder': subfolder,
+        }
+
+        if output_path:
+            self.download_file(filename, subfolder, file_type, output_path)
+            result['video_path'] = output_path
+
+        return result
+
+    def generate_qwen_edit(self, image_path: str, instruction: str, seed: int = None,
+                           steps: int = 20, cfg: float = 2.5,
+                           filename_prefix: str = 'vidance/qwen_edit',
+                           output_path: str = None) -> dict:
+        """Qwen-Image-Edit 2509 指令式编辑：原图 + 自然语言指令 → 编辑图（中文指令可用）。
+
+        尺寸跟随原图（16 倍数对齐）。返回 {image_path, seed, params}。
+        """
+        if seed is None:
+            seed = random.randint(0, 2**31 - 1)
+
+        img = Image.open(image_path)
+        width = max(16, (img.width + 15) // 16 * 16)
+        height = max(16, (img.height + 15) // 16 * 16)
+
+        up_image = self.upload_image(image_path, overwrite=True)
+
+        template_path = os.path.join(WORKFLOW_DIR, 'qwen_edit.json')
+        with open(template_path, 'r') as f:
+            template = f.read()
+
+        params = {
+            'image': up_image,
+            'prompt': instruction,
+            'width': width,
+            'height': height,
+            'steps': steps,
+            'cfg': cfg,
+            'seed': seed,
+            'filename_prefix': filename_prefix,
+        }
+        workflow = render_template(template, params)
+        workflow['20']['inputs']['image'] = up_image
+
+        if not self.wait_ready(timeout=60):
+            raise RuntimeError('ComfyUI server not ready')
+
+        prompt_id = self.queue_prompt(workflow)
+        outputs = self.wait_result(prompt_id)
+
+        img_info = outputs.get('9', {}).get('images', [{}])[0]
+        filename = img_info.get('filename', '')
+        subfolder = img_info.get('subfolder', '')
+        file_type = img_info.get('type', 'output')
+
+        if not filename:
+            raise RuntimeError(f'No image in outputs: {outputs}')
+
+        result = {
+            'prompt_id': prompt_id,
+            'seed': seed,
+            'params': params,
+            'filename': filename,
+            'subfolder': subfolder,
+        }
+
+        if output_path:
+            self.download_file(filename, subfolder, file_type, output_path)
+            result['image_path'] = output_path
+
+        return result
+
     def generate_tripsplat(self, image_path: str, seed: int = None,
                            num_gaussians: int = 262144,
                            filename_prefix: str = 'vidance/character',
@@ -422,6 +549,79 @@ class ComfyClient:
         outputs = self.wait_result(prompt_id, timeout=600)
 
         # SaveImage node (id=9) outputs under 'images' key
+        img_info = outputs.get('9', {}).get('images', [{}])[0]
+        filename = img_info.get('filename', '')
+        subfolder = img_info.get('subfolder', '')
+        file_type = img_info.get('type', 'output')
+
+        if not filename:
+            raise RuntimeError(f'No image in outputs: {outputs}')
+
+        result = {
+            'prompt_id': prompt_id,
+            'seed': seed,
+            'params': params,
+            'filename': filename,
+            'subfolder': subfolder,
+        }
+
+        if output_path:
+            self.download_file(filename, subfolder, file_type, output_path)
+            result['image_path'] = output_path
+
+        return result
+
+
+    def generate_flux_fill(self, image_path: str, mask_path: str, prompt: str,
+                           seed: int = None, steps: int = 30, guidance: float = 30.0,
+                           canny_path: str = None, canny_strength: float = 0.5,
+                           filename_prefix: str = 'vidance/flux_fill',
+                           output_path: str = None) -> dict:
+        """FLUX.1 Fill 生成式局部重绘: SAM mask + prompt → 补全/替换区域内容。
+
+        mask_path 为 SAM 输出的灰度 PNG（重绘区域=白）。
+        canny_path 提供时走 Union ControlNet (canny) 结构保持重绘（v16.x M6）。
+        返回 {image_path, seed, params}。
+        """
+        if seed is None:
+            seed = random.randint(0, 2**31 - 1)
+
+        if canny_path:
+            template_path = os.path.join(WORKFLOW_DIR, 'flux_fill_canny.json')
+        else:
+            template_path = os.path.join(WORKFLOW_DIR, 'flux_fill.json')
+        with open(template_path, 'r') as f:
+            template = f.read()
+
+        params = {
+            'image': os.path.basename(image_path),
+            'mask': os.path.basename(mask_path),
+            'prompt': prompt or '',
+            'steps': steps,
+            'guidance': guidance,
+            'seed': seed,
+            'filename_prefix': filename_prefix,
+        }
+        if canny_path:
+            params['canny'] = os.path.basename(canny_path)
+            params['strength'] = canny_strength
+        workflow = render_template(template, params)
+
+        if not self.wait_ready(timeout=60):
+            raise RuntimeError('ComfyUI server not ready')
+
+        # 上传原图 + mask（+ canny 控制图）到 input/（LoadImage/LoadImageMask 只认 input 目录文件名）
+        up_image = self.upload_image(image_path, overwrite=True)
+        up_mask = self.upload_image(mask_path, overwrite=True)
+        workflow['20']['inputs']['image'] = up_image
+        workflow['21']['inputs']['image'] = up_mask
+        if canny_path:
+            up_canny = self.upload_image(canny_path, overwrite=True)
+            workflow['24']['inputs']['image'] = up_canny
+
+        prompt_id = self.queue_prompt(workflow)
+        outputs = self.wait_result(prompt_id, timeout=900)
+
         img_info = outputs.get('9', {}).get('images', [{}])[0]
         filename = img_info.get('filename', '')
         subfolder = img_info.get('subfolder', '')

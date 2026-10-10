@@ -1,0 +1,18 @@
+{
+  "10": {"class_type": "UNETLoader", "inputs": {"unet_name": "flux1-fill-dev-fp8.safetensors", "weight_dtype": "default"}},
+  "11": {"class_type": "DualCLIPLoader", "inputs": {"clip_name1": "clip_l.safetensors", "clip_name2": "t5xxl_fp8_e4m3fn.safetensors", "type": "flux", "device": "default"}},
+  "12": {"class_type": "VAELoader", "inputs": {"vae_name": "ae.safetensors"}},
+  "13": {"class_type": "ControlNetLoader", "inputs": {"control_net_name": "flux_shakker_labs_union_pro-fp8_e4m3fn.safetensors"}},
+  "14": {"class_type": "SetUnionControlNetType", "inputs": {"control_net": ["13", 0], "type": "canny/lineart/anime_lineart/mlsd"}},
+  "20": {"class_type": "LoadImage", "inputs": {"image": {{image}}}},
+  "21": {"class_type": "LoadImageMask", "inputs": {"image": {{mask}}, "channel": "red"}},
+  "22": {"class_type": "CLIPTextEncode", "inputs": {"text": {{prompt}}, "clip": ["11", 0]}},
+  "23": {"class_type": "CLIPTextEncode", "inputs": {"text": "", "clip": ["11", 0]}},
+  "24": {"class_type": "LoadImage", "inputs": {"image": {{canny}}}},
+  "26": {"class_type": "ControlNetApplyAdvanced", "inputs": {"positive": ["22", 0], "negative": ["23", 0], "control_net": ["14", 0], "image": ["24", 0], "strength": {{strength}}, "start_percent": 0.0, "end_percent": 1.0, "vae": ["12", 0]}},
+  "27": {"class_type": "FluxGuidance", "inputs": {"conditioning": ["26", 0], "guidance": {{guidance}}}},
+  "28": {"class_type": "InpaintModelConditioning", "inputs": {"positive": ["27", 0], "negative": ["26", 1], "vae": ["12", 0], "pixels": ["20", 0], "mask": ["21", 0], "noise_mask": true}},
+  "3": {"class_type": "KSampler", "inputs": {"seed": {{seed}}, "steps": {{steps}}, "cfg": 1.0, "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0, "model": ["10", 0], "positive": ["28", 0], "negative": ["28", 1], "latent_image": ["28", 2]}},
+  "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["12", 0]}},
+  "9": {"class_type": "SaveImage", "inputs": {"images": ["8", 0], "filename_prefix": {{filename_prefix}}}}
+}

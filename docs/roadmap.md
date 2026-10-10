@@ -380,7 +380,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v16 — 视频处理与编辑（SAM 分割 / 光流追踪 / AI 换脸 / 局部替换）（原 v19，🔄 M0-M4 已完成 2026-10-02，2026-09-30 立项）
+### v16 — 视频处理与编辑（SAM 分割 / YOLO 自动 / 视频追踪 / 局部替换 / 生成式编辑）（原 v19，✅ 已完成 2026-10-02：M0-M4 + 增强全绿 + v16.x M5-M8 生成式编辑，2026-09-30 立项）
 
 **目标**：给流水线补上**帧级视频编辑能力**——分割、追踪、换脸、局部替换，既服务二创（v19 的画面改写），也让 custom/auto 的成片可后期精修。
 
@@ -389,13 +389,25 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 - **光流追踪**：复用 v2 RIFE 光流模型做**目标轨迹追踪**（CoTracker/RIFE flow 聚焦）——镜头稳定/运动模糊修复/追踪局部打码；RIFE(8189) 已在线，增量改造（🎯 视频扩展阶段并入 M3，追踪打码优先）
 - **AI 换脸**：本地开源方案（FaceFusion/inswapper，参考图→目标视频换脸）——与 v1 角色锚结合（角色参考图→成片换脸），**明确仅用于已授权素材/虚构角色**；`utils/face_swap.py`（GPU，接 v21 档位 none 档禁用）
 - **局部替换（inpaint）**：帧内区域重绘（SDXL inpaint 8191 / FLUX fill）——去水印/替换物件/改背景；mask 来自 SAM 分割（SAM 分割 → inpaint 补全，两能力串联）
-- **ControlNet 参考（🎯 作为参考/可选）**：局部替换与二创改写时用 ControlNet（canny/depth/openpose/lineart）锁定构图/姿态/边缘——inpaint 重绘与改写质量更稳，避免结构漂移；与 v1 角色锚（参考图锁定）互补，SDXL 8191 可挂 ControlNet
+- **ControlNet 参考（🎯 2026-10-02 调研：节点已支持、权重未下载）**：FLUX 8192 原生支持全部编辑类节点（ControlNetApply/DiffControlNetLoader/InpaintModelConditioning/SetUnionControlNetType/ControlNetInpaintingAliMamaApply 实测在列），但 `ComfyUI/models/controlnet/` 为空——需下权重；具体候选见下方 v16.x backlog
 - **agent 化**：`audit.edit` 或 `post.edit` 薄包装 Agent（mask/sam/inpaint/face 四工具），链式调用：`{"agent":"post.edit","with":{"video":"${v.video}","op":"segment+inpaint","target":"背景"}}`
 - **档位接入**：新增能力进 v21 档位阶梯（`full` 档启用，编辑类全 GPU 依赖，none/flux 档降级提示）
 
-**里程碑**（2026-10-01 规划，仿 blender 线 M0 起步；2026-10-02 M0-M4 全部完成 ✅）：M0 SAM2 环境 spike ✅（SAM-2 1.0 源码装 /mnt/disk_sdb/zxy/sam2-src + 权重 models/sam2/ tiny+small + 单图验证：build 1.1s/预测 0.2s/显存 201MB）→ M1 SAM 分割 ✅（`agents/post/tools/sam_edit.py`：segment/cutout/replace_bg/mosaic/inpaint/visualize 六模式（visualize=彩色多物体叠加，SAM demo 风格 8 色调色板+边界描边+IoU 去重）+ 自动主体 3x3 网格打点并集（coverage 66.8% vs 单点 29%）+ _pick_device 逐卡探测）→ M2 局部替换 ✅（cv2.inpaint TELEA + mask 膨胀盖边缘；FLUX 服务器无 Fill 模型，latent inpaint 留可选）→ M3 视频扩展 ✅（SAM2 视频传播 build_sam2_video_predictor + 首帧点提示逐帧 mask + mosaic/blur_bg/cutout/color（彩色多物体，每点独立 obj_id）重拼 mp4，144 帧 @48it/s 传播 ~3s）→ M4 agent 化 ✅（CLI `vidance.py edit` 子命令 + `post.edit` agent + `/api/tool/edit`（图同步/视频异步 edit_* job 复用 h3shot 轮询）+ utils 薄壳 + config task_prefixes edit）。**换脸**（合规边界内，FaceFusion/inswapper）作 backlog 按需启动。实测：CLI inpaint/agent mosaic（mask_score 0.946）/API cutout 同步/视频 job 144 帧 6.0s 全通过（像素统计验证 mask 内变化、外不变）。**容器档位**：编辑类全 GPU 依赖（torch），容器（none 档）仅同步代码不装 sam2——编辑能力留宿主 GPU 档
+**里程碑**（2026-10-01 规划，仿 blender 线 M0 起步；2026-10-02 M0-M4 + 增强全部完成 ✅）：M0 SAM2 环境 spike ✅（SAM-2 1.0 源码装 /mnt/disk_sdb/zxy/sam2-src + 权重 models/sam2/ tiny+small + 单图验证：build 1.1s/预测 0.2s/显存 201MB）→ M1 SAM 分割 ✅（`agents/post/tools/sam_edit.py`：segment/cutout/replace_bg/mosaic/inpaint/visualize 六模式（visualize=彩色多物体叠加，SAM demo 风格 8 色调色板+边界描边+IoU 去重）+ 自动主体 3x3 网格打点并集（coverage 66.8% vs 单点 29%）+ _pick_device 逐卡探测）→ M2 局部替换 ✅（cv2.inpaint TELEA + mask 膨胀盖边缘；FLUX 服务器无 Fill 模型，latent inpaint 留可选）→ M3 视频扩展 ✅（SAM2 视频传播 build_sam2_video_predictor + 点提示逐帧 mask + mosaic/blur_bg/cutout/color（彩色多物体，每点独立 obj_id）重拼 mp4，144 帧 @48it/s 传播 ~3s）→ M4 agent 化 ✅（CLI `vidance.py edit` 子命令 + `post.edit` agent + `/api/tool/edit`（图同步/视频异步 edit_* job 复用 h3shot 轮询）+ utils 薄壳 + config task_prefixes edit）。**增强（2026-10-02 下午-傍晚，全通道验证）**✅：①彩色多物体 segment_multi/visualize（8 色调色板+IoU 0.85 去重+score<0.5 噪声丢弃）+ video_color（每点独立 obj_id）；②prompt_frame 参数（SAM2 任意帧提示，CLI --frame）；③**双向传播修复**（propagate_in_video 默认只向前，补 reverse=True 反向 pass，提示帧前帧着色 0%→30.9%）；④**YOLO 自动检测→SAM 框提示**（Grounded-SAM 流程，--yolo/--classes/--conf：猫覆盖 39.7%（点）→49.3%（框），scores 0.94-0.99， visualize 标签绘制类别名）+ video --yolo（检测帧提示→双向传播）；⑤box 提示（--box，每框一物体，大物体显著改善：盆栽 17.5%→46% 覆盖）+ segment_from_boxes；⑥全通道 CLI/agent/API 同步（agent --with yolo/classes/box/frame；API fl 透传 + 检出框注入 job）。实测：猫狗图 --yolo 7 物体全检（v8s，n 版检不出）；猫狗打斗视频 Wan 121 帧 → SAM2 双向追踪（帧 30 提示猫+狗，全片着色 29-37% 帧间稳定）；API 视频 yolo job 121/121 帧通过（像素统计验证）。**换脸**（合规边界内，FaceFusion/inswapper）+ FLUX Fill/ControlNet/VACE/Kontext 见 v16.x backlog 按需启动。**容器档位**：编辑类全 GPU 依赖（torch），容器（none 档）仅同步代码不装 sam2——编辑能力留宿主 GPU 档；环境固化 deploy/requirements-lock.txt + setup_env.sh + download_weights.sh（2026-10-02）
 
-**参考**：SAM2（Meta，视频分割）、CoTracker（Meta，点追踪）、FaceFusion、ProPainter（视频修补）、ControlNet（构图/姿态条件控制）。
+**v16.x 生成式编辑增强**（2026-10-02 晚，M5-M8 全部完成 ✅）：
+- **M5 FLUX.1 Fill 生成式重绘 ✅**：flux1-fill-dev-fp8（11.9G，dim 镜像仓）→ UNETLoader 直连；`flux_fill.json`（InpaintModelConditioning noise_mask）+ `ComfyClient.generate_flux_fill` + `sam_edit.inpaint_flux`（invert=换底）+ CLI `--engine flux`。测试：去猫（整框 mask seed42）YOLO cat 0.92→无检出、框外 0.42% 保留；换底 beach 背景 100% 重绘
+- **M6 Union ControlNet 联动 ✅**：Shakker-Labs union pro fp8（3.3G，Kijai）→ ControlNetApplyAdvanced（普通 Apply 报 needs a VAE）；canny 边缘（cv2.Canny 100,200）+ strength 0.55；mask 外误伤 5.19%→0.49%（10 倍提升）；改物种（猫→金毛）保持结构
+- **M7 Wan2.1 VACE 参考图生视频 ✅**：wan2.1_vace_1.3B_fp16（4.3G，Comfy-Org 官方 repackaged）+ wan_2.1_vae（254MB）→ `wan_vace.json`（WanVaceToVideo reference_image）+ `generate_vace_video` + CLI `vidance.py vace` + API /api/tool/vace（异步）。测试：狗参考图→81 帧@16fps，YOLO dog 0.92-0.95 全程在场
+- **M8 Qwen-Image-Edit 2509 指令式编辑 ✅**：qwen_image_edit_2509_fp8（20.4G）+ qwen_2.5_vl_7b_fp8_scaled（9.4G）+ qwen_image_vae（254MB）→ `qwen_edit.json`（TextEncodeQwenImageEditPlus）+ `generate_qwen_edit` + `sam_edit.qwen_edit` + CLI `edit instruct` + API edit 分发。测试：中文指令"把猫换成金毛犬"全实例生效（右侧 cat 0.64→dog 0.94）；"改成夜晚"全局均值 148,116,86→55,52,69 暗蓝
+- **教训**：①SAM mask 对大物体只盖部分（首测 18 去猫失败：mask coverage 3.8% vs 猫框 8.3%）→ 移除类用整框矩形 mask + **YOLO 复检目标物消失**；②Fill 内容感知残留（旁边有真狗时木纹阴影被 YOLO 误认 0.39-0.86，模型行为）；③SetUnionControlNetType type 合法值为组合串；④SAM set_image 需 uint8
+- 详细验证数据：docs/v16-design.md §4；汇报 docs/reports-20261001.md §4-6
+
+**v16.x 后续 backlog**（可选深化）：
+- **VACE control_video/control_masks inpaint 变体**（视频局部重绘，reference-only 已先行）
+- **换脸**（合规边界内，FaceFusion/inswapper）维持 backlog 按需启动
+
+**参考**：SAM2（Meta，视频分割）、CoTracker（Meta，点追踪）、FaceFusion、ProPainter（视频修补）、ControlNet（构图/姿态条件控制）、FLUX.1 Fill/Canny/Depth/Kontext（Black Forest Labs，inpaint/ControlNet/指令编辑）、Wan2.2 VACE（视频编辑一体）、Qwen-Image-Edit（指令编辑）、RVM（视频抠像）。
 
 ---
 

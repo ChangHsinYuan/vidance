@@ -117,6 +117,8 @@ load_predictor._cache = {}
 
 def parse_points(spec):
     """'x,y x,y' 或 'x,y;x,y' → [(x,y), ...]"""
+def parse_points(spec):
+    """'x,y;x2,y2' 或 'x,y x2,y2' → [(x,y)]。"""
     pts = []
     for tok in (spec or '').replace(';', ' ').split():
         parts = tok.split(',')
@@ -126,6 +128,57 @@ def parse_points(spec):
             except ValueError:
                 pass
     return pts
+
+
+def parse_boxes(spec):
+    """'x1,y1,x2,y2;x1,y1,x2,y2' → [(x1,y1,x2,y2)]。"""
+    boxes = []
+    for tok in (spec or '').replace(';', ' ').split():
+        parts = tok.split(',')
+        if len(parts) == 4:
+            try:
+                boxes.append(tuple(int(float(v)) for v in parts))
+            except ValueError:
+                pass
+    return boxes
+
+
+# ────────────────────────── YOLO 自动物体检测（Grounded-SAM 流程）──────────────────────────
+
+_YOLO_WEIGHTS = [
+    'models/yolo/yolov8s.pt',      # 主（vidance/models/yolo/）
+    'yolov8s.pt',                  # 兜底（仓根，早期手工下载）
+]
+
+
+def detect_objects(img, classes=None, conf=0.25, weights=''):
+    """YOLO 自动物体检测（--yolo 模式）。
+
+    classes: 类别名列表（COCO 80 类，如 ['cat','dog']）None=全部。
+    Returns [(label, conf, (x1,y1,x2,y2))] 按置信度降序。
+    """
+    from ultralytics import YOLO
+    w = weights
+    if not w:
+        for c in _YOLO_WEIGHTS:
+            if os.path.exists(c):
+                w = c
+                break
+    if not w or not os.path.exists(w):
+        raise RuntimeError('找不到 YOLO 权重（models/yolo/yolov8s.pt），'
+                           'bash deploy/download_weights.sh 下载')
+    y = YOLO(w)
+    img8 = np.ascontiguousarray(img[..., ::-1])  # RGB→BGR，负 stride 修复
+    r = y(img8, conf=conf, verbose=False)[0]
+    dets = []
+    for b in r.boxes:
+        label = r.names[int(b.cls)]
+        if classes and label not in classes:
+            continue
+        x1, y1, x2, y2 = [int(v) for v in b.xyxy[0].tolist()]
+        dets.append((label, float(b.conf), (x1, y1, x2, y2)))
+    dets.sort(key=lambda t: -t[1])
+    return dets
 
 
 def segment_image(img, points=None, size='small', device=''):
@@ -220,6 +273,75 @@ def inpaint(img, mask, out_path, radius=6):
     return out_path
 
 
+# ────────────────────────── M5: FLUX.1 Fill 生成式重绘 ──────────────────────────
+
+def inpaint_flux(img, mask, prompt, out_path, invert=False, steps=30, guidance=30.0,
+                 controlnet='', controlnet_strength=0.5, host='', port=0, timeout=900):
+    """FLUX.1 Fill 生成式局部重绘：SAM mask + prompt → 重绘区域内容（ComfyUI :8192）。
+
+    invert=True 时重绘 mask 之外（replace_bg 生成式换底，如 "beach"）。
+    controlnet='canny' → Union ControlNet 结构保持重绘（v16.x M6：改物种保持姿态轮廓）。
+    flux 不可达/失败 → 抛 RuntimeError（调用方自行降级 cv2.inpaint）。
+    """
+    from agents.generator.tools.comfy_api import ComfyClient
+    tmp_dir = os.path.dirname(out_path) or '.'
+    ts = time.strftime('%H%M%S%f')
+    img_png = os.path.join(tmp_dir, f'_fill_in_{ts}.png')
+    mask_png = os.path.join(tmp_dir, f'_fill_mask_{ts}.png')
+    canny_png = ''
+    try:
+        Image.fromarray(img).save(img_png)
+        m = mask.astype(np.uint8)
+        if invert:
+            m = 1 - m
+        Image.fromarray(m * 255).save(mask_png)
+        kw = {}
+        if host:
+            kw['host'] = host
+        if port:
+            kw['port'] = port
+        canny_path = None
+        if controlnet == 'canny':
+            import cv2
+            g = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+            edges = cv2.Canny(g, 100, 200)
+            canny_path = os.path.join(tmp_dir, f'_fill_canny_{ts}.png')
+            Image.fromarray(edges).save(canny_path)
+            canny_png = canny_path
+        client = ComfyClient(instance='flux', **kw)
+        r = client.generate_flux_fill(img_png, mask_png, prompt, steps=steps,
+                                      guidance=guidance, canny_path=canny_path,
+                                      canny_strength=controlnet_strength,
+                                      output_path=out_path)
+        print(f"[flux-fill] prompt_id={r['prompt_id']} seed={r['seed']} steps={steps} "
+              f"guidance={guidance} controlnet={controlnet or 'none'}")
+        return out_path
+    finally:
+        for t in (img_png, mask_png, canny_png):
+            if not t:
+                continue
+            try:
+                os.remove(t)
+            except OSError:
+                pass
+
+
+# ────────────────────────── Qwen-Image-Edit 指令式编辑 ──────────────────────────
+
+def qwen_edit(img_path, instruction, out_path, steps=20, cfg=2.5):
+    """Qwen-Image-Edit 2509 指令式编辑：原图 + 自然语言指令（中文可用）→ 编辑图（flux :8192）。
+
+    与 SAM mask 编辑正交：整图指令式修改（如"把猫换成狗"），无需 mask。
+    flux 不可达/失败 → 抛 RuntimeError（调用方自行降级）。
+    """
+    from agents.generator.tools.comfy_api import ComfyClient
+    client = ComfyClient(instance='flux')
+    r = client.generate_qwen_edit(img_path, instruction, steps=steps, cfg=cfg,
+                                  output_path=out_path)
+    print(f"[qwen-edit] prompt_id={r['prompt_id']} seed={r['seed']} steps={steps} cfg={cfg}")
+    return out_path
+
+
 # ────────────────────────── 彩色多物体可视化 ──────────────────────────
 
 # SAM demo 风格调色板（高饱和区分色）
@@ -266,8 +388,11 @@ def segment_multi(img, points=None, size='small', device='', grid=3, iou_dedupe=
     return masks, scores
 
 
-def visualize(img, masks, out_path, alpha=0.55):
-    """彩色多物体叠加（SAM demo 风格：每物体一色 + 半透明 + 边界描边）。"""
+def visualize(img, masks, out_path, alpha=0.55, labels=None):
+    """彩色多物体叠加（SAM demo 风格：每物体一色 + 半透明 + 边界描边）。
+
+    labels: 类别名（YOLO 模式）→ 物体左上角画标签。
+    """
     import cv2
     out = img.copy()
     for i, m in enumerate(masks):
@@ -276,14 +401,52 @@ def visualize(img, masks, out_path, alpha=0.55):
         # 边界描边（mask 边缘找轮廓）
         edges = m.astype(np.uint8) - cv2.erode(m.astype(np.uint8), np.ones((3, 3), np.uint8))
         out[edges.astype(bool)] = color
+        if labels and i < len(labels):
+            ys, xs = np.where(m)
+            if len(ys):
+                pos = (int(xs.min()), max(14, int(ys.min()) - 4))
+                cv2.putText(out, labels[i], pos, cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                            (255, 255, 255), 2)
+                cv2.putText(out, labels[i], pos, cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                            color, 1)
     Image.fromarray(out).save(out_path)
     return out_path
 
 
-def video_color(in_path, out_path, points, size='small', device='', alpha=0.55,
-                on_frame=None, prompt_frame=0):
-    """视频彩色多物体：每个点一个独立 obj_id 传播 → 逐帧彩色叠加（SAM demo 风格）。
+def segment_from_boxes(img, boxes, labels=None, size='small', device='', iou_dedupe=0.85):
+    """框提示分割（Grounded-SAM：YOLO 框 → SAM2 精分割）：每框一个独立物体。
 
+    boxes: [(x1,y1,x2,y2)]；labels: 对应类别名（None=自动编号）。
+    Returns (masks[list of bool HxW], scores[list of float], labels[list of str])
+    """
+    predictor, _dev = load_predictor(size=size, device=device)
+    predictor.set_image(img)
+    if labels is None:
+        labels = ['物体%d' % (i + 1) for i in range(len(boxes))]
+    masks, scores, out_labels = [], [], []
+    for box, label in zip(boxes, labels):
+        try:
+            ms, ss, _ = predictor.predict(
+                box=np.array(box, dtype=np.float32))
+        except Exception:
+            continue
+        best = int(np.argmax(ss))
+        m = ms[best].astype(bool)
+        if ss[best] < 0.5 or m.sum() < 16:
+            continue
+        if any(_iou(m, kept) > iou_dedupe for kept in masks):
+            continue
+        masks.append(m)
+        scores.append(float(ss[best]))
+        out_labels.append(label)
+    return masks, scores, out_labels
+
+
+def video_color(in_path, out_path, points, size='small', device='', alpha=0.55,
+                on_frame=None, prompt_frame=0, boxes=None):
+    """视频彩色多物体：每个点/框一个独立 obj_id 传播 → 逐帧彩色叠加（SAM demo 风格）。
+
+    points: [(x,y)] 或 boxes: [(x1,y1,x2,y2)]（优先 box）。
     prompt_frame：提示帧索引（SAM2 支持任意帧提示，双向传播）。
     """
     import torch
@@ -304,16 +467,22 @@ def video_color(in_path, out_path, points, size='small', device='', alpha=0.55,
     with torch.inference_mode(), torch.autocast('cuda', dtype=torch.bfloat16,
                                                 enabled=dev.startswith('cuda')):
         state = predictor.init_state(video_path=tmpd)
-        f0 = cv2.imread(os.path.join(tmpd, names[0]))
+        f0 = cv2.imread(os.path.join(tmpd, names[min(prompt_frame, len(names) - 1)]))
         fh, fw = f0.shape[:2]
-        labels = np.ones((1, len(points)), dtype=np.int64)
-        # 每个点一个独立物体（obj_id 1..n），提示帧 prompt_frame
-        for k, (x, y) in enumerate(points, start=1):
+        # 优先框提示（每框一物体），否则每点一物体（obj_id 1..n）
+        for k, (x1, y1, x2, y2) in enumerate(boxes or [], start=1):
             predictor.add_new_points_or_box(
                 state, obj_id=k, frame_idx=prompt_frame,
-                points=np.array([[(min(max(x, 0), fw - 1), min(max(y, 0), fh - 1))]],
-                                dtype=np.float32),
-                labels=np.ones((1, 1), dtype=np.int64))
+                box=np.array([min(max(x1, 0), fw - 1), min(max(y1, 0), fh - 1),
+                              min(max(x2, 0), fw - 1), min(max(y2, 0), fh - 1)],
+                             dtype=np.float32))
+        if not boxes:
+            for k, (x, y) in enumerate(points, start=1):
+                predictor.add_new_points_or_box(
+                    state, obj_id=k, frame_idx=prompt_frame,
+                    points=np.array([[(min(max(x, 0), fw - 1), min(max(y, 0), fh - 1))]],
+                                    dtype=np.float32),
+                    labels=np.ones((1, 1), dtype=np.int64))
         # 多物体传播：propagate 产出 (frame, [obj_ids], [logits])
         # 双向传播：提示帧向后 + 向前（reverse=True），覆盖全片
         masks_by_frame = {}
@@ -351,7 +520,8 @@ def video_color(in_path, out_path, points, size='small', device='', alpha=0.55,
         n = _encode_frames(_iter(), out_path, fps, total=total, on_frame=on_frame)
     finally:
         shutil.rmtree(tmpd, ignore_errors=True)
-    return {'output': out_path, 'frames': n, 'fps': fps, 'objects': len(points)}
+    return {'output': out_path, 'frames': n, 'fps': fps,
+            'objects': len(boxes or []) or len(points)}
 
 
 # ────────────────────────── M3: 视频传播 ──────────────────────────
@@ -407,11 +577,12 @@ def _png_bytes(arr):
 
 def video_edit(in_path, out_path, points, op='mosaic', size='small', device='',
                mode='pixel', strength=16, bg_color=(16, 18, 27), on_frame=None,
-               prompt_frame=0):
-    """SAM2 视频传播：点提示 → 逐帧 mask → op 处理 → 重拼 mp4。
+               prompt_frame=0, boxes=None):
+    """SAM2 视频传播：点/框提示 → 逐帧 mask → op 处理 → 重拼 mp4。
 
     op: mosaic / blur_bg / cutout（cutout 输出 mp4 无 alpha，黑底）
     prompt_frame：提示帧索引（SAM2 支持任意帧提示，双向传播）。
+    boxes: [(x1,y1,x2,y2)] 框提示（优先，obj_id=1）。
     """
     import torch
     import cv2
@@ -434,14 +605,22 @@ def video_edit(in_path, out_path, points, op='mosaic', size='small', device='',
     with torch.inference_mode(), torch.autocast('cuda', dtype=torch.bfloat16,
                                                 enabled=dev.startswith('cuda')):
         state = predictor.init_state(video_path=tmpd)
-        # 提示帧加点提示，obj_id=1
+        # 提示帧加点/框提示（优先 box），obj_id=1
         frame0 = cv2.imread(os.path.join(tmpd, names[min(prompt_frame, len(names) - 1)]))
         fh, fw = frame0.shape[:2]
-        pts = np.array([[(min(max(x, 0), fw - 1), min(max(y, 0), fh - 1)) for x, y in points]],
-                       dtype=np.float32)
-        labels = np.ones((1, len(points)), dtype=np.int64)
-        predictor.add_new_points_or_box(state, obj_id=1, frame_idx=prompt_frame,
-                                        points=pts, labels=labels)
+        if boxes:
+            b = boxes[0]
+            predictor.add_new_points_or_box(
+                state, obj_id=1, frame_idx=prompt_frame,
+                box=np.array([min(max(b[0], 0), fw - 1), min(max(b[1], 0), fh - 1),
+                              min(max(b[2], 0), fw - 1), min(max(b[3], 0), fh - 1)],
+                             dtype=np.float32))
+        else:
+            pts = np.array([[(min(max(x, 0), fw - 1), min(max(y, 0), fh - 1)) for x, y in points]],
+                           dtype=np.float32)
+            labels = np.ones((1, len(points)), dtype=np.int64)
+            predictor.add_new_points_or_box(state, obj_id=1, frame_idx=prompt_frame,
+                                            points=pts, labels=labels)
 
         # 传播（双向：提示帧向后 + 向前，覆盖全片）
         masks_by_frame = {}
@@ -493,7 +672,7 @@ def video_edit(in_path, out_path, points, op='mosaic', size='small', device='',
 
 def main():
     ap = argparse.ArgumentParser(description='v16 SAM2 分割 + 局部替换')
-    ap.add_argument('cmd', choices=['segment', 'cutout', 'replace_bg', 'mosaic', 'inpaint', 'visualize', 'video'])
+    ap.add_argument('cmd', choices=['segment', 'cutout', 'replace_bg', 'mosaic', 'inpaint', 'visualize', 'video', 'instruct'])
     ap.add_argument('input')
     ap.add_argument('-o', '--output')
     ap.add_argument('--point', help='点提示 x,y（可多个，空格分）', default='')
@@ -503,6 +682,20 @@ def main():
     ap.add_argument('--strength', type=int, default=16)
     ap.add_argument('--bg', default='', help='replace_bg: hex 色（如 101827）或 blur')
     ap.add_argument('--op', default='mosaic', help='video: mosaic/blur_bg/cutout/color')
+    ap.add_argument('--frame', type=int, default=0, help='video 提示帧索引（任意帧双向传播）')
+    ap.add_argument('--box', default='', help='框提示 x1,y1,x2,y2（分号分隔多框；优先于 --point）')
+    ap.add_argument('--yolo', action='store_true', help='YOLO 自动检测物体→框提示（Grounded-SAM）')
+    ap.add_argument('--classes', default='', help='YOLO 类别过滤（逗号分隔，如 cat,dog）')
+    ap.add_argument('--conf', type=float, default=0.25, help='YOLO 置信度阈值')
+    ap.add_argument('--engine', choices=['cv', 'flux'], default='cv',
+                     help='inpaint/replace_bg 引擎：cv=TELEA（快速）/ flux=FLUX.1 Fill 生成式重绘')
+    ap.add_argument('--prompt', default='', help='flux 引擎重绘内容描述（如 empty wooden floor）')
+    ap.add_argument('--steps', type=int, default=30, help='flux Fill 采样步数')
+    ap.add_argument('--guidance', type=float, default=30.0, help='flux Fill guidance（官方推荐 30）')
+    ap.add_argument('--cfg', type=float, default=2.5, help='Qwen Edit CFG（instruct 用）')
+    ap.add_argument('--controlnet', default='', choices=['', 'canny'],
+                     help='flux 联动 ControlNet：canny=结构保持重绘（v16.x M6）')
+    ap.add_argument('--controlnet-strength', type=float, default=0.5, help='ControlNet 强度')
     a = ap.parse_args()
 
     out = a.output or os.path.join(
@@ -512,27 +705,73 @@ def main():
 
     if a.cmd == 'video':
         pts = parse_points(a.point)
-        if not pts:
-            ap.error('video 需要 --point x,y（首帧目标点）')
+        boxes = parse_boxes(a.box)
+        labels = None
+        if a.yolo:
+            import cv2 as _cv2
+            probe = _cv2.VideoCapture(a.input)
+            probe.set(_cv2.CAP_PROP_POS_FRAMES, max(0, a.frame))
+            ok, fr = probe.read()
+            if not ok:
+                ap.error('提示帧读取失败（--frame 超出视频帧数？）')
+            dets = detect_objects(fr[:, :, ::-1], classes=(a.classes.split(',') if a.classes else None),
+                                  conf=a.conf)
+            boxes = [d[2] for d in dets]
+            labels = [d[0] for d in dets]
+            print(f'[yolo] {len(boxes)} 个物体: '
+                  + ', '.join(f'{d[0]}({d[1]:.2f})' for d in dets[:8]))
+            if not boxes:
+                ap.error('YOLO 未检出目标（调低 --conf 或换提示帧）')
+        if not pts and not boxes:
+            ap.error('video 需要 --point x,y / --box x1,y1,x2,y2 / --yolo')
         if a.op == 'color':
-            r = video_color(a.input, out, pts, size=a.size, device=a.device)
+            r = video_color(a.input, out, pts, size=a.size, device=a.device,
+                            prompt_frame=a.frame, boxes=boxes or None)
             print(f"✅ {r['output']}（{r['frames']} 帧 @{r['fps']:.1f}fps, {r['objects']} 物体彩色）")
             return
         r = video_edit(a.input, out, pts, op=a.op, size=a.size, device=a.device,
-                       mode=a.mode, strength=a.strength)
+                       mode=a.mode, strength=a.strength, prompt_frame=a.frame,
+                       boxes=boxes or None)
         print(f"✅ {r['output']}（{r['frames']} 帧 @{r['fps']:.1f}fps op={r['op']}）")
         return
 
-    img = np.array(Image.open(a.input).convert('RGB'))
-    pts = parse_points(a.point)
-    if a.cmd == 'visualize':
-        masks, scores = segment_multi(img, points=pts or None, size=a.size, device=a.device)
-        print(f'[sam2] 彩色多物体: {len(masks)} 个物体, scores '
-              + ', '.join(f'{s:.2f}' for s in scores))
-        visualize(img, masks, out)
+    if a.cmd == 'instruct':
+        if not a.prompt:
+            ap.error('instruct 需要 --prompt 编辑指令（如 把猫换成狗）')
+        qwen_edit(a.input, a.prompt, out, steps=a.steps, cfg=a.cfg)
         print(f'✅ {out}')
         return
-    mask, score = segment_image(img, points=pts or None, size=a.size, device=a.device)
+    img = np.array(Image.open(a.input).convert('RGB'))
+    pts = parse_points(a.point)
+    boxes = parse_boxes(a.box)
+    labels = None
+    if a.yolo:
+        classes = a.classes.split(',') if a.classes else None
+        dets = detect_objects(img, classes=classes, conf=a.conf)
+        boxes = [d[2] for d in dets]
+        labels = [d[0] for d in dets]
+        print(f'[yolo] {len(boxes)} 个物体: '
+              + ', '.join(f'{d[0]}({d[1]:.2f})' for d in dets[:8]))
+    if a.cmd == 'visualize':
+        if boxes:
+            masks, scores, labels = segment_from_boxes(img, boxes, labels=labels,
+                                                       size=a.size, device=a.device)
+        else:
+            masks, scores = segment_multi(img, points=pts or None, size=a.size, device=a.device)
+            labels = ['物体%d' % (i + 1) for i in range(len(masks))]
+        print(f'[sam2] 彩色多物体: {len(masks)} 个物体, scores '
+              + ', '.join(f'{s:.2f}' for s in scores))
+        visualize(img, masks, out, labels=labels)
+        print(f'✅ {out}')
+        return
+    if boxes:
+        masks, scores, _ = segment_from_boxes(img, boxes, size=a.size, device=a.device)
+        if not masks:
+            raise RuntimeError('SAM2 框提示未产出掩膜')
+        mask = masks[0]
+        score = scores[0]
+    else:
+        mask, score = segment_image(img, points=pts or None, size=a.size, device=a.device)
     print(f'[sam2] mask score={score:.3f} coverage={mask.mean():.3f}')
 
     if a.cmd == 'segment':
@@ -540,7 +779,10 @@ def main():
     elif a.cmd == 'cutout':
         cutout(img, mask, out)
     elif a.cmd == 'replace_bg':
-        if a.bg == 'blur':
+        if a.engine == 'flux':
+            inpaint_flux(img, mask, a.prompt or 'clean empty background', out,
+                         invert=True, steps=a.steps, guidance=a.guidance)
+        elif a.bg == 'blur':
             replace_bg(img, mask, out, blur=True)
         elif a.bg:
             c = a.bg.lstrip('#')
@@ -551,7 +793,13 @@ def main():
     elif a.cmd == 'mosaic':
         mosaic(img, mask, out, mode=a.mode, strength=a.strength)
     elif a.cmd == 'inpaint':
-        inpaint(img, mask, out)
+        if a.engine == 'flux':
+            if not a.prompt:
+                ap.error('flux 引擎需要 --prompt 描述重绘内容（如 empty wooden floor）')
+            inpaint_flux(img, mask, a.prompt, out, steps=a.steps, guidance=a.guidance,
+                         controlnet=a.controlnet, controlnet_strength=a.controlnet_strength)
+        else:
+            inpaint(img, mask, out)
     print(f'✅ {out}')
 
 

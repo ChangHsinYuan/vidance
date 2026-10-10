@@ -8,9 +8,9 @@ Vidance 是一个基于 opencode agent 编排的本地视频生成系统。核�
 
 **统一入口**：`python core/vidance.py make`（v12（原 v17）：`--director llm|manual|scout × --generator wan|fast|svg|h3` 排列组合）或直用子命令 `{auto|custom|quick|fast|hot|svg|compose|concat|h3shot}` — auto 模式走 LLM 编剧+Wan/FLUX 生成，custom 模式走参考图+预写脚本+H3 ref2va 生成，quick 模式纯 T2V 无后处理。后处理（RIFE/LUT/BGM/STT）由 `core/postprocess.py` 共享模块提供。
 
-**当前状态：v0-v7 全部实现 + v10 时间线拼接（M1-M8）+ svg 有声流水线（S1-S5）+ t2c 自然语言→命令 + v12 make 统一入口（M1-M2，原 v17）+ v11 多智能体（M0-M4 + v11.1 前端可视化，原 v13，agents/ 目录，docs/v11-design.md）+ v15 PPT 流水线（M1-M4，原 v20：ppt_llm plan_deck/模板/svg_chart + ppt_pipeline PptLine 多形态 deck.html/PDF/PNG/mp4 + CLI ppt + generator.ppt agent + /api/tool/ppt）+ v13 blender 3D 简单版（blender_llm plan_scene/模板 title3d+shapes+bars3d + blender_pipeline bpy EEVEE + BlenderLine + CLI blender3d + generator.blender3d agent + /api/tool/blender3d）+ v13 轻量化收口（无模型四线全具备：营销号/SVG/PPT/Blender）+ v16 SAM2 编辑 M0-M4（sam_edit segment/cutout/replace_bg/mosaic/inpaint + video 传播 + CLI edit + post.edit agent + /api/tool/edit）**（v2 长视频 + v2.1 backlog + v3 M0-M7 + v4 M1-M6 + v5 M1-M4 + v6 M1-M4 + v7 前端 M1-M4 + v10 + t2c），**待开发**：v14 社交媒体（原 v11，🔗 已移交队友）/ v17 开源整合（原 v12）/ v18 长视频质量（原 v14）/ v19 二创（原 v16）/ v20 生成中审核（原 v21）/ v21 交付形态（原 v18）（2026-09-26 重排 + 2026-09-30 新增 v19-v21 + 2026-10-01 二次重排 + v13/v15 关版、v14 移交队友 + 2026-10-02 v16 M0-M4：括号内为原号）。
+**当前状态：v0-v7 全部实现 + v10 时间线拼接（M1-M8）+ svg 有声流水线（S1-S5）+ t2c 自然语言→命令 + v12 make 统一入口（M1-M2，原 v17）+ v11 多智能体（M0-M4 + v11.1 前端可视化，原 v13，agents/ 目录，docs/v11-design.md）+ v15 PPT 流水线（M1-M4，原 v20：ppt_llm plan_deck/模板/svg_chart + ppt_pipeline PptLine 多形态 deck.html/PDF/PNG/mp4 + CLI ppt + generator.ppt agent + /api/tool/ppt）+ v13 blender 3D 简单版（blender_llm plan_scene/模板 title3d+shapes+bars3d + blender_pipeline bpy EEVEE + BlenderLine + CLI blender3d + generator.blender3d agent + /api/tool/blender3d）+ v13 轻量化收口（无模型四线全具备：营销号/SVG/PPT/Blender）+ v16 SAM2 编辑 + 生成式编辑增强 ✅（sam_edit segment/cutout/replace_bg/mosaic/inpaint/visualize/instruct + YOLO 自动 Grounded-SAM/框提示 + video 双向传播追踪 + v16.x M5 FLUX Fill 生成式重绘/M6 Union ControlNet canny 联动/M7 Wan2.1 VACE 参考图生视频/M8 Qwen-Image-Edit 2509 指令式编辑（中文可用）+ CLI edit --engine flux|vace|instruct + post.edit agent + /api/tool/edit|vace + deploy 环境固化三件套；docs/v16-design.md）**（v2 长视频 + v2.1 backlog + v3 M0-M7 + v4 M1-M6 + v5 M1-M4 + v6 M1-M4 + v7 前端 M1-M4 + v10 + t2c），**待开发**：v14 社交媒体（原 v11，🔗 已移交队友）/ v17 开源整合（原 v12）/ v18 长视频质量（原 v14）/ v19 二创（原 v16）/ v20 生成中审核（原 v21）/ v21 交付形态（原 v18）（2026-09-26 重排 + 2026-09-30 新增 v19-v21 + 2026-10-01 二次重排 + v13/v15 关版、v14 移交队友 + 2026-10-02 v16 M0-M4：括号内为原号）。
 
-**版本路线**：v4 营销号流水线（fast/hot 爬图出片）→ v5 剪辑特效 → v6 prompt 多轮核实（ask + dialog API）→ v7 前端 agent WebUI（:8894/ui）→ **v8 前端增强**（资产库/分镜预览/进度可视化/时间线展示）→ **v9 API 标准化**（多 Vendor 适配/能力发现/用量限流/OpenAPI）→ **v10 拼接与特效**（OpenCut 时间线思路，后端 CLI 可被 LLM 调用）→ **v11 多智能体**（三层 Agent 解耦，原 v13）→ **v12 三排正交**（make 统一入口，原 v17）→ **v13 轻量化 ✅**（无模型四线：营销号/SVG/PPT/Blender 3D；模型加速按需后续，原 v15）→ **v14 接入社交媒体**（发布渠道 + IM 机器人网关，🔗 已移交队友，原 v11）→ **v15 LLM 生成 PPT ✅**（HTML 幻灯片→渲染 mp4/PDF，原 v20）→ **v16 视频处理编辑 M0-M4 ✅**（SAM2 分割/抠图/打码/inpaint + 视频传播，换脸 backlog，原 v19）→ **v16 视频处理编辑**（SAM/光流/换脸/局部替换/ControlNet 参考，原 v19）→ **v17 整合开源仓库**（断点续跑/JSON 容错/RAG/五维提示词，原 v12）→ **v18 长视频质量**（关键帧驱动/一镜到底/层级一致性，原 v14）→ **v19 二创**（视频链接二创，原 v16）→ **v20 生成中审核**（tensor 边生边审，原 v21）→ **v21 交付形态**（部署分档/一键安装，原 v18）。详见 docs/roadmap.md。
+**版本路线**：v4 营销号流水线（fast/hot 爬图出片）→ v5 剪辑特效 → v6 prompt 多轮核实（ask + dialog API）→ v7 前端 agent WebUI（:8894/ui）→ **v8 前端增强**（资产库/分镜预览/进度可视化/时间线展示）→ **v9 API 标准化**（多 Vendor 适配/能力发现/用量限流/OpenAPI）→ **v10 拼接与特效**（OpenCut 时间线思路，后端 CLI 可被 LLM 调用）→ **v11 多智能体**（三层 Agent 解耦，原 v13）→ **v12 三排正交**（make 统一入口，原 v17）→ **v13 轻量化 ✅**（无模型四线：营销号/SVG/PPT/Blender 3D；模型加速按需后续，原 v15）→ **v14 接入社交媒体**（发布渠道 + IM 机器人网关，🔗 已移交队友，原 v11）→ **v15 LLM 生成 PPT ✅**（HTML 幻灯片→渲染 mp4/PDF，原 v20）→ **v16 视频处理编辑 ✅**（SAM2 分割/抠图/打码/inpaint/彩色多物体/YOLO 自动 Grounded-SAM/框提示 + 视频双向追踪 + v16.x 生成式编辑：M5 FLUX Fill 重绘/M6 Union ControlNet canny/M7 Wan2.1 VACE 参考图生视频/M8 Qwen-Image-Edit 指令式编辑，原 v19）→ **v17 整合开源仓库**（断点续跑/JSON 容错/RAG/五维提示词，原 v12）→ **v18 长视频质量**（关键帧驱动/一镜到底/层级一致性，原 v14）→ **v19 二创**（视频链接二创，原 v16）→ **v20 生成中审核**（tensor 边生边审，原 v21）→ **v21 交付形态**（部署分档/一键安装，原 v18）。详见 docs/roadmap.md。
 
 v1 角色锚流程：FLUX 生角色图 → TripoSplat 重建 3DGS → 每镜 RenderSplat 按角度渲染参考帧 → Wan I2V 生成。
 
@@ -118,7 +118,7 @@ vidance/
 │   ├── t2c_server.py          # t2c 推理封装（translate(text)→command，进程内单例/可选 HTTP）
 │   ├── svg_llm.py             # v13（原 v15）概念→LLM→动效 SVG（S1）
 │   ├── svg_pipeline.py        # v13（原 v15）SVG→mp4（无头浏览器逐帧渲染，纯 CPU；S2 单帧/S3 抽帧/S4 成片）
-│   ├── sam_edit.py            # v16（原 v19）SAM2 编辑：分割/抠图/换底/打码/inpaint/彩色多物体 + 视频传播（GPU 档）
+│   ├── sam_edit.py            # v16（原 v19）SAM2 编辑：分割/抠图/换底/打码/inpaint/彩色多物体/YOLO 自动/框提示 + 视频双向追踪 + qwen_edit 指令式（GPU 档）
  │   ├── ppt_llm.py             # v15（原 v20）概念→LLM 规划 deck JSON→HTML 幻灯片（模板渲染 + svg_chart bar/line/pie）
  │   ├── ppt_pipeline.py        # v15（原 v20）deck→mp4/PDF/PNG（PptLine 多形态交付，页间 xfade + TTS 旁白，纯 CPU）
  │   ├── blender_llm.py         # v13 blender 简单版：概念→LLM 规划 3D 场景 JSON（模板 title3d/shapes/bars3d + 配色 + 物体/材质/关键帧规范化）
@@ -245,15 +245,24 @@ python core/vidance.py ppt "主题" --pdf -n 5 --transition wipe --voice cosy-de
 python core/vidance.py blender3d "Vidance 3D 展示" --duration 6 --voice cosy-default   # 一键：LLM 规划 3D 场景 + bpy EEVEE 渲染 + TTS → final.mp4
 python core/vidance.py blender3d --scene output/blender3d_xxx/scene.json              # 渲染模式：按 scene.json 重建渲染
 
-# ── edit：v16（原 v19）SAM2 编辑（图五模式 / 视频传播；GPU 档）──
+# ── edit：v16（原 v19）SAM2 编辑（图七模式 / 视频双向追踪；GPU 档）──
 python core/vidance.py edit cutout 图.jpg --point 311,175 -o out.png                  # 抠主体 → 透明 PNG（省略 --point = 自动主体）
 python core/vidance.py edit inpaint 图.jpg --point x,y -o out.png                     # 去水印/局部替换（cv2 TELEA）
 python core/vidance.py edit mosaic 图.jpg --point x,y --mode pixel                    # 区域打码（pixel/blur）
 python core/vidance.py edit replace_bg 图.jpg --point x,y --bg blur                   # 换背景（纯色 hex 或 blur）
 python core/vidance.py edit visualize 图.jpg                                          # 彩色多物体可视化（SAM demo 风格，省略 --point 自动）
+python core/vidance.py edit visualize 图.jpg --yolo --classes "cat,dog"               # YOLO 自动检测→SAM 框提示（Grounded-SAM，标签绘制）
+python core/vidance.py edit visualize 图.jpg --box "x1,y1,x2,y2;x1,y1,x2,y2"          # 框提示多物体（大物体比点准，盆栽 17.5%→46%）
 python core/vidance.py edit video in.mp4 --point x,y --op mosaic -o out.mp4           # 视频传播：首帧点提示逐帧打码/换底
 python core/vidance.py edit video in.mp4 --point "x1,y1;x2,y2" --op color             # 视频彩色多物体（每点独立追踪一色）
 python core/vidance.py edit video in.mp4 --point "x1,y1;x2,y2" --op color --frame 30  # 提示帧 30 起双向传播（两动物同框帧更准）
+python core/vidance.py edit video in.mp4 --yolo --frame 30 --op color                 # YOLO 检测帧→框提示→双向追踪
+# ── edit 生成式增强（v16.x M5-M8；需 flux 8192 / wan 8189 在线）──
+python core/vidance.py edit inpaint 图.jpg --box "x1,y1,x2,y2" --engine flux --prompt "a wooden table" -o out.png   # M5 Fill mask 内重绘（--point/--box/--yolo 均可）
+python core/vidance.py edit replace_bg 图.jpg --box "x1,y1,x2,y2" --engine flux --prompt "a sunny beach" -o out.png # M5 生成式换底（mask 反转）
+python core/vidance.py edit inpaint 图.jpg --box "x1,y1,x2,y2" --engine flux --prompt "a golden retriever puppy" --controlnet canny --controlnet-strength 0.55 -o out.png  # M6 结构保持改物种
+python core/vidance.py vace ref.png "a dog running on grass" --length 81 -o out.mp4   # M7 VACE 参考图生视频（480x832@16fps）
+python core/vidance.py edit instruct 图.jpg --prompt "把猫换成狗" -o out.png           # M8 指令式编辑（Qwen-Image-Edit，中文指令，无需 mask）
 
 > 旧入口 `python core/pipeline.py ...` 和 `python core/custom_gen.py ...` 仍可用（向后兼容），但推荐使用 `vidance.py`。
 

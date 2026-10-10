@@ -51,3 +51,23 @@ docker compose -f deploy/docker-compose.yml --profile gpu-wan up -d comfyui-wan 
 | 任意档 | vidance API（容器） | `VIDANCE_PORT`，缺省 9400 |
 | full（本机演示） | vidance API | 9401 |
 | 宿主已有 | h3/wan/flux/tts/api | 8188/8189/8192/9880/8894（不变） |
+
+## 环境固化与一键准备（2026-10-02，v16 编辑增强配套）
+
+| 文件 | 用途 |
+|------|------|
+| `requirements-lock.txt` | 主环境（comfyui env）版本冻结。**三条铁律**：numpy 1.26.x（bpy 兼容）/ opencv 4.11 headless（5.x 连带 numpy 2.x）/ sam2 可编辑安装 |
+| `setup_env.sh` | 干净机器一键准备：pip 锁定安装 + SAM2 可编辑安装（`--no-build-isolation` 绕 pypi 构建卡死）+ bpy X 库 + 权重下载 + 全量验证（import/权重/GPU） |
+| `download_weights.sh` | 权重下载（SAM2 tiny/small + YOLOv8s，curl 断点续传；大模型清单+手动下载说明） |
+
+```bash
+# 干净机器（或重建后）：
+bash deploy/setup_env.sh                       # 默认找 comfyui env
+bash deploy/setup_env.sh -- /path/to/python    # 指定解释器
+
+# 冒烟验证：
+python core/vidance.py edit visualize 图.jpg --yolo --classes "cat,dog"   # Grounded-SAM 流程
+```
+
+> 权重目录：`models/sam2/`（tiny+small）+ `models/yolo/`（yolov8s）；`*.pt` 已 gitignore，重建后跑 download_weights.sh 即可恢复。
+> 大模型（FLUX Fill/Canny/Kontext、Wan2.2 VACE 等编辑系候选）不进自动化下载——见 download_weights.sh 清单，手动下载到 ComfyUI/models/ 对应子目录。

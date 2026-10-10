@@ -1,0 +1,50 @@
+# Vidance 环境固化（v21 部署档，2026-10-02 从宿主 comfyui env 冻结）
+# 主环境：/home/zxy/.conda/envs/comfyui/bin/python（torch 2.13+cu130）
+# ⚠️ 三条铁律：
+#   1. numpy 必须 1.26.x（bpy 5.0 兼容要求 numpy<2，opencv 5.x 会连带拉 numpy 2.x 破坏 bpy）
+#   2. opencv 固定 4.11 headless（5.0+ 连带 numpy 2.x；headless 免 X 依赖）
+#   3. sam2 为可编辑安装（源码仓外），见 download_weights.sh + setup_env.sh
+# 安装：pip install -r deploy/requirements-lock.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# ── torch（CUDA 版；cu130 轮子需对应驱动，CPU 机可换 cpu 轮）──
+torch==2.13.0+cu130
+torchvision==0.28.0+cu130
+
+# ── 版本钳制（互相兼容的关键组合）──
+numpy==1.26.4
+opencv-python-headless==4.11.0.86
+pillow==11.3.0
+
+# ── v16 SAM2 编辑（+ 依赖 hydra-core/timm 由 sam2 源码 requirements 拉）──
+# SAM-2 不进 lock：可编辑安装，setup_env.sh 里 `pip install -e $SAM2_SRC --no-build-isolation`
+hydra-core==1.3.6
+ultralytics==8.4.171          # YOLO 自动物体检测（--no-deps 装也行，依赖见下）
+
+# ── 流水线主体 ──
+fastapi==0.141.1
+uvicorn==0.52.4
+httpx==0.28.1
+moviepy==2.2.1
+faster-whisper==1.2.1
+
+# ── v13 blender 3D（bpy 需要 numpy<2 + apt libsm6/libxext6/libxrender1）──
+# bpy 不进 lock：版本跟 Blender 发行版走（本机 5.0.1），setup_env.sh 里装
+
+# ── v3 headless 渲染 ──
+trimesh==5.1.0
+pyrender==0.1.45
+PyOpenGL==3.1.0
+
+# ── 通用 ──
+safetensors==0.8.0
+transformers==5.14.1
+einops==0.8.2
+scipy==1.17.1
+psutil==7.2.2
+PyYAML==6.0.3
+tqdm==4.70.0
+ImageIO==2.37.4
+
+# ── ultralytics --no-deps 时的最小依赖（若整装 ultralytics 可删本节）──
+# matplotlib pandas py-cpuinfo thop 由完整安装自动拉；当前宿主仅 scipy/psutil/yaml/tqdm，
+# 推理（YOLO 检测）只需 torch/torchvision/numpy/pillow/opencv —— 已全部覆盖

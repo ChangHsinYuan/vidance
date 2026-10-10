@@ -465,36 +465,83 @@ def cmd_edit(args):
     from agents.post.tools import sam_edit as se
 
     pts = se.parse_points(args.point)
+    boxes = se.parse_boxes(getattr(args, 'box', ''))
+    classes = (getattr(args, 'classes', '') or '').split(',') if getattr(args, 'classes', '') else None
+    conf = getattr(args, 'conf', 0.25)
     if args.cmd == 'video':
-        if not pts:
-            print('usage: edit video in.mp4 --point x,y [--op mosaic|blur_bg|cutout|color] -o out.mp4')
+        if getattr(args, 'yolo', False):
+            import cv2
+            probe = cv2.VideoCapture(args.input)
+            fr_idx = max(0, getattr(args, 'frame', 0))
+            probe.set(cv2.CAP_PROP_POS_FRAMES, fr_idx)
+            ok, fr = probe.read()
+            if not ok:
+                print('✗ 提示帧读取失败（--frame 超出视频帧数？）')
+                return
+            dets = se.detect_objects(fr[:, :, ::-1], classes=classes, conf=conf)
+            boxes = [d[2] for d in dets]
+            print('[yolo] %d 个物体: %s' % (
+                len(boxes), ', '.join('%s(%.2f)' % (d[0], d[1]) for d in dets[:8])))
+            if not boxes:
+                print('✗ YOLO 未检出目标（调低 --conf 或换 --frame）')
+                return
+        if not pts and not boxes:
+            print('usage: edit video in.mp4 --point x,y / --box x1,y1,x2,y2 / --yolo '
+                  '[--op mosaic|blur_bg|cutout|color] -o out.mp4')
             return
         if args.op == 'color':
             r = se.video_color(args.input, args.output or
                                os.path.join('output', 'edit_%s.mp4' % time.strftime('%Y%m%d_%H%M%S')),
                                pts, size=args.size, device=args.device,
-                               prompt_frame=getattr(args, 'frame', 0))
+                               prompt_frame=getattr(args, 'frame', 0),
+                               boxes=boxes or None)
             print(f"{r['output']}（{r['frames']} 帧, {r['objects']} 物体彩色）")
             return
         r = se.video_edit(args.input, args.output or
                           os.path.join('output', 'edit_%s.mp4' % time.strftime('%Y%m%d_%H%M%S')),
                           pts, op=args.op, size=args.size, device=args.device,
                           mode=args.mode, strength=args.strength,
-                          prompt_frame=getattr(args, 'frame', 0))
+                          prompt_frame=getattr(args, 'frame', 0),
+                          boxes=boxes or None)
         print(r['output'])
         return
     import numpy as np
     from PIL import Image
+    if args.cmd == 'instruct':
+        if not getattr(args, 'prompt', ''):
+            print('✗ instruct 需要 --prompt 编辑指令（如 把猫换成狗）')
+            return
+        se.qwen_edit(args.input, args.prompt,
+                     args.output or os.path.join('output', 'edit_%s.png' % time.strftime('%Y%m%d_%H%M%S')))
+        return
     img = np.array(Image.open(args.input).convert('RGB'))
-    pts = se.parse_points(args.point)
+    labels = None
+    if getattr(args, 'yolo', False):
+        dets = se.detect_objects(img, classes=classes, conf=conf)
+        boxes = [d[2] for d in dets]
+        labels = [d[0] for d in dets]
+        print('[yolo] %d 个物体: %s' % (
+            len(boxes), ', '.join('%s(%.2f)' % (d[0], d[1]) for d in dets[:8])))
     if args.cmd == 'visualize':
-        masks, scores = se.segment_multi(img, points=pts or None, size=args.size, device=args.device)
+        if boxes:
+            masks, scores, labels = se.segment_from_boxes(img, boxes, labels=labels,
+                                                          size=args.size, device=args.device)
+        else:
+            masks, scores = se.segment_multi(img, points=pts or None, size=args.size, device=args.device)
+            labels = ['物体%d' % (i + 1) for i in range(len(masks))]
         print(f"[edit] 彩色多物体: {len(masks)} 个, scores " + ', '.join(f'{s:.2f}' for s in scores))
         out = args.output or os.path.join('output', 'edit_%s.png' % time.strftime('%Y%m%d_%H%M%S'))
-        se.visualize(img, masks, out)
+        se.visualize(img, masks, out, labels=labels)
         print(out)
         return
-    mask, score = se.segment_image(img, points=pts or None, size=args.size, device=args.device)
+    if boxes:
+        masks, scores, _ = se.segment_from_boxes(img, boxes, size=args.size, device=args.device)
+        if not masks:
+            print('✗ SAM2 框提示未产出掩膜')
+            return
+        mask, score = masks[0], scores[0]
+    else:
+        mask, score = se.segment_image(img, points=pts or None, size=args.size, device=args.device)
     print(f'[edit] mask score={score:.3f} coverage={mask.mean():.3f}')
     out = args.output or os.path.join('output', 'edit_%s.png' % time.strftime('%Y%m%d_%H%M%S'))
     if args.cmd == 'segment':
@@ -502,7 +549,11 @@ def cmd_edit(args):
     elif args.cmd == 'cutout':
         se.cutout(img, mask, out)
     elif args.cmd == 'replace_bg':
-        if args.bg == 'blur':
+        if getattr(args, 'engine', 'cv') == 'flux':
+            se.inpaint_flux(img, mask, args.prompt or 'clean empty background', out,
+                            invert=True, steps=getattr(args, 'steps', 30),
+                            guidance=getattr(args, 'guidance', 30.0))
+        elif args.bg == 'blur':
             se.replace_bg(img, mask, out, blur=True)
         elif args.bg:
             c = args.bg.lstrip('#')
@@ -513,8 +564,32 @@ def cmd_edit(args):
     elif args.cmd == 'mosaic':
         se.mosaic(img, mask, out, mode=args.mode, strength=args.strength)
     elif args.cmd == 'inpaint':
-        se.inpaint(img, mask, out)
+        if getattr(args, 'engine', 'cv') == 'flux':
+            if not args.prompt:
+                print('✗ flux 引擎需要 --prompt 描述重绘内容（如 empty wooden floor）')
+                return
+            se.inpaint_flux(img, mask, args.prompt, out, steps=getattr(args, 'steps', 30),
+                            guidance=getattr(args, 'guidance', 30.0),
+                            controlnet=getattr(args, 'controlnet', ''),
+                            controlnet_strength=getattr(args, 'controlnet_strength', 0.5))
+        else:
+            se.inpaint(img, mask, out)
     print(out)
+
+
+def cmd_vace(args):
+    """v16.x（M7）Wan2.1 VACE 参考图生视频：参考图 + prompt → 主体一致视频（wan :8189）"""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from agents.generator.tools.comfy_api import ComfyClient
+
+    out = args.output or os.path.join('output', 'vace_%s.mp4' % time.strftime('%Y%m%d_%H%M%S'))
+    c = ComfyClient(instance='wan')
+    r = c.generate_vace_video(args.ref, args.prompt, width=args.width, height=args.height,
+                              length=args.length, steps=args.steps, cfg=args.cfg,
+                              vace_strength=args.vace_strength, fps=args.fps,
+                              output_path=out)
+    print(r['video_path'])
 
 
 def cmd_make(args):
@@ -886,18 +961,46 @@ def build_parser():
     # ── edit 子命令（v16（原 v19）：SAM2 分割/抠图/换底/打码/inpaint + 视频传播）──
     p_edit = sub.add_parser('edit',
         help='v16 SAM2 编辑：图（segment/cutout/replace_bg/mosaic/inpaint）或视频传播（video）')
-    p_edit.add_argument('cmd', choices=['segment', 'cutout', 'replace_bg', 'mosaic', 'inpaint', 'visualize', 'video'])
+    p_edit.add_argument('cmd', choices=['segment', 'cutout', 'replace_bg', 'mosaic', 'inpaint', 'visualize', 'video', 'instruct'])
     p_edit.add_argument('input', help='输入图/视频路径')
     p_edit.add_argument('-o', '--output', default=None, help='输出路径（缺省 output/edit_*.png|mp4）')
     p_edit.add_argument('--point', default='', help='点提示 x,y（空格分可多点；省略=自动主体；visualize/video 每点一物体）')
     p_edit.add_argument('--op', default='mosaic', help='video 模式 op：mosaic/blur_bg/cutout/color')
     p_edit.add_argument('--frame', type=int, default=0, help='video 提示帧索引（SAM2 任意帧双向传播，猫狗同框帧更准）')
+    p_edit.add_argument('--box', default='', help='框提示 x1,y1,x2,y2（分号分隔多框；优先于 --point，大物体更准）')
+    p_edit.add_argument('--yolo', action='store_true', help='YOLO 自动检测物体→SAM 框提示（Grounded-SAM，省略 --point/--box）')
+    p_edit.add_argument('--classes', default='', help='YOLO 类别过滤（逗号分隔，如 cat,dog；省略=全部）')
+    p_edit.add_argument('--conf', type=float, default=0.25, help='YOLO 置信度阈值（默认 0.25）')
     p_edit.add_argument('--size', default='small', choices=['tiny', 'small', 'base'])
     p_edit.add_argument('--device', default='', help='cuda:N / cpu（缺省自动选卡）')
     p_edit.add_argument('--mode', default='pixel', help='mosaic：pixel/blur')
     p_edit.add_argument('--strength', type=int, default=16, help='mosaic/blur 强度')
     p_edit.add_argument('--bg', default='', help='replace_bg：hex 色（如 101827）或 blur')
+    p_edit.add_argument('--engine', choices=['cv', 'flux'], default='cv',
+                        help='inpaint/replace_bg 引擎：cv=TELEA 快速 / flux=FLUX.1 Fill 生成式重绘（v16.x M5）')
+    p_edit.add_argument('--prompt', default='', help='flux 引擎重绘内容描述（如 empty wooden floor）')
+    p_edit.add_argument('--steps', type=int, default=30, help='flux Fill 采样步数（默认 30）')
+    p_edit.add_argument('--guidance', type=float, default=30.0, help='flux Fill guidance（默认 30）')
+    p_edit.add_argument('--controlnet', default='', choices=['', 'canny'],
+                        help='flux 联动 ControlNet：canny=结构保持重绘（v16.x M6）')
+    p_edit.add_argument('--controlnet-strength', type=float, default=0.5, help='ControlNet 强度（默认 0.5）')
     p_edit.set_defaults(func=cmd_edit)
+
+    # ── vace 子命令（v16.x M7：Wan2.1 VACE 参考图生视频） ──
+    p_vace = sub.add_parser('vace',
+                            help='v16.x（M7）Wan2.1 VACE：参考图 + prompt → 主体一致视频')
+    p_vace.add_argument('ref', help='参考图路径（VACE 主体参考）')
+    p_vace.add_argument('prompt', help='视频 prompt（英文推荐）')
+    p_vace.add_argument('-o', '--output', default=None, help='输出路径（缺省 output/vace_*.mp4）')
+    p_vace.add_argument('--width', type=int, default=480, help='视频宽（VACE 1.3B 原生 480p）')
+    p_vace.add_argument('--height', type=int, default=832, help='视频高')
+    p_vace.add_argument('--length', type=int, default=81, help='帧数（81@16fps≈5s）')
+    p_vace.add_argument('--steps', type=int, default=25, help='采样步数')
+    p_vace.add_argument('--cfg', type=float, default=5.0)
+    p_vace.add_argument('--vace-strength', dest='vace_strength', type=float, default=1.0,
+                        help='VACE 控制强度（0-1）')
+    p_vace.add_argument('--fps', type=int, default=16)
+    p_vace.set_defaults(func=cmd_vace)
 
     # ── make 子命令（v12（原 v17）M2 三排正交统一入口） ──
     p_make = sub.add_parser('make', parents=[output_parent, post_parent],

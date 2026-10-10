@@ -593,6 +593,51 @@
       ]
     },
     {
+      "name": "vace",
+      "version": "v16.x",
+      "brief": "Wan2.1 VACE 参考图生视频：主体一致 5s 视频（异步）",
+      "detail": "v16.x M7：参考图 + prompt → Wan2.1 VACE 1.3B 生成视频（480x832 默认，81 帧@16fps≈5s，4n+1 补齐）。参考图主体全程保持（YOLO 0.92+ 验证）。需 wan 8189 在线。异步 job（/api/h3shot/{id} 轮询）。",
+      "params": [
+        {
+          "key": "ref",
+          "desc": "参考图路径（VACE 主体参考）"
+        },
+        {
+          "key": "prompt",
+          "desc": "视频 prompt（英文推荐）"
+        },
+        {
+          "key": "--length",
+          "desc": "帧数（默认 81）"
+        },
+        {
+          "key": "--width/--height",
+          "desc": "尺寸（默认 480x832）"
+        },
+        {
+          "key": "--steps",
+          "desc": "采样步数（默认 25）"
+        },
+        {
+          "key": "--cfg",
+          "desc": "CFG（默认 5.0）"
+        },
+        {
+          "key": "--vace-strength",
+          "desc": "VACE 控制强度（默认 1.0）"
+        },
+        {
+          "key": "--fps",
+          "desc": "帧率（默认 16）"
+        },
+        {
+          "key": "-o",
+          "desc": "输出路径（缺省 output/vace_*.mp4）"
+        }
+      ],
+      "example": "vace output/ref/dog.png \"a dog running on grass\" --length 81 -o output/vace_dog.mp4"
+    },
+    {
       "name": "video",
       "version": "v7",
       "brief": "播放指定任务的成片",
@@ -702,9 +747,9 @@
     },
     {
       "name": "edit",
-      "version": "v16",
-      "brief": "SAM2 编辑：分割/抠图/换底/打码/去水印（图）/彩色多物体/视频追踪传播",
-      "detail": "图六模式：segment（mask）/cutout（透明抠图）/replace_bg（换底：hex 色或 blur）/mosaic（打码 pixel/blur）/inpaint（去水印 cv2 TELEA）/visualize（彩色多物体可视化，SAM demo 风格）。视频：首帧 --point 点目标→SAM2 传播逐帧 mask→mosaic/blur_bg/cutout/color（彩色多物体）重拼 mp4。省略 --point 自动主体（网格打点并集）。视频异步 job（画布轮询）。",
+      "version": "v16.x",
+      "brief": "SAM2+YOLO 编辑 + 生成式编辑：分割/抠图/换底/打码/彩色多物体/YOLO 自动/框提示/视频双向追踪 + FLUX Fill 重绘/ControlNet/VACE/指令式编辑",
+      "detail": "图七模式：segment（mask）/cutout（透明抠图）/replace_bg（换底：hex 色或 blur）/mosaic（打码 pixel/blur）/inpaint（去水印 cv2 TELEA）/visualize（彩色多物体可视化，SAM demo 风格+标签）。视频：--point 点或 --box 框（YOLO --yolo 自动检出）提示→SAM2 双向传播（--frame 任意提示帧）→mosaic/blur_bg/cutout/color（彩色多物体）重拼 mp4。图省略提示自动主体（网格打点并集）。视频异步 job（画布轮询）。classes 铁律：空串 split 返回 [\"\"]，必须过滤空段。 生成式增强（v16.x，需 flux 8192/wan 8189 在线）：edit inpaint --engine flux --prompt（M5 Fill mask 内重绘，替代 cv2 TELEA）；edit replace_bg --engine flux --prompt（M5 生成式换底，mask 反转）；--controlnet canny（M6 结构保持改物种，误伤降 10 倍）；edit instruct --prompt（M8 Qwen-Image-Edit 中文指令式，无需 mask）；vidance vace ref.png prompt（M7 VACE 参考图生视频）。教训：移除类用整框矩形 mask + YOLO 复检目标物消失（SAM mask 对大物体只盖部分）。",
       "params": [
         {
           "key": "input",
@@ -733,9 +778,57 @@
         {
           "key": "--size",
           "desc": "SAM2 权重 tiny/small/base"
+        },
+        {
+          "key": "--box",
+          "desc": "框提示 x1,y1,x2,y2（多框分号分；大物体比点准，每框一物体）"
+        },
+        {
+          "key": "--yolo",
+          "desc": "YOLO 自动检测→SAM 框提示（Grounded-SAM 流程，图/视频通用）"
+        },
+        {
+          "key": "--classes",
+          "desc": "YOLO 类别过滤逗号分隔（如 cat,dog,potted plant；空=全部）"
+        },
+        {
+          "key": "--conf",
+          "desc": "YOLO 置信度阈值（默认 0.25）"
+        },
+        {
+          "key": "--frame",
+          "desc": "视频提示帧号（默认 0；双向传播，选动物同框帧更准）"
+        },
+        {
+          "key": "--engine",
+          "desc": "inpaint/replace_bg 引擎：cv=TELEA（快）/ flux=FLUX.1 Fill 生成式（v16.x M5）"
+        },
+        {
+          "key": "--prompt",
+          "desc": "flux 重绘内容描述（instruct=编辑指令，中文可用）"
+        },
+        {
+          "key": "--steps",
+          "desc": "flux Fill 采样步数（默认 30）"
+        },
+        {
+          "key": "--guidance",
+          "desc": "flux Fill guidance（默认 30）"
+        },
+        {
+          "key": "--controlnet",
+          "desc": "canny=Union ControlNet 结构保持（v16.x M6）"
+        },
+        {
+          "key": "--controlnet-strength",
+          "desc": "ControlNet 强度（默认 0.5）"
+        },
+        {
+          "key": "--cfg",
+          "desc": "Qwen Edit CFG（默认 2.5）"
         }
       ],
-      "example": "edit output/xxx.jpg visualize | edit output/xxx.mp4 video --point \"x,y\" --op color"
+      "example": "edit output/xxx.jpg visualize | edit output/xxx.jpg --yolo --classes \"cat,dog\" | edit output/xxx.mp4 video --point \"x,y\" --op color --frame 30 | edit output/xxx.mp4 video --yolo --frame 30 --op color"
     },
     {
       "name": "help",
