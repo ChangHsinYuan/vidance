@@ -489,6 +489,21 @@ def cmd_edit(args):
             print('usage: edit video in.mp4 --point x,y / --box x1,y1,x2,y2 / --yolo '
                   '[--op mosaic|blur_bg|cutout|color] -o out.mp4')
             return
+        if getattr(args, 'engine', 'cv') == 'vace':
+            if not getattr(args, 'prompt', ''):
+                print('✗ vace 引擎需要 --prompt 描述重绘区内容（如 empty ground）')
+                return
+            r = se.video_inpaint_vace(
+                args.input, args.output or
+                os.path.join('output', 'vace_inpaint_%s.mp4' % time.strftime('%Y%m%d_%H%M%S')),
+                pts, boxes=boxes or None, prompt=args.prompt,
+                op=getattr(args, 'mask_op', 'remove'), prompt_frame=getattr(args, 'frame', 0),
+                size=args.size, device=args.device, yolo=bool(getattr(args, 'yolo', False)),
+                classes=classes, conf=conf, steps=getattr(args, 'steps', 25),
+                cfg=getattr(args, 'cfg', 5.0),
+                vace_strength=getattr(args, 'vace_strength', 1.0))
+            print(f"{r['output']}（{r['frames']} 帧 @{r['fps']:.1f}fps op={r['op']} seed={r['seed']}）")
+            return
         if args.op == 'color':
             r = se.video_color(args.input, args.output or
                                os.path.join('output', 'edit_%s.mp4' % time.strftime('%Y%m%d_%H%M%S')),
@@ -976,11 +991,15 @@ def build_parser():
     p_edit.add_argument('--mode', default='pixel', help='mosaic：pixel/blur')
     p_edit.add_argument('--strength', type=int, default=16, help='mosaic/blur 强度')
     p_edit.add_argument('--bg', default='', help='replace_bg：hex 色（如 101827）或 blur')
-    p_edit.add_argument('--engine', choices=['cv', 'flux'], default='cv',
-                        help='inpaint/replace_bg 引擎：cv=TELEA 快速 / flux=FLUX.1 Fill 生成式重绘（v16.x M5）')
-    p_edit.add_argument('--prompt', default='', help='flux 引擎重绘内容描述（如 empty wooden floor）')
-    p_edit.add_argument('--steps', type=int, default=30, help='flux Fill 采样步数（默认 30）')
+    p_edit.add_argument('--engine', choices=['cv', 'flux', 'vace'], default='cv',
+                        help='inpaint/replace_bg 引擎：cv=TELEA 快速 / flux=FLUX.1 Fill 生成式重绘（v16.x M5）/ vace=视频级 VACE 生成式（video 专用）')
+    p_edit.add_argument('--prompt', default='', help='flux/vace 引擎重绘内容描述（如 empty ground；instruct=编辑指令）')
+    p_edit.add_argument('--steps', type=int, default=30, help='flux Fill 采样步数（默认 30；vace 默认 25）')
     p_edit.add_argument('--guidance', type=float, default=30.0, help='flux Fill guidance（默认 30）')
+    p_edit.add_argument('--cfg', type=float, default=5.0, help='vace CFG（默认 5.0；instruct 用 2.5）')
+    p_edit.add_argument('--vace-strength', dest='vace_strength', type=float, default=1.0, help='vace 控制强度（默认 1.0）')
+    p_edit.add_argument('--mask-op', dest='mask_op', default='remove', choices=['remove', 'keep'],
+                        help='vace 引擎：remove=去掉物体（mask 反转）/ keep=只保留主体（背景重绘）')
     p_edit.add_argument('--controlnet', default='', choices=['', 'canny'],
                         help='flux 联动 ControlNet：canny=结构保持重绘（v16.x M6）')
     p_edit.add_argument('--controlnet-strength', type=float, default=0.5, help='ControlNet 强度（默认 0.5）')

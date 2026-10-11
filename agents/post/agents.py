@@ -163,8 +163,8 @@ def pip(p):
 
 
 @register(name='post.edit', layer='post',
-          desc='SAM2 编辑：分割/抠图/换底/打码/inpaint/彩色多物体（图）或视频传播（video）；YOLO 自动（yolo/classes）+ 框提示（box）+ 提示帧（frame）+ FLUX Fill 生成式重绘（engine=flux + prompt，v16.x M5）',
-          inputs='{image|video, out_path?, point?="x,y x,y", box?="x1,y1,x2,y2", yolo?, classes?="cat,dog", conf?, frame?, op=segment|cutout|replace_bg|mosaic|inpaint|visualize|video, vop=mosaic|blur_bg|cutout|color, bg?, mode?, strength?, size?, engine?=cv|flux, prompt?, steps?, guidance?, controlnet?=canny, controlnet_strength?}')
+          desc='SAM2 编辑：分割/抠图/换底/打码/inpaint/彩色多物体（图）或视频传播（video）；YOLO 自动（yolo/classes）+ 框提示（box）+ 提示帧（frame）+ FLUX Fill 生成式重绘（engine=flux + prompt，v16.x M5）+ VACE 视频 inpaint（engine=vace + mask_op=remove|keep，wan 8189）',
+          inputs='{image|video, out_path?, point?="x,y x,y", box?="x1,y1,x2,y2", yolo?, classes?="cat,dog", conf?, frame?, op=segment|cutout|replace_bg|mosaic|inpaint|visualize|video, vop=mosaic|blur_bg|cutout|color, bg?, mode?, strength?, size?, engine?=cv|flux|vace, prompt?, steps?, guidance?, controlnet?=canny, controlnet_strength?, mask_op?=remove|keep, vace_strength?, cfg?}')
 def edit(p):
     from agents.post.tools import sam_edit as se
     import numpy as np
@@ -190,6 +190,22 @@ def edit(p):
         if not pts and not boxes:
             return TaskResult(ok=False, error='video 模式需要 point="x,y" / box="x1,y1,x2,y2" / yolo=true')
         out = p.get('out_path') or (os.path.splitext(p['video'])[0] + '_edit.mp4')
+        # v16.x VACE 生成式视频 inpaint（SAM2 mask → VACE 重绘，wan 8189）
+        if p.get('engine') == 'vace':
+            if not p.get('prompt'):
+                return TaskResult(ok=False, error='vace 引擎需要 prompt 描述重绘区内容（如 empty ground）')
+            r = se.video_inpaint_vace(
+                p['video'], out, pts, boxes=boxes or None, prompt=p['prompt'],
+                op=p.get('mask_op') or 'remove', prompt_frame=int(p.get('frame') or 0),
+                size=p.get('size', 'small'), device=p.get('device', ''),
+                yolo=bool(p.get('yolo')),
+                classes=[c for c in (p.get('classes') or '').split(',') if c] or None,
+                conf=float(p.get('conf') or 0.25),
+                steps=int(p.get('steps') or 25), cfg=float(p.get('cfg') or 5.0),
+                vace_strength=float(p.get('vace_strength') or 1.0))
+            return TaskResult(ok=True, artifacts={'video': r['output'],
+                                                  'frames': r['frames'], 'op': r['op'],
+                                                  'seed': r['seed']})
         if p.get('vop') == 'color':
             r = se.video_color(p['video'], out, pts, size=p.get('size', 'small'),
                                device=p.get('device', ''),

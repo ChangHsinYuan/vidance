@@ -129,7 +129,8 @@ class ComfyClient:
                 f.write(resp.read())
         return output_path
 
-    def upload_image(self, image_path: str, overwrite: bool = False) -> str:
+    def upload_image(self, image_path: str, overwrite: bool = False,
+                     subfolder: str = '') -> str:
         """Upload an image to ComfyUI's input directory, return the stored filename."""
         filename = os.path.basename(image_path)
         with open(image_path, 'rb') as f:
@@ -143,6 +144,8 @@ class ComfyClient:
         ]
         if overwrite:
             parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="overwrite"\r\n\r\ntrue\r\n'.encode())
+        if subfolder:
+            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="subfolder"\r\n\r\n{subfolder}\r\n'.encode())
         parts.append(f'--{boundary}--\r\n'.encode())
         req = urllib.request.Request(
             f'{self.base_url}/upload/image',
@@ -327,6 +330,105 @@ class ComfyClient:
             'prompt_id': prompt_id,
             'seed': seed,
             'params': params,
+            'filename': filename,
+            'subfolder': subfolder,
+        }
+
+        if output_path:
+            self.download_file(filename, subfolder, file_type, output_path)
+            result['video_path'] = output_path
+
+        return result
+
+    def generate_vace_inpaint(self, frame_paths, mask_paths, prompt, seed=None,
+                              width=832, height=480, length=81,
+                              steps=25, cfg=5.0, vace_strength=1.0,
+                              fps: int = 16, negative_prompt: str = None,
+                              filename_prefix: str = 'vidance/vace_inpaint',
+                              output_path: str = None) -> dict:
+        """Wan2.1 VACE 视频 inpaint：control_video(原帧) + control_masks(逐帧 mask) → 生成式重绘。
+
+        mask 语义（VACE）：白(1)=保留原内容，黑(0)=按 prompt 重绘——
+        移除物体时调用方需反转 SAM mask（物体=黑，背景=白）。
+        workflow 程序化构建（LoadImage×N + ImageBatch 链，动态帧数无需模板）。
+        返回 {video_path, seed, params}。
+        """
+        if seed is None:
+            seed = random.randint(0, 2**32 - 1)
+        if negative_prompt is None:
+            negative_prompt = NEGATIVE_PROMPT
+        if len(frame_paths) != len(mask_paths):
+            raise ValueError(f'帧数 {len(frame_paths)} != mask 数 {len(mask_paths)}')
+        length = len(frame_paths)
+
+        sub = f'vace_inpaint/{seed}'
+        # LoadImage 的 image 字段需含 subfolder 的相对路径（upload 返回 name 只有 basename）
+        frame_names = [f'{sub}/{self.upload_image(fp, subfolder=sub)}' for fp in frame_paths]
+        mask_names = [f'{sub}/{self.upload_image(mp, subfolder=sub)}' for mp in mask_paths]
+
+        # LoadImage×N + ImageBatch 链（动态帧数，程序化构建）
+        workflow = {
+            '1': {'class_type': 'UNETLoader',
+                  'inputs': {'unet_name': 'wan2.1_vace_1.3B_fp16.safetensors', 'weight_dtype': 'default'}},
+            '2': {'class_type': 'CLIPLoader',
+                  'inputs': {'clip_name': 'umt5_xxl_fp8_e4m3fn_scaled.safetensors', 'type': 'wan'}},
+            '3': {'class_type': 'VAELoader', 'inputs': {'vae_name': 'wan_2.1_vae.safetensors'}},
+            '4': {'class_type': 'ModelSamplingSD3', 'inputs': {'model': ['1', 0], 'shift': 8.0}},
+            '5': {'class_type': 'CLIPTextEncode', 'inputs': {'text': prompt, 'clip': ['2', 0]}},
+            '6': {'class_type': 'CLIPTextEncode', 'inputs': {'text': negative_prompt, 'clip': ['2', 0]}},
+        }
+        for i, name in enumerate(frame_names):
+            workflow[f'cf{i}'] = {'class_type': 'LoadImage', 'inputs': {'image': name}}
+        for i, name in enumerate(mask_names):
+            workflow[f'cm{i}'] = {'class_type': 'LoadImage', 'inputs': {'image': name}}
+        for i in range(1, len(frame_names)):
+            workflow[f'cfb{i}'] = {'class_type': 'ImageBatch',
+                                   'inputs': {'image1': [f'cf{i-1}' if i == 1 else f'cfb{i-1}', 0],
+                                              'image2': [f'cf{i}', 0]}}
+        for i in range(1, len(mask_names)):
+            workflow[f'cmb{i}'] = {'class_type': 'ImageBatch',
+                                   'inputs': {'image1': [f'cm{i-1}' if i == 1 else f'cmb{i-1}', 0],
+                                              'image2': [f'cm{i}', 0]}}
+        prev_f = f'cfb{len(frame_names)-1}' if len(frame_names) > 1 else 'cf0'
+        prev_m = f'cmb{len(mask_names)-1}' if len(mask_names) > 1 else 'cm0'
+        workflow['7'] = {'class_type': 'ImageToMask',
+                         'inputs': {'image': [prev_m, 0], 'channel': 'red'}}
+        workflow['8'] = {'class_type': 'WanVaceToVideo',
+                         'inputs': {'positive': ['5', 0], 'negative': ['6', 0], 'vae': ['3', 0],
+                                    'width': width, 'height': height, 'length': length,
+                                    'batch_size': 1, 'strength': vace_strength,
+                                    'control_video': [prev_f, 0], 'control_masks': ['7', 0]}}
+        workflow['11'] = {'class_type': 'KSampler',
+                          'inputs': {'model': ['4', 0], 'seed': seed, 'steps': steps, 'cfg': cfg,
+                                     'sampler_name': 'uni_pc', 'scheduler': 'simple',
+                                     'positive': ['8', 0], 'negative': ['8', 1],
+                                     'latent_image': ['8', 2], 'denoise': 1.0}}
+        workflow['12'] = {'class_type': 'VAEDecode', 'inputs': {'samples': ['11', 0], 'vae': ['3', 0]}}
+        workflow['13'] = {'class_type': 'CreateVideo', 'inputs': {'images': ['12', 0], 'fps': fps}}
+        workflow['14'] = {'class_type': 'SaveVideo',
+                          'inputs': {'video': ['13', 0], 'filename_prefix': filename_prefix,
+                                     'format': 'mp4', 'codec': 'auto'}}
+
+        if not self.wait_ready(timeout=60):
+            raise RuntimeError('ComfyUI server not ready')
+
+        prompt_id = self.queue_prompt(workflow)
+        outputs = self.wait_result(prompt_id)
+
+        video_info = outputs.get('14', {}).get('images', [{}])[0]
+        filename = video_info.get('filename', '')
+        subfolder = video_info.get('subfolder', '')
+        file_type = video_info.get('type', 'output')
+
+        if not filename:
+            raise RuntimeError(f'No video in outputs: {outputs}')
+
+        result = {
+            'prompt_id': prompt_id,
+            'seed': seed,
+            'params': {'width': width, 'height': height, 'length': length,
+                       'steps': steps, 'cfg': cfg, 'vace_strength': vace_strength,
+                       'fps': fps, 'prompt': prompt},
             'filename': filename,
             'subfolder': subfolder,
         }

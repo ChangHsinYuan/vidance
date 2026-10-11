@@ -885,6 +885,59 @@ def _run_editjob(job_id: str, video: str, points: list, op: str, flags: dict):
         _agent_log(job_id, '✗ 失败: %s' % str(e)[:300])
 
 
+def _run_vaceeditjob(job_id: str, video: str, points: list, flags: dict):
+    """VACE 生成式视频 inpaint（异步 job：SAM2 mask → wan 8189 VACE 重绘）。"""
+    try:
+        from agents.post.tools import sam_edit as se
+        boxes = []
+        for tok in (flags.get('box') or '').replace(';', ' ').split():
+            parts = tok.split(',')
+            if len(parts) == 4:
+                try:
+                    boxes.append(tuple(int(float(v)) for v in parts))
+                except ValueError:
+                    pass
+        yolo = str(flags.get('yolo') or '').lower() in ('true', '1', 'yes') or bool(flags.get('classes'))
+        with _h3_jobs_lock:
+            if job_id in _h3_jobs:
+                _h3_jobs[job_id]['stage'] = 'SAM2 逐帧 mask 提取中'
+        out = os.path.join(os.path.dirname(os.path.abspath(video)) or 'output',
+                           os.path.splitext(os.path.basename(video))[0] + '_vace_inpaint.mp4')
+        out = os.path.join('output', os.path.basename(out))
+
+        def _stage(s):
+            with _h3_jobs_lock:
+                if job_id in _h3_jobs:
+                    _h3_jobs[job_id]['stage'] = s
+
+        r = se.video_inpaint_vace(
+            video, out, points, boxes=boxes or None,
+            prompt=flags.get('prompt') or 'empty ground',
+            op=flags.get('mask_op') or 'remove',
+            prompt_frame=int(flags.get('frame') or 0),
+            size=flags.get('size') or 'small', device=flags.get('device') or '',
+            yolo=yolo,
+            classes=[c for c in (flags.get('classes') or '').split(',') if c] or None,
+            conf=float(flags.get('conf') or 0.25),
+            steps=int(flags.get('steps') or 25), cfg=float(flags.get('cfg') or 5.0),
+            vace_strength=float(flags.get('vace_strength') or 1.0),
+            on_stage=_stage)
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'completed', 'output': r['output'],
+                'video_url': '/api/file?path=' + r['output'],
+                'frames': str(r['frames']), 'completed_at': datetime.now().isoformat(),
+            })
+        _agent_log(job_id, '■ 完成 %s（%s 帧 seed=%s）' % (r['output'], r['frames'], r['seed']))
+    except Exception as e:
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'failed', 'error': str(e),
+                'completed_at': datetime.now().isoformat(),
+            })
+        _agent_log(job_id, '✗ 失败: %s' % str(e)[:300])
+
+
 @app.post('/api/h3shot')
 def h3shot(req: H3ShotRequest):
     if not req.prompt or not req.refs:
@@ -1820,6 +1873,22 @@ def tool_dispatch(name: str, req: ToolRequest):
             if not pts and not boxes:
                 raise HTTPException(status_code=400,
                                     detail='video 需要 --point x,y / --box x1,y1,x2,y2 / --yolo')
+            # v16.x VACE 生成式视频 inpaint（SAM2 mask → VACE 重绘，wan 8189，异步 job）
+            if (fl.get('engine') or 'cv') == 'vace':
+                if not fl.get('prompt'):
+                    raise HTTPException(status_code=400,
+                                        detail='vace 引擎需要 --prompt 描述重绘区内容（如 empty ground）')
+                job_id = f'vace_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+                with _h3_jobs_lock:
+                    _h3_jobs[job_id] = {'job_id': job_id, 'concept': os.path.basename(inp),
+                                        'status': 'running',
+                                        'created_at': datetime.now().isoformat()}
+                _agent_log(job_id, '▶ 调用 agent post.edit · video vace（SAM2 mask + VACE 重绘）')
+                threading.Thread(target=_run_vaceeditjob,
+                                 args=(job_id, inp, pts, fl),
+                                 daemon=True).start()
+                return {'message': 'VACE 视频编辑已提交（SAM2 mask + VACE 生成，约 5-10 分钟）',
+                        'job_id': job_id, 'poll': f'/api/h3shot/{job_id}', 'h3_job_id': job_id}
             job_id = f'edit_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
             with _h3_jobs_lock:
                 _h3_jobs[job_id] = {'job_id': job_id, 'concept': os.path.basename(inp),

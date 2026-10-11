@@ -668,6 +668,154 @@ def video_edit(in_path, out_path, points, op='mosaic', size='small', device='',
     return {'output': out_path, 'frames': n, 'fps': fps, 'op': op}
 
 
+# ────────────────────────── VACE 视频 inpaint（追踪 + 生成式重绘） ──────────────────────────
+
+def video_masks(in_path, out_dir, points=None, boxes=None, prompt_frame=0, size='small',
+                device='', yolo=False, classes=None, conf=0.25, max_frames=81):
+    """SAM2 视频追踪 → 抽帧 + 逐帧 mask 落盘（VACE inpaint 的 control_video/control_masks）。
+
+    frames（原帧 jpg）+ masks（物体区白 255 的 PNG）写 out_dir。
+    返回 {frame_paths, mask_paths, fps, width, height, length}。
+    length 取 4n+1 且 ≤ max_frames（VACE 1.3B 甜点 81）；超量均匀采样。
+    yolo=True 时提示帧自动检测（Grounded-SAM）。
+    """
+    import torch
+    import cv2
+
+    predictor, dev = load_predictor(size=size, device=device, video=True)
+
+    tmpd = tempfile.mkdtemp(prefix='sam2vace_')
+    fps = _probe_fps(in_path)
+    extract = subprocess.run([FFMPEG, '-y', '-i', in_path, '-vf',
+                              'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+                              os.path.join(tmpd, '%06d.jpg'), '-q:v', '2'],
+                             capture_output=True, text=True, timeout=300)
+    names = sorted(f for f in os.listdir(tmpd) if f.endswith('.jpg'))
+    if not names:
+        raise RuntimeError(f'抽帧失败: {extract.stderr[-200:]}')
+
+    # 帧数对齐 4n+1 且 ≤ max_frames（超量均匀采样）
+    total = len(names)
+    length = min(max_frames, total)
+    length = ((length - 1) // 4) * 4 + 1
+    if total > length:
+        idxs = [round(i * (total - 1) / (length - 1)) for i in range(length)]
+        idxs = sorted(set(idxs))
+        length = len(idxs)
+    else:
+        idxs = list(range(length))
+
+    # 采样帧单独落 track 目录（SAM2 只追踪选中的帧）+ 拷贝到 out_dir
+    trackd = os.path.join(tmpd, 'track')
+    os.makedirs(trackd)
+    os.makedirs(out_dir, exist_ok=True)
+    frame0 = None
+    for i, src_i in enumerate(idxs):
+        src = os.path.join(tmpd, names[src_i])
+        dst = os.path.join(trackd, '%06d.jpg' % (i + 1))
+        shutil.copyfile(src, dst)
+        shutil.copyfile(src, os.path.join(out_dir, 'frame_%06d.jpg' % i))
+        if frame0 is None:
+            frame0 = dst
+
+    fh, fw = cv2.imread(frame0).shape[:2]
+
+    with torch.inference_mode(), torch.autocast('cuda', dtype=torch.bfloat16,
+                                                enabled=dev.startswith('cuda')):
+        state = predictor.init_state(video_path=trackd)
+        pf = min(prompt_frame, length - 1)
+        if boxes:
+            b = boxes[0]
+            predictor.add_new_points_or_box(
+                state, obj_id=1, frame_idx=pf,
+                box=np.array([min(max(b[0], 0), fw - 1), min(max(b[1], 0), fh - 1),
+                              min(max(b[2], 0), fw - 1), min(max(b[3], 0), fh - 1)],
+                             dtype=np.float32))
+        elif points:
+            pts = np.array([[(min(max(x, 0), fw - 1), min(max(y, 0), fh - 1)) for x, y in points]],
+                           dtype=np.float32)
+            labels = np.ones((1, len(points)), dtype=np.int64)
+            predictor.add_new_points_or_box(state, obj_id=1, frame_idx=pf,
+                                            points=pts, labels=labels)
+        elif yolo:
+            from agents.post.tools.sam_edit import detect_objects
+            dets = detect_objects(cv2.cvtColor(cv2.imread(frame0), cv2.COLOR_BGR2RGB),
+                                  classes=classes, conf=conf)
+            if not dets:
+                raise RuntimeError('YOLO 未检出目标（调低 --conf 或换 --frame）')
+            b = dets[0][2]
+            predictor.add_new_points_or_box(state, obj_id=1, frame_idx=pf, box=np.array(b, dtype=np.float32))
+        else:
+            raise RuntimeError('需要 --point/--box/--yolo 之一')
+
+        masks_by_frame = {}
+        for reverse in (False, True):
+            for fo, obj_ids, mask_logits in predictor.propagate_in_video(state,
+                                                                         reverse=reverse):
+                m = (mask_logits[0] > 0).cpu().numpy()
+                if m.ndim == 3:
+                    m = m[0]
+                masks_by_frame[fo] = m.astype(bool)
+
+    mask_paths = []
+    for i in range(length):
+        m = masks_by_frame.get(i)
+        if m is None:
+            m = np.zeros((fh, fw), dtype=bool)
+        Image.fromarray(m.astype(np.uint8) * 255).save(os.path.join(out_dir, 'mask_%06d.png' % i))
+        mask_paths.append(os.path.join(out_dir, 'mask_%06d.png' % i))
+    frame_paths = [os.path.join(out_dir, 'frame_%06d.jpg' % i) for i in range(length)]
+    shutil.rmtree(tmpd, ignore_errors=True)
+    return {'frame_paths': frame_paths, 'mask_paths': mask_paths, 'fps': fps,
+            'width': fw, 'height': fh, 'length': length}
+
+
+def video_inpaint_vace(in_path, out_path, points=None, boxes=None, prompt='empty ground',
+                       op='remove', prompt_frame=0, size='small', device='', yolo=False,
+                       classes=None, conf=0.25, steps=25, cfg=5.0, vace_strength=1.0,
+                       negative_prompt=None, on_stage=None):
+    """SAM2 追踪 + Wan2.1 VACE 生成式视频 inpaint（视频级移除/替换物体，wan 8189）。
+
+    op: remove=去掉物体（mask 反转：物体区黑=重绘，背景白=保留，VACE 语义）
+        keep=只保留主体（背景重绘）
+    prompt 描述重绘区内容（如 empty ground / green grass）。
+    流程：SAM2 逐帧 mask → control_video=原帧 + control_masks=mask → VACE 生成式填补。
+    """
+    from agents.generator.tools.comfy_api import ComfyClient
+
+    def _stage(s):
+        print(f'[vace-inpaint] {s}')
+        if on_stage:
+            on_stage(s)
+
+    _stage('SAM2 逐帧 mask 提取中')
+    workd = os.path.join(os.path.dirname(out_path) or '.', 'vace_inpaint_work')
+    r = video_masks(in_path, workd, points=points, boxes=boxes, prompt_frame=prompt_frame,
+                    size=size, device=device, yolo=yolo, classes=classes, conf=conf)
+    try:
+        _stage(f'VACE 生成中（{r["length"]} 帧 {r["width"]}x{r["height"]}，约 5-10 分钟）')
+        mask_pngs = []
+        for i, mp in enumerate(r['mask_paths']):
+            m = np.array(Image.open(mp))
+            if op == 'remove':
+                m = 255 - m
+            inv = os.path.splitext(mp)[0] + '_inv.png'
+            Image.fromarray(m.astype(np.uint8)).save(inv)
+            mask_pngs.append(inv)
+        client = ComfyClient(instance='wan')
+        res = client.generate_vace_inpaint(
+            r['frame_paths'], mask_pngs, prompt,
+            width=r['width'], height=r['height'], length=r['length'],
+            steps=steps, cfg=cfg, vace_strength=vace_strength, fps=16,
+            negative_prompt=negative_prompt, output_path=out_path)
+        print(f"[vace-inpaint] prompt_id={res['prompt_id']} seed={res['seed']} "
+              f"length={r['length']} op={op}")
+        return {'output': out_path, 'frames': r['length'], 'fps': 16, 'op': op,
+                'seed': res['seed'], 'prompt_id': res['prompt_id']}
+    finally:
+        shutil.rmtree(workd, ignore_errors=True)
+
+
 # ────────────────────────── CLI ──────────────────────────
 
 def main():
@@ -687,8 +835,8 @@ def main():
     ap.add_argument('--yolo', action='store_true', help='YOLO 自动检测物体→框提示（Grounded-SAM）')
     ap.add_argument('--classes', default='', help='YOLO 类别过滤（逗号分隔，如 cat,dog）')
     ap.add_argument('--conf', type=float, default=0.25, help='YOLO 置信度阈值')
-    ap.add_argument('--engine', choices=['cv', 'flux'], default='cv',
-                     help='inpaint/replace_bg 引擎：cv=TELEA（快速）/ flux=FLUX.1 Fill 生成式重绘')
+    ap.add_argument('--engine', choices=['cv', 'flux', 'vace'], default='cv',
+                     help='inpaint/replace_bg 引擎：cv=TELEA（快速）/ flux=FLUX.1 Fill 生成式重绘 / vace=视频级 VACE（video 专用）')
     ap.add_argument('--prompt', default='', help='flux 引擎重绘内容描述（如 empty wooden floor）')
     ap.add_argument('--steps', type=int, default=30, help='flux Fill 采样步数')
     ap.add_argument('--guidance', type=float, default=30.0, help='flux Fill guidance（官方推荐 30）')
@@ -696,6 +844,8 @@ def main():
     ap.add_argument('--controlnet', default='', choices=['', 'canny'],
                      help='flux 联动 ControlNet：canny=结构保持重绘（v16.x M6）')
     ap.add_argument('--controlnet-strength', type=float, default=0.5, help='ControlNet 强度')
+    ap.add_argument('--mask-op', dest='mask_op', default='remove', choices=['remove', 'keep'],
+                     help='vace 引擎：remove=去掉物体（mask 反转）/ keep=只保留主体')
     a = ap.parse_args()
 
     out = a.output or os.path.join(
@@ -724,6 +874,17 @@ def main():
                 ap.error('YOLO 未检出目标（调低 --conf 或换提示帧）')
         if not pts and not boxes:
             ap.error('video 需要 --point x,y / --box x1,y1,x2,y2 / --yolo')
+        if a.engine == 'vace':
+            if not a.prompt:
+                ap.error('vace 引擎需要 --prompt 描述重绘区内容（如 empty ground）')
+            r = video_inpaint_vace(a.input, out, pts, boxes=boxes or None,
+                                   prompt=a.prompt, op=getattr(a, 'mask_op', None) or 'remove',
+                                   prompt_frame=a.frame, size=a.size, device=a.device,
+                                   yolo=bool(a.yolo),
+                                   classes=(a.classes.split(',') if a.classes else None),
+                                   conf=a.conf, steps=a.steps, cfg=a.cfg)
+            print(f"✅ {r['output']}（{r['frames']} 帧 @{r['fps']:.1f}fps op={r['op']} seed={r['seed']}）")
+            return
         if a.op == 'color':
             r = video_color(a.input, out, pts, size=a.size, device=a.device,
                             prompt_frame=a.frame, boxes=boxes or None)

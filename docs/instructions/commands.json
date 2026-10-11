@@ -70,9 +70,14 @@
         }
       ],
       "examples": [
+        "# 最简：一句概念全自动",
         "/auto 一只猫在月球上跳舞",
+        "# 带角色 + 调色 + 配乐",
         "/auto 深海探险 --character 蓝色水母 --character-mode flux --lut cool --bgm mysterious",
-        "/auto 雪山日出：小狐狸的冒险 --character 红色小狐狸 --duration 60 --stt"
+        "# 长片（60s 动态镜头数）+ 慢动作 + 字幕",
+        "/auto 雪山日出：小狐狸的冒险 --character 红色小狐狸 --duration 60 --slowmo 2 --stt",
+        "# 禁用部分后处理（更快）",
+        "/auto 概念 --character 角色 --no-rife --no-color --no-bgm"
       ]
     },
     {
@@ -81,7 +86,10 @@
       "detail": "渲染系统架构图：编排宿主（CLI/API/scheduler）→ director（决策）/ generator（生成）/ post（后期）/ audit（审核）四层 + common 共享基础设施，每层列出已注册 Agent 与实现模块；顶部显示主数据流与各模型服务端口在线状态（绿=在线）。所有 Agent 运行记录写入台账（output/tasks.sqlite 的 agent_runs 表），chain 任务时间线即从此读取。",
       "params": [],
       "examples": [
-        "输入 /arch 查看分层架构图与全部 Agent"
+        "# 分层架构图（编排→D/G/P/V 四层 Agent + 在线状态）",
+        "/arch",
+        "# 配合注册表看每个 Agent 的参数",
+        "/agent list"
       ]
     },
     {
@@ -140,10 +148,16 @@
         }
       ],
       "examples": [
+        "# svg 生成器 + 手动旁白（--say 每元素一段）",
         "make 月夜散步 --generator svg --say \"为什么月亮总跟着人走\" --say \"远处没有参照物\" --voice cosy-default",
+        "# 热点选题 + 营销号出片",
         "make --director scout --generator fast --account 影视解说",
+        "# 万能组合：角色 + wan 生成 + 调色配乐",
         "make 雪山小狐狸 --character 红色小狐狸 --generator wan --lut warm --bgm uplifting",
-        "make --generator h3 --prompt input/prompt1.txt --ref input/豆包.jpg --fast"
+        "# H3 参考图模式（原生音频）",
+        "make --generator h3 --prompt input/prompt1.txt --ref input/豆包.jpg --fast",
+        "# 默认（--director llm --generator wan）",
+        "make 一只猫在月球上跳舞"
       ]
     },
     {
@@ -199,9 +213,16 @@
         }
       ],
       "examples": [
+        "# 营销号快速出片：LLM 旁白 + 爬图 + Ken Burns 运镜（分钟级）",
         "/fast 深夜灯塔的故事 -n 3 --effects auto",
+        "# FLUX 逐段出图（爬图不可用时）",
         "/fast 雪山日出小狐狸 --images-source flux -n 5 --bgm epic",
-        "/fast 概念 --images dir/ --lut warm --stt --slowmo 2"
+        "# 自供图片目录",
+        "/fast 概念 --images dir/ --lut warm --stt --slowmo 2",
+        "# 热搜角标（--source-topic 写进片头角标）",
+        "/fast 概念 --source-topic \"热搜标题\" --trend-date 2026-09-14",
+        "# 指定音色 + 字幕",
+        "/fast 深夜灯塔的故事 -n 2 --voice cosy-jieshuo1 --stt"
       ]
     },
     {
@@ -232,7 +253,12 @@
         }
       ],
       "examples": [
-        "/hot -n 5 --top-each 10 --account 影视解说"
+        "# 爬热点 → LLM 选题 → 出片一步到位（-n 条数，--top-each 每源抓几条）",
+        "/hot -n 5 --top-each 10 --account 影视解说",
+        "# 萌宠号 + FLUX 出图",
+        "/hot -n 3 --account 萌宠 --images-source flux",
+        "# 科技号 + LLM 自动选特效",
+        "/hot --top-each 20 --account 科技 --effects auto"
       ]
     },
     {
@@ -248,8 +274,12 @@
         }
       ],
       "examples": [
+        "# AI 追问补齐概念（把问题逐条答完，回增强概念）",
         "/ask 深海探险",
-        "/ask 深夜灯塔"
+        "# 多轮后拿增强概念去出片（复制增强概念给 /auto）",
+        "/ask 深夜灯塔",
+        "# CLI：增强概念存文件（喂给 auto/fast）",
+        "python core/vidance.py ask \"深海探险\" --out input/concept.txt"
       ]
     },
     {
@@ -389,8 +419,14 @@
         }
       ],
       "examples": [
+        "# 双角色故事（--ref 可重复）",
         "/custom --ref input/doubao.jpg --ref input/naiwa.jpg --script input/prompt_old.txt",
-        "/custom --ref input/徽派布衣奶蛙.png --script input/prompt_old.txt --lut cinematic --bgm dramatic"
+        "# 加后处理",
+        "/custom --ref input/徽派布衣奶蛙.png --script input/prompt_old.txt --lut cinematic --bgm dramatic",
+        "# 高保真（参考图 2048px，慢 2-3x，身份保真更好）",
+        "/custom --ref input/doubao.jpg --script input/prompt_old.txt --ref-image-size max",
+        "# 指定输出路径",
+        "/custom --ref input/doubao.jpg --script input/prompt_old.txt -o my_video.mp4"
       ]
     },
     {
@@ -469,7 +505,12 @@
         }
       ],
       "examples": [
-        "/quick 一只猫在月球上跳舞"
+        "# 纯 T2V：最快出素材（无角色锚、无后处理）",
+        "/quick 一只猫在月球上跳舞",
+        "# 指定音色",
+        "/quick 一只猫在月球上跳舞 --voice edge-xiaoxiao",
+        "# 换个概念",
+        "/quick 深夜灯塔的故事"
       ]
     },
     {
@@ -525,7 +566,12 @@
         }
       ],
       "examples": [
-        "/clip /path/long.wav -i \"只要讲龙的部分，去掉口误\""
+        "# 语义裁剪：一句话描述保留什么（长音频/视频 ASR + 裁剪）",
+        "/clip /path/long.wav -i \"只要讲龙的部分，去掉口误\"",
+        "# 只转写不裁剪（看字级时间戳）",
+        "python utils/funclip.py transcribe output/clips/narration.wav",
+        "# API 异步（提交后轮询 /api/clip/{job_id}）",
+        "curl -X POST http://127.0.0.1:8894/api/clip -H 'Content-Type: application/json' -d '{\"input\":\"/path/long.wav\",\"instructions\":\"只要讲龙的部分\",\"output\":\"dragon.wav\"}'"
       ]
     },
     {
@@ -544,7 +590,10 @@
         }
       ],
       "examples": [
-        "/scout --account 萌宠 -n 5"
+        "# 爬热点 → LLM 概念候选排序（不直接出片，看分数挑概念）",
+        "/scout --account 萌宠 -n 5",
+        "# 换个账号类型",
+        "/scout --account 影视解说 -n 3"
       ]
     },
     {
@@ -559,7 +608,10 @@
         }
       ],
       "examples": [
-        "/trends --top 15"
+        "# 直接看热榜（不选题）",
+        "/trends --top 15",
+        "# 多抓一些",
+        "/trends --top 30"
       ]
     },
     {
@@ -579,7 +631,10 @@
       "detail": "列出 6 种程序生成的 3D LUT 风格，可作 auto/fast 的 --lut 取值。",
       "params": [],
       "examples": [
-        "/luts"
+        "# 列出可用调色风格",
+        "/luts",
+        "# 挑一个喂给生成命令：--lut cool",
+        "/auto 深海探险 --lut cool"
       ]
     },
     {
@@ -589,7 +644,10 @@
       "detail": "列出可用 BGM mood，可作 auto/fast 的 --bgm 取值。",
       "params": [],
       "examples": [
-        "/moods"
+        "# 列出可用 BGM 情绪",
+        "/moods",
+        "# 挑一个喂给生成命令：--bgm epic",
+        "/fast 概念 --bgm epic"
       ]
     },
     {
@@ -637,10 +695,16 @@
       ],
       "example": "vace output/test_inputs/_vace_ref_dog.png \"a dog running on grass\" --length 45 -o output/vace_my.mp4",
       "examples": [
-        "# M7 VACE 参考图生视频（主体一致，~5-10min，wan 8189 需在线）",
-        "vace output/test_inputs/_vace_ref_dog.png \"a dog running on grass\" --length 45 -o output/vace_my.mp4",
+        "# M7 VACE 参考图生视频（主体一致，~5-10min，wan 8189 需在线；异步 job 画布转圈轮询）",
+        "/vace output/test_inputs/_vace_ref_dog.png \"a dog running on grass\" --length 45 -o output/vace_my.mp4",
         "# 短一点的快速测试（45帧≈3s@16fps）",
-        "vace ref.png \"a dog running on the beach\" --length 45"
+        "/vace ref.png \"a dog running on the beach\" --length 45",
+        "# 横屏（CLI 默认 480x832 竖屏，横屏显式传尺寸）",
+        "/vace ref.png \"a dog running on grass\" --width 832 --height 480",
+        "# 降控制强度（主体动作更自由）",
+        "/vace ref.png \"a cat dancing\" --vace-strength 0.7",
+        "# API 路径",
+        "curl -X POST http://127.0.0.1:9401/api/tool/vace -H 'Content-Type: application/json' -d '{\"args\":\"/app/output/test_inputs/_vace_ref_dog.png a dog running on grass --length 45\"}'"
       ]
     },
     {
@@ -656,7 +720,10 @@
         }
       ],
       "examples": [
-        "/video 20260924_090728"
+        "# 播放指定任务的成片（id 从 /tasks 拿）",
+        "/video 20260924_090728",
+        "# 先看最近任务 id",
+        "/tasks -n 5"
       ]
     },
     {
@@ -692,7 +759,10 @@
         }
       ],
       "examples": [
-        "/status 20260924_090728"
+        "# 查询单个任务详情（进度/产物/错误）",
+        "/status 20260924_090728",
+        "# 不知道 id？先看最近任务",
+        "/tasks -n 10"
       ]
     },
     {
@@ -707,7 +777,10 @@
         }
       ],
       "examples": [
-        "/clean --keep 20"
+        "# 保留最近 20 个任务输出，其余清理",
+        "/clean --keep 20",
+        "# 默认保留最近 10 个",
+        "/clean"
       ]
     },
     {
@@ -749,13 +822,25 @@
           "desc": "手动大纲（可重复）"
         }
       ],
-      "example": "ppt \"Vidance 项目介绍\" --video"
+      "example": "ppt \"Vidance 项目介绍\" --video",
+      "examples": [
+        "# 一键：概念→LLM 规划→幻灯片→有声 mp4（纯 CPU，~1-2min）",
+        "/ppt \"Vidance 项目介绍\" --video",
+        "# 手动大纲逐页旁白（--say 可重复，-n 页数）",
+        "/ppt \"季度总结\" --say \"第一页旁白\" --say \"第二页旁白\" --video -n 2",
+        "# 渲染已有 deck：多形态交付（mp4+PDF+PNG）",
+        "/ppt --deck output/ppt_xxx/deck.html --video --pdf --pngs",
+        "# 5 页 PDF + 指定音色",
+        "/ppt \"主题\" --pdf -n 5 --voice cosy-default",
+        "# 指定页间转场/调色/配乐",
+        "/ppt \"主题\" --video --transition wipe --lut cool --bgm calm"
+      ]
     },
     {
       "name": "edit",
       "version": "v16.x",
       "brief": "SAM2+YOLO 编辑 + 生成式编辑：分割/抠图/换底/打码/彩色多物体/YOLO 自动/框提示/视频双向追踪 + FLUX Fill 重绘/ControlNet/VACE/指令式编辑",
-      "detail": "图七模式：segment（mask）/cutout（透明抠图）/replace_bg（换底：hex 色或 blur）/mosaic（打码 pixel/blur）/inpaint（去水印 cv2 TELEA）/visualize（彩色多物体可视化，SAM demo 风格+标签）。视频：--point 点或 --box 框（YOLO --yolo 自动检出）提示→SAM2 双向传播（--frame 任意提示帧）→mosaic/blur_bg/cutout/color（彩色多物体）重拼 mp4。图省略提示自动主体（网格打点并集）。视频异步 job（画布轮询）。classes 铁律：空串 split 返回 [\"\"]，必须过滤空段。 生成式增强（v16.x，需 flux 8192/wan 8189 在线）：edit inpaint --engine flux --prompt（M5 Fill mask 内重绘，替代 cv2 TELEA）；edit replace_bg --engine flux --prompt（M5 生成式换底，mask 反转）；--controlnet canny（M6 结构保持改物种，误伤降 10 倍）；edit instruct --prompt（M8 Qwen-Image-Edit 中文指令式，无需 mask）；vidance vace ref.png prompt（M7 VACE 参考图生视频）。教训：移除类用整框矩形 mask + YOLO 复检目标物消失（SAM mask 对大物体只盖部分）。",
+      "detail": "图七模式：segment（mask）/cutout（透明抠图）/replace_bg（换底：hex 色或 blur）/mosaic（打码 pixel/blur）/inpaint（去水印 cv2 TELEA）/visualize（彩色多物体可视化，SAM demo 风格+标签）。视频：--point 点或 --box 框（YOLO --yolo 自动检出）提示→SAM2 双向传播（--frame 任意提示帧）→mosaic/blur_bg/cutout/color（彩色多物体）重拼 mp4。图省略提示自动主体（网格打点并集）。视频异步 job（画布轮询）。classes 铁律：空串 split 返回 [\"\"]，必须过滤空段。 生成式增强（v16.x，需 flux 8192/wan 8189 在线）：edit inpaint --engine flux --prompt（M5 Fill mask 内重绘，替代 cv2 TELEA）；edit replace_bg --engine flux --prompt（M5 生成式换底，mask 反转）；--controlnet canny（M6 结构保持改物种，误伤降 10 倍）；edit instruct --prompt（M8 Qwen-Image-Edit 中文指令式，无需 mask）；vidance vace ref.png prompt（M7 VACE 参考图生视频）；edit video --engine vace --prompt（v16.x VACE 生成式视频 inpaint：SAM2 逐帧 mask→VACE 重绘，mask_op=remove 反转去物体/keep 保主体，YOLO 复检 4/5 帧消失）。教训：移除类用整框矩形 mask + YOLO 复检目标物消失（SAM mask 对大物体只盖部分）。",
       "params": [
         {
           "key": "input",
@@ -807,11 +892,19 @@
         },
         {
           "key": "--engine",
-          "desc": "inpaint/replace_bg 引擎：cv=TELEA（快）/ flux=FLUX.1 Fill 生成式（v16.x M5）"
+          "desc": "inpaint/replace_bg 引擎：cv=TELEA（快）/ flux=FLUX.1 Fill 生成式（v16.x M5）/ vace=视频级 VACE 生成式（video 专用，wan 8189）"
         },
         {
           "key": "--prompt",
-          "desc": "flux 重绘内容描述（instruct=编辑指令，中文可用）"
+          "desc": "flux/vace 重绘内容描述（instruct=编辑指令，中文可用）"
+        },
+        {
+          "key": "--mask-op",
+          "desc": "vace 引擎：remove=去掉物体（mask 反转）/ keep=只保留主体（背景重绘）"
+        },
+        {
+          "key": "--vace-strength",
+          "desc": "vace 控制强度（默认 1.0）"
         },
         {
           "key": "--steps",
@@ -834,27 +927,41 @@
           "desc": "Qwen Edit CFG（默认 2.5）"
         }
       ],
-      "example": "edit output/xxx.jpg visualize | edit output/xxx.jpg --yolo --classes \"cat,dog\" | edit output/xxx.mp4 video --point \"x,y\" --op color --frame 30 | edit output/xxx.mp4 video --yolo --frame 30 --op color",
+      "example": "/edit output/xxx.jpg visualize | /edit output/xxx.jpg --yolo --classes \"cat,dog\" | /edit output/xxx.mp4 video --point \"x,y\" --op color --frame 30 | /edit output/xxx.mp4 video --yolo --frame 30 --op color",
       "examples": [
-        "# ── 经典编辑（秒级，纯 CV/SAM） ──",
-        "edit 图.jpg visualize                                  # 彩色多物体可视化（省略提示=自动）",
-        "edit 图.jpg visualize --yolo --classes \"cat,dog\"      # YOLO 自动检测→SAM 框提示",
-        "edit 图.jpg cutout --point 311,175 -o out.png          # 抠主体→透明 PNG",
-        "edit 图.jpg mosaic --point x,y --mode pixel            # 打码",
-        "edit 视频.mp4 video --point \"x1,y1;x2,y2\" --op color --frame 30   # 视频彩色多物体（双向传播）",
-        "# ── 生成式编辑 v16.x（需 flux 8192 / wan 8189 在线，~1min） ──",
+        "# ── 第一步：先看后改（visualize 不改图，只看 SAM/YOLO 认出了什么） ──",
+        "/edit output/test_inputs/scene_cat_dog.png visualize",
+        "/edit output/test_inputs/scene_cat_dog.png visualize --yolo --classes \"cat,dog\"",
+        "# ── 经典编辑（秒级，纯 CV/SAM，无需 ComfyUI） ──",
+        "/edit output/test_inputs/scene_cat_dog.png cutout --point 311,175 -o output/edit_demo/my_cut.png",
+        "/edit output/test_inputs/scene_cat_dog.png mosaic --point 500,200 --mode pixel",
+        "/edit output/test_inputs/scene_cat_dog.png replace_bg --point 311,175 --bg blur -o output/edit_demo/my_bg.png",
+        "/edit output/test_inputs/scene_cat_dog.png segment --point 311,175 -o output/edit_demo/my_mask.png",
+        "# ── 视频编辑（SAM2 双向追踪，异步，画布转圈轮询） ──",
+        "/edit output/test_inputs/cat_dog_fight.mp4 video --point \"x,y\" --op mosaic -o output/edit_demo/my_vid.mp4",
+        "/edit output/test_inputs/cat_dog_fight.mp4 video --yolo --frame 30 --op color -o output/edit_demo/my_color.mp4",
+        "# ── 生成式编辑 v16.x（需 flux 8192 在线，~1min） ──",
         "# M8 指令式编辑：中文指令全局生效，无需 mask（Qwen-Image-Edit 2509）",
-        "edit output/test_inputs/scene_cat_dog.png instruct --prompt \"把猫换成金毛犬\" -o output/edit_demo/my_instruct.png",
-        "# M5 FLUX Fill 去物体：YOLO 自动找目标→生成式填补",
-        "edit output/test_inputs/scene_cat_dog.png inpaint --yolo --classes cat --engine flux --prompt \"empty ground\" -o output/edit_demo/my_fill.png",
+        "/edit output/test_inputs/scene_cat_dog.png instruct --prompt \"把猫换成金毛犬\" -o output/edit_demo/my_instruct.png",
+        "/edit output/test_inputs/scene_cat_dog.png instruct --prompt \"给狗戴一顶红色圣诞帽\" -o output/edit_demo/my_hat.png",
+        "# M5 FLUX Fill 去物体：YOLO 自动找目标→生成式填补背景",
+        "/edit output/test_inputs/scene_cat_dog.png inpaint --yolo --classes cat --engine flux --prompt \"empty ground\" -o output/edit_demo/my_fill.png",
         "# M6 结构保持改物种：canny 联动（误伤降 10 倍）",
-        "edit output/test_inputs/scene_cat_dog.png inpaint --yolo --classes cat --engine flux --prompt \"a golden retriever puppy\" --controlnet canny --controlnet-strength 0.55 -o output/edit_demo/my_canny.png",
-        "# M5 生成式换底",
-        "edit 图.jpg replace_bg --box \"x1,y1,x2,y2\" --engine flux --prompt \"a sunny beach\" -o out.png",
+        "/edit output/test_inputs/scene_cat_dog.png inpaint --yolo --classes cat --engine flux --prompt \"a golden retriever puppy\" --controlnet canny --controlnet-strength 0.55 -o output/edit_demo/my_canny.png",
+        "# M5 生成式换底（mask 反转重绘背景）",
+        "/edit output/test_inputs/scene_cat_dog.png replace_bg --box \"x1,y1,x2,y2\" --engine flux --prompt \"a sunny beach\" -o output/edit_demo/my_beach.png",
+        "# ── v16.x VACE 生成式视频 inpaint（需 wan 8189 在线，~5-10min，异步） ──",
+        "# 视频移除物体：YOLO 找目标 → SAM2 逐帧 mask → VACE 按 prompt 重绘（YOLO 复检 4/5 帧消失）",
+        "/edit output/test_inputs/cat_dog_fight.mp4 video --yolo --frame 0 --engine vace --mask-op remove --prompt \"empty ground\" -o output/edit_demo/my_vace.mp4",
+        "# 只保留主体（背景重绘，mask 不反转）",
+        "/edit output/test_inputs/cat_dog_fight.mp4 video --yolo --frame 0 --engine vace --mask-op keep --prompt \"a sunny park\" -o output/edit_demo/my_keep.mp4",
+        "# 框提示（YOLO 检不准时手动框，同图编辑）",
+        "/edit output/test_inputs/cat_dog_fight.mp4 video --box \"1,52,832,305\" --engine vace --prompt \"empty ground\"",
         "# ── M7 VACE 参考图生视频（单独命令，见 vace 条目） ──",
-        "vace output/test_inputs/_vace_ref_dog.png \"a dog running on grass\" --length 45 -o output/vace_my.mp4",
-        "# ── API 路径（注意：参数序是 图.jpg instruct 输入在前，与 CLI 相反） ──",
-        "curl -X POST http://127.0.0.1:9401/api/tool/edit -H 'Content-Type: application/json' -d '{\"args\":\"/app/output/test_inputs/scene_cat_dog.png instruct --prompt 把猫换成金毛犬\"}'"
+        "/vace output/test_inputs/_vace_ref_dog.png \"a dog running on grass\" --length 45 -o output/vace_my.mp4",
+        "# ── API 路径（参数序：路径在前最稳） ──",
+        "curl -X POST http://127.0.0.1:9401/api/tool/edit -H 'Content-Type: application/json' -d '{\"args\":\"/app/output/test_inputs/scene_cat_dog.png instruct --prompt 把猫换成金毛犬\"}'",
+        "curl http://127.0.0.1:9401/api/h3shot/{job_id}"
       ]
     },
     {
