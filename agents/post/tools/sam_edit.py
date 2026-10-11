@@ -776,8 +776,8 @@ def video_inpaint_vace(in_path, out_path, points=None, boxes=None, prompt='empty
                        negative_prompt=None, on_stage=None):
     """SAM2 追踪 + Wan2.1 VACE 生成式视频 inpaint（视频级移除/替换物体，wan 8189）。
 
-    op: remove=去掉物体（mask 反转：物体区黑=重绘，背景白=保留，VACE 语义）
-        keep=只保留主体（背景重绘）
+    op: remove=去掉物体（mask 原样：物体区白=重绘，VACE 语义 mask 白=重绘）
+        keep=只保留主体（mask 反转：背景白=重绘）
     prompt 描述重绘区内容（如 empty ground / green grass）。
     流程：SAM2 逐帧 mask → control_video=原帧 + control_masks=mask → VACE 生成式填补。
     """
@@ -797,7 +797,7 @@ def video_inpaint_vace(in_path, out_path, points=None, boxes=None, prompt='empty
         mask_pngs = []
         for i, mp in enumerate(r['mask_paths']):
             m = np.array(Image.open(mp))
-            if op == 'remove':
+            if op == 'keep':
                 m = 255 - m
             inv = os.path.splitext(mp)[0] + '_inv.png'
             Image.fromarray(m.astype(np.uint8)).save(inv)

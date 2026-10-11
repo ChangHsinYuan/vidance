@@ -999,7 +999,7 @@ def build_parser():
     p_edit.add_argument('--cfg', type=float, default=5.0, help='vace CFG（默认 5.0；instruct 用 2.5）')
     p_edit.add_argument('--vace-strength', dest='vace_strength', type=float, default=1.0, help='vace 控制强度（默认 1.0）')
     p_edit.add_argument('--mask-op', dest='mask_op', default='remove', choices=['remove', 'keep'],
-                        help='vace 引擎：remove=去掉物体（mask 反转）/ keep=只保留主体（背景重绘）')
+                        help='vace 引擎：remove=去掉物体（物体区重绘）/ keep=只保留主体（背景重绘）')
     p_edit.add_argument('--controlnet', default='', choices=['', 'canny'],
                         help='flux 联动 ControlNet：canny=结构保持重绘（v16.x M6）')
     p_edit.add_argument('--controlnet-strength', type=float, default=0.5, help='ControlNet 强度（默认 0.5）')

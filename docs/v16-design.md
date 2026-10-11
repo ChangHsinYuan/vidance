@@ -97,7 +97,7 @@
 | utils/workflows/flux_fill_canny.json | M6 联动（ControlNetApplyAdvanced + SetUnionControlNetType） |
 | utils/workflows/wan_vace.json | M7 VACE（WanVaceToVideo reference_image） |
 | utils/workflows/qwen_edit.json | M8 指令编辑（TextEncodeQwenImageEditPlus） |
-| agents/post/tools/sam_edit.py | video_masks（SAM2 逐帧 mask：ffmpeg 抽帧→propagate→frame/mask %06d）+ video_inpaint_vace（v16.x VACE 视频 inpaint：op remove 反转/keep，workdir 清理） |
+| agents/post/tools/sam_edit.py | video_masks（SAM2 逐帧 mask：ffmpeg 抽帧→propagate→frame/mask %06d）+ video_inpaint_vace（v16.x VACE 视频 inpaint：op remove 原样/keep 反转，workdir 清理） |
 | agents/generator/tools/comfy_api.py | generate_vace_inpaint（v16.x：程序化构建 workflow 无需模板，LoadImage×N+ImageBatch 链+ImageToMask+WanVaceToVideo+KSampler uni_pc+SaveVideo，上传子目录 vace_inpaint/{seed}） |
 | core/vidance.py | edit 子命令（--engine cv|flux|vace/--prompt/--mask-op/--controlnet）+ vace 子命令 + instruct op |
 | core/api_server.py | /api/tool/edit（含 flux+vace 分发，vace 异步 _run_vaceeditjob 接 h3shot 轮询 + on_stage）+ /api/tool/vace（异步） |
@@ -117,13 +117,13 @@ python core/vidance.py edit instruct 图.jpg \
   --prompt "把猫换成狗" -o out.png                                # M8 指令编辑
 # v16.x VACE 生成式视频 inpaint（SAM2 逐帧 mask → VACE 重绘）
 python core/vidance.py edit video 视频.mp4 --yolo --frame 0 --engine vace \
-  --mask-op remove --prompt "empty ground" -o out.mp4            # 移除物体（mask 反转）
+  --mask-op remove --prompt "empty ground" -o out.mp4            # 移除物体（物体区重绘）
 python core/vidance.py edit video 视频.mp4 --yolo --engine vace \
   --mask-op keep --prompt "a sunny park" -o out.mp4              # 只保留主体（背景重绘）
 ```
 
 ### v16.x VACE 视频 inpaint 要点
 
-- **mask 语义**（nodes_wan.py 源码确认）：VACE reactive=frame×mask，**mask=1 保留原像素，mask=0 按 prompt 重绘**——移除物体必须反转 SAM mask（op=remove 做 255-m：物体黑=重绘，背景白=保留）
+- **mask 语义（像素级实测确认，2026-10-11 勘误）**：**mask 白(1)=重绘该区、黑(0)=保留**（与 ComfyUI inpaint 惯例一致）——remove 直接用 SAM mask 原样（物体白=重绘），keep 才反转。初版极性搞反（remove 做 255-m）导致狗被保留、背景被重绘成"模糊地面"：狗区差异 28-37/相关 0.85+、背景差异 66-101，且 **YOLO 复检被背景重绘干扰误报狗消失**——验证必须加像素级分区差异（修正后：狗区 36-54、背景 12-22）
 - **无需 workflow 模板**：generate_vace_inpaint 程序化构建（动态帧数：LoadImage cf0..N/cm0..N + ImageBatch 链 + WanVaceToVideo(control_video/control_masks) + KSampler uni_pc/simple + SaveVideo）；帧以图片经 upload_image(subfolder=) 上传（不用 LoadImageDataSetFromFolder——folder COMBO 启动时快照，新子目录需重启）
 - **验证**：cat_dog_fight.mp4（832x480 24fps 121 帧）--yolo 移除狗 → YOLO 复检 4/5 帧 dog 消失（首帧残影 conf 0.85→0.51）；CLI 与 API 异步 job（_run_vaceeditjob + on_stage 阶段上报）双通道通过

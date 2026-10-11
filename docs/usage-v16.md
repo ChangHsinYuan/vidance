@@ -139,15 +139,15 @@ op 一览：`mosaic`（打码）/ `blur_bg`（背景虚化）/ `cutout`（主体
 SAM2 逐帧 mask → Wan2.1 VACE 视频级生成式重绘——移除/替换物体后画面由模型补全（非黑底/打码），时序一致。需 wan 8189 在线，~5-10 分钟，异步。
 
 ```bash
-# 移除物体（mask 反转：物体区按 prompt 重绘，背景原样保留）
+# 移除物体（物体区白=重绘，背景保留；VACE mask 白=重绘该区）
 python core/vidance.py edit 视频.mp4 video --yolo --frame 0 --engine vace --mask-op remove --prompt "empty ground" -o out.mp4
-# 只保留主体（背景重绘，mask 不反转）
+# 只保留主体（keep=mask 反转，背景重绘）
 python core/vidance.py edit 视频.mp4 video --yolo --frame 0 --engine vace --mask-op keep --prompt "a sunny park" -o out.mp4
 # 框提示（YOLO 检不准时手动框）
 python core/vidance.py edit 视频.mp4 video --box "x1,y1,x2,y2" --engine vace --prompt "empty ground"
 ```
 
-要点：`--mask-op remove` 是默认（去掉 mask 内物体）；mask 语义与图编辑相反——VACE 里 mask=1 保留原像素，所以移除物体必须反转。验证口径：YOLO 复检输出视频目标消失（实测猫狗打架视频 4/5 帧狗消失，首帧残影 conf 0.85→0.51）。输出 81 帧@16fps（4n+1 补齐，原 24fps 视频会慢放）。
+要点：`--mask-op remove` 是默认（去掉 mask 内物体）；**VACE mask 语义（像素级实测确认）：mask 白(1)=重绘该区、黑(0)=保留**——remove 直接用 SAM mask（物体白=重绘），keep 才反转。验证口径：**像素级分区差异（狗区应大幅变化、背景应基本不变）+ YOLO 复检**，单靠 YOLO 会被背景重绘干扰误判（实测极性搞反时背景差异 66-101、狗区 28-37 相关 0.85+，YOLO 仍报 4/5 帧消失但狗肉眼可见）。修正后：狗区差异 36-54、背景 12-22，YOLO 4/5 帧消失（残影帧 conf 0.26）。输出 81 帧@16fps（4n+1 补齐，原 24fps 视频会慢放）。
 
 ---
 

@@ -840,7 +840,7 @@
       "name": "edit",
       "version": "v16.x",
       "brief": "SAM2+YOLO 编辑 + 生成式编辑：分割/抠图/换底/打码/彩色多物体/YOLO 自动/框提示/视频双向追踪 + FLUX Fill 重绘/ControlNet/VACE/指令式编辑",
-      "detail": "图七模式：segment（mask）/cutout（透明抠图）/replace_bg（换底：hex 色或 blur）/mosaic（打码 pixel/blur）/inpaint（去水印 cv2 TELEA）/visualize（彩色多物体可视化，SAM demo 风格+标签）。视频：--point 点或 --box 框（YOLO --yolo 自动检出）提示→SAM2 双向传播（--frame 任意提示帧）→mosaic/blur_bg/cutout/color（彩色多物体）重拼 mp4。图省略提示自动主体（网格打点并集）。视频异步 job（画布轮询）。classes 铁律：空串 split 返回 [\"\"]，必须过滤空段。 生成式增强（v16.x，需 flux 8192/wan 8189 在线）：edit inpaint --engine flux --prompt（M5 Fill mask 内重绘，替代 cv2 TELEA）；edit replace_bg --engine flux --prompt（M5 生成式换底，mask 反转）；--controlnet canny（M6 结构保持改物种，误伤降 10 倍）；edit instruct --prompt（M8 Qwen-Image-Edit 中文指令式，无需 mask）；vidance vace ref.png prompt（M7 VACE 参考图生视频）；edit video --engine vace --prompt（v16.x VACE 生成式视频 inpaint：SAM2 逐帧 mask→VACE 重绘，mask_op=remove 反转去物体/keep 保主体，YOLO 复检 4/5 帧消失）。教训：移除类用整框矩形 mask + YOLO 复检目标物消失（SAM mask 对大物体只盖部分）。",
+      "detail": "图七模式：segment（mask）/cutout（透明抠图）/replace_bg（换底：hex 色或 blur）/mosaic（打码 pixel/blur）/inpaint（去水印 cv2 TELEA）/visualize（彩色多物体可视化，SAM demo 风格+标签）。视频：--point 点或 --box 框（YOLO --yolo 自动检出）提示→SAM2 双向传播（--frame 任意提示帧）→mosaic/blur_bg/cutout/color（彩色多物体）重拼 mp4。图省略提示自动主体（网格打点并集）。视频异步 job（画布轮询）。classes 铁律：空串 split 返回 [\"\"]，必须过滤空段。 生成式增强（v16.x，需 flux 8192/wan 8189 在线）：edit inpaint --engine flux --prompt（M5 Fill mask 内重绘，替代 cv2 TELEA）；edit replace_bg --engine flux --prompt（M5 生成式换底，mask 反转）；--controlnet canny（M6 结构保持改物种，误伤降 10 倍）；edit instruct --prompt（M8 Qwen-Image-Edit 中文指令式，无需 mask）；vidance vace ref.png prompt（M7 VACE 参考图生视频）；edit video --engine vace --prompt（v16.x VACE 生成式视频 inpaint：SAM2 逐帧 mask→VACE 重绘，VACE 语义 mask 白=重绘该区，mask_op=remove 原样去物体/keep 反转保主体，验证=像素级狗区差异 36-54 背景仅 12-22 + YOLO 4/5 帧消失）。教训：移除类用整框矩形 mask + YOLO 复检目标物消失（SAM mask 对大物体只盖部分）；YOLO 复检会被背景重绘干扰，需加像素级分区差异验证。",
       "params": [
         {
           "key": "input",
@@ -900,7 +900,7 @@
         },
         {
           "key": "--mask-op",
-          "desc": "vace 引擎：remove=去掉物体（mask 反转）/ keep=只保留主体（背景重绘）"
+          "desc": "vace 引擎：remove=去掉物体（物体区重绘）/ keep=只保留主体（背景重绘）"
         },
         {
           "key": "--vace-strength",
@@ -953,7 +953,7 @@
         "# ── v16.x VACE 生成式视频 inpaint（需 wan 8189 在线，~5-10min，异步） ──",
         "# 视频移除物体：YOLO 找目标 → SAM2 逐帧 mask → VACE 按 prompt 重绘（YOLO 复检 4/5 帧消失）",
         "/edit output/test_inputs/cat_dog_fight.mp4 video --yolo --frame 0 --engine vace --mask-op remove --prompt \"empty ground\" -o output/edit_demo/my_vace.mp4",
-        "# 只保留主体（背景重绘，mask 不反转）",
+        "# 只保留主体（背景重绘，keep=mask 反转）",
         "/edit output/test_inputs/cat_dog_fight.mp4 video --yolo --frame 0 --engine vace --mask-op keep --prompt \"a sunny park\" -o output/edit_demo/my_keep.mp4",
         "# 框提示（YOLO 检不准时手动框，同图编辑）",
         "/edit output/test_inputs/cat_dog_fight.mp4 video --box \"1,52,832,305\" --engine vace --prompt \"empty ground\"",
