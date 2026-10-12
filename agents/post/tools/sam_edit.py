@@ -773,14 +773,18 @@ def video_masks(in_path, out_dir, points=None, boxes=None, prompt_frame=0, size=
 def video_inpaint_vace(in_path, out_path, points=None, boxes=None, prompt='empty ground',
                        op='remove', prompt_frame=0, size='small', device='', yolo=False,
                        classes=None, conf=0.25, steps=25, cfg=5.0, vace_strength=1.0,
-                       negative_prompt=None, on_stage=None):
+                       negative_prompt=None, model='wan2.1_vace_1.3B_fp16.safetensors',
+                       on_stage=None):
     """SAM2 追踪 + Wan2.1 VACE 生成式视频 inpaint（视频级移除/替换物体，wan 8189）。
 
-    op: remove=去掉物体（mask 原样：物体区白=重绘，VACE 语义 mask 白=重绘）
-        keep=只保留主体（mask 反转：背景白=重绘）
+    op: remove=去掉物体（物体区按 prompt 补全）
+        keep=只保留主体（背景按 prompt 补全）
     prompt 描述重绘区内容（如 empty ground / green grass）。
-    流程：SAM2 逐帧 mask → control_video=原帧 + control_masks=mask → VACE 生成式填补。
+    流程：SAM2 逐帧 mask → control_video 帧的重绘区先用 TELEA 预填充延展背景色
+    （直接填灰模型会补出暗色，填原像素则物体泄漏成结构参考只"换皮"不消失）
+    → control_masks=重绘区 → VACE 时序一致化补全。
     """
+    import cv2
     from agents.generator.tools.comfy_api import ComfyClient
 
     def _stage(s):
@@ -794,24 +798,110 @@ def video_inpaint_vace(in_path, out_path, points=None, boxes=None, prompt='empty
                     size=size, device=device, yolo=yolo, classes=classes, conf=conf)
     try:
         _stage(f'VACE 生成中（{r["length"]} 帧 {r["width"]}x{r["height"]}，约 5-10 分钟）')
-        mask_pngs = []
-        for i, mp in enumerate(r['mask_paths']):
+        # 时序背景板预填充：物体未遮挡该像素的帧取中位（≈真实背景），
+        # 替代 TELEA 糊斑（TELEA 团块会被 VACE 当物体顺势画成新物体，如白鸭）
+        frames_all = [np.array(Image.open(fp).convert('RGB')) for fp in r['frame_paths']]
+        masks_all = [(np.array(Image.open(mp)) > 127) for mp in r['mask_paths']]
+        fa = np.stack(frames_all).astype(np.float32)
+        ma = ~np.stack(masks_all)  # True=可见（未被物体盖住）
+        vis = ma.astype(np.float32)[:, :, :, None]
+        cov = ma.mean(axis=0)  # 每像素背景可见率
+        plate = np.where(cov[:, :, None] > 0.05, (fa * vis).sum(0) / np.maximum(vis.sum(0), 1), 0)
+        _stage(f'背景板可见率中位 {np.median(cov) * 100:.0f}%')
+        mask_pngs, ctrl_paths = [], []
+        for i, (fp, mp) in enumerate(zip(r['frame_paths'], r['mask_paths'])):
+            fr = frames_all[i]
             m = np.array(Image.open(mp))
-            if op == 'keep':
-                m = 255 - m
+            m = m if op == 'remove' else 255 - m
+            m8 = (m > 127).astype(np.uint8)
+            m8 = cv2.dilate(m8, np.ones((9, 9), np.uint8))
+            filled = cv2.inpaint(fr[:, :, ::-1], m8, 5, cv2.INPAINT_TELEA)[:, :, ::-1]
+            # 背景板可见像素优先（真实背景），不可见像素回退 TELEA
+            ok = (cov > 0.05) & (m8 > 0)
+            fr = fr.copy()
+            fr[ok] = plate[ok].astype(np.uint8)
+            fr[m8 > 0] = np.where(ok[:, :, None], fr, filled)[m8 > 0]
+            cf = os.path.splitext(fp)[0] + '_ctrl.png'
+            Image.fromarray(fr).save(cf)
+            ctrl_paths.append(cf)
             inv = os.path.splitext(mp)[0] + '_inv.png'
-            Image.fromarray(m.astype(np.uint8)).save(inv)
+            Image.fromarray((m8 * 255).astype(np.uint8)).save(inv)
             mask_pngs.append(inv)
         client = ComfyClient(instance='wan')
         res = client.generate_vace_inpaint(
-            r['frame_paths'], mask_pngs, prompt,
+            ctrl_paths, mask_pngs, prompt,
             width=r['width'], height=r['height'], length=r['length'],
             steps=steps, cfg=cfg, vace_strength=vace_strength, fps=16,
-            negative_prompt=negative_prompt, output_path=out_path)
+            negative_prompt=negative_prompt, model=model, output_path=out_path)
         print(f"[vace-inpaint] prompt_id={res['prompt_id']} seed={res['seed']} "
               f"length={r['length']} op={op}")
         return {'output': out_path, 'frames': r['length'], 'fps': 16, 'op': op,
                 'seed': res['seed'], 'prompt_id': res['prompt_id']}
+    finally:
+        shutil.rmtree(workd, ignore_errors=True)
+
+
+_PROPAINTER_SRC = '/mnt/disk_sdb/zxy/ProPainter'
+
+
+def video_inpaint_propainter(in_path, out_path, points=None, boxes=None, op='remove',
+                             prompt_frame=0, size='small', device='', yolo=False,
+                             classes=None, conf=0.25, mask_dilation=8, fp16=True,
+                             on_stage=None):
+    """SAM2 追踪 + ProPainter 流传播视频 inpaint（光流传播，物体移除融合最自然）。
+
+    op: remove=去掉物体（SAM mask 白=移除区）/ keep=只保留主体（mask 反转）。
+    流程：SAM2 逐帧 mask → ProPainter（RAFT 双向光流补全 + 特征传播 + transformer），
+    掩码区由前后帧光流传播内容填满——非生成式，不会长出新物体。
+    前置：ProPainter 仓库在 _PROPAINTER_SRC 且 weights/ 下有三个 .pth
+    （ProPainter.pth / raft-things.pth / recurrent_flow_completion.pth）。
+    """
+    import cv2
+
+    def _stage(s):
+        print(f'[propainter] {s}')
+        if on_stage:
+            on_stage(s)
+
+    _stage('SAM2 逐帧 mask 提取中')
+    workd = os.path.join(os.path.dirname(out_path) or '.', 'propainter_work')
+    r = video_masks(in_path, workd, points=points, boxes=boxes, prompt_frame=prompt_frame,
+                    size=size, device=device, yolo=yolo, classes=classes, conf=conf)
+    try:
+        framesd = os.path.join(workd, 'frames')
+        os.makedirs(framesd)
+        for fp in r['frame_paths']:
+            shutil.copyfile(fp, os.path.join(framesd, os.path.basename(fp)))
+        maskd = os.path.join(workd, 'masks')
+        os.makedirs(maskd)
+        for mp in r['mask_paths']:
+            if op == 'keep':
+                m = 255 - np.array(Image.open(mp))
+                Image.fromarray(m).save(os.path.join(maskd, os.path.basename(mp)))
+            else:
+                shutil.copyfile(mp, os.path.join(maskd, os.path.basename(mp)))
+        _stage(f'ProPainter 流传播中（{r["length"]} 帧 {r["width"]}x{r["height"]}）')
+        tmp_out = os.path.join(workd, 'out')
+        cmd = [sys.executable, 'inference_propainter.py',
+               '-i', framesd, '-m', maskd, '-o', tmp_out,
+               '--mask_dilation', str(mask_dilation),
+               '--save_fps', str(r['fps'])]
+        if fp16 and not device.startswith('cpu'):
+            cmd.append('--fp16')
+        env = dict(os.environ)
+        proc = subprocess.run(cmd, cwd=_PROPAINTER_SRC, env=env,
+                              capture_output=True, text=True)
+        if proc.returncode != 0:
+            tail = (proc.stderr or proc.stdout or '')[-2000:]
+            raise RuntimeError(f'ProPainter 推理失败: {tail}')
+        src = os.path.join(tmp_out, os.path.basename(framesd), 'inpaint_out.mp4')
+        if not os.path.isfile(src):
+            raise RuntimeError(f'ProPainter 未产出 {src}')
+        os.makedirs(os.path.dirname(out_path) or '.', exist_ok=True)
+        shutil.copyfile(src, out_path)
+        print(f"[propainter] {r['length']} 帧 @{r['fps']:.1f}fps op={op} "
+              f"mask_dilation={mask_dilation}")
+        return {'output': out_path, 'frames': r['length'], 'fps': r['fps'], 'op': op}
     finally:
         shutil.rmtree(workd, ignore_errors=True)
 
@@ -835,8 +925,8 @@ def main():
     ap.add_argument('--yolo', action='store_true', help='YOLO 自动检测物体→框提示（Grounded-SAM）')
     ap.add_argument('--classes', default='', help='YOLO 类别过滤（逗号分隔，如 cat,dog）')
     ap.add_argument('--conf', type=float, default=0.25, help='YOLO 置信度阈值')
-    ap.add_argument('--engine', choices=['cv', 'flux', 'vace'], default='cv',
-                     help='inpaint/replace_bg 引擎：cv=TELEA（快速）/ flux=FLUX.1 Fill 生成式重绘 / vace=视频级 VACE（video 专用）')
+    ap.add_argument('--engine', choices=['cv', 'flux', 'vace', 'propainter'], default='cv',
+                     help='inpaint/replace_bg 引擎：cv=TELEA（快速）/ flux=FLUX.1 Fill 生成式重绘 / vace=视频级 VACE（video 专用）/ propainter=视频级流传播（video 专用）')
     ap.add_argument('--prompt', default='', help='flux 引擎重绘内容描述（如 empty wooden floor）')
     ap.add_argument('--steps', type=int, default=30, help='flux Fill 采样步数')
     ap.add_argument('--guidance', type=float, default=30.0, help='flux Fill guidance（官方推荐 30）')
@@ -884,6 +974,15 @@ def main():
                                    classes=(a.classes.split(',') if a.classes else None),
                                    conf=a.conf, steps=a.steps, cfg=a.cfg)
             print(f"✅ {r['output']}（{r['frames']} 帧 @{r['fps']:.1f}fps op={r['op']} seed={r['seed']}）")
+            return
+        if a.engine == 'propainter':
+            r = video_inpaint_propainter(a.input, out, pts, boxes=boxes or None,
+                                         op=getattr(a, 'mask_op', None) or 'remove',
+                                         prompt_frame=a.frame, size=a.size, device=a.device,
+                                         yolo=bool(a.yolo),
+                                         classes=(a.classes.split(',') if a.classes else None),
+                                         conf=a.conf)
+            print(f"✅ {r['output']}（{r['frames']} 帧 @{r['fps']:.1f}fps op={r['op']}）")
             return
         if a.op == 'color':
             r = video_color(a.input, out, pts, size=a.size, device=a.device,

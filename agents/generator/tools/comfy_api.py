@@ -344,12 +344,14 @@ class ComfyClient:
                               width=832, height=480, length=81,
                               steps=25, cfg=5.0, vace_strength=1.0,
                               fps: int = 16, negative_prompt: str = None,
+                              model: str = 'wan2.1_vace_1.3B_fp16.safetensors',
                               filename_prefix: str = 'vidance/vace_inpaint',
                               output_path: str = None) -> dict:
-        """Wan2.1 VACE 视频 inpaint：control_video(原帧) + control_masks(逐帧 mask) → 生成式重绘。
+        """Wan2.1 VACE 视频 inpaint：control_video(重绘区预填充后帧) + control_masks(逐帧 mask) → 生成式重绘。
 
-        mask 语义（VACE）：白(1)=保留原内容，黑(0)=按 prompt 重绘——
-        移除物体时调用方需反转 SAM mask（物体=黑，背景=白）。
+        mask 语义（VACE）：白(1)=按 prompt 重绘，黑(0)=保留原内容。
+        control_video 帧的重绘区需由调用方先预填充（TELEA 延展背景色），
+        否则原像素泄漏成结构参考，物体只被"换色"不消失。
         workflow 程序化构建（LoadImage×N + ImageBatch 链，动态帧数无需模板）。
         返回 {video_path, seed, params}。
         """
@@ -369,7 +371,7 @@ class ComfyClient:
         # LoadImage×N + ImageBatch 链（动态帧数，程序化构建）
         workflow = {
             '1': {'class_type': 'UNETLoader',
-                  'inputs': {'unet_name': 'wan2.1_vace_1.3B_fp16.safetensors', 'weight_dtype': 'default'}},
+                  'inputs': {'unet_name': model, 'weight_dtype': 'default'}},
             '2': {'class_type': 'CLIPLoader',
                   'inputs': {'clip_name': 'umt5_xxl_fp8_e4m3fn_scaled.safetensors', 'type': 'wan'}},
             '3': {'class_type': 'VAELoader', 'inputs': {'vae_name': 'wan_2.1_vae.safetensors'}},

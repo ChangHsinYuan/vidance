@@ -493,6 +493,10 @@ def cmd_edit(args):
             if not getattr(args, 'prompt', ''):
                 print('✗ vace 引擎需要 --prompt 描述重绘区内容（如 empty ground）')
                 return
+            vmodel = {'1.3b': 'wan2.1_vace_1.3B_fp16.safetensors',
+                      '14b': 'wan2.1_vace_14B_fp16.safetensors'}.get(
+                (getattr(args, 'vace_model', '') or '1.3B').lower(),
+                'wan2.1_vace_1.3B_fp16.safetensors')
             r = se.video_inpaint_vace(
                 args.input, args.output or
                 os.path.join('output', 'vace_inpaint_%s.mp4' % time.strftime('%Y%m%d_%H%M%S')),
@@ -500,8 +504,8 @@ def cmd_edit(args):
                 op=getattr(args, 'mask_op', 'remove'), prompt_frame=getattr(args, 'frame', 0),
                 size=args.size, device=args.device, yolo=bool(getattr(args, 'yolo', False)),
                 classes=classes, conf=conf, steps=getattr(args, 'steps', 25),
-                cfg=getattr(args, 'cfg', 5.0),
-                vace_strength=getattr(args, 'vace_strength', 1.0))
+                cfg=getattr(args, 'cfg', 5.0), vace_strength=getattr(args, 'vace_strength', 1.0),
+                model=vmodel)
             print(f"{r['output']}（{r['frames']} 帧 @{r['fps']:.1f}fps op={r['op']} seed={r['seed']}）")
             return
         if args.op == 'color':
@@ -1000,6 +1004,8 @@ def build_parser():
     p_edit.add_argument('--vace-strength', dest='vace_strength', type=float, default=1.0, help='vace 控制强度（默认 1.0）')
     p_edit.add_argument('--mask-op', dest='mask_op', default='remove', choices=['remove', 'keep'],
                         help='vace 引擎：remove=去掉物体（物体区重绘）/ keep=只保留主体（背景重绘）')
+    p_edit.add_argument('--vace-model', dest='vace_model', default='1.3B', choices=['1.3B', '14B'],
+                        help='vace 引擎模型：1.3B（快，~6min）/ 14B（质量高，~20-30min，34.7G 显存需足）')
     p_edit.add_argument('--controlnet', default='', choices=['', 'canny'],
                         help='flux 联动 ControlNet：canny=结构保持重绘（v16.x M6）')
     p_edit.add_argument('--controlnet-strength', type=float, default=0.5, help='ControlNet 强度（默认 0.5）')
