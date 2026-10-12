@@ -508,6 +508,16 @@ def cmd_edit(args):
                 model=vmodel)
             print(f"{r['output']}（{r['frames']} 帧 @{r['fps']:.1f}fps op={r['op']} seed={r['seed']}）")
             return
+        if getattr(args, 'engine', 'cv') == 'propainter':
+            r = se.video_inpaint_propainter(
+                args.input, args.output or
+                os.path.join('output', 'propainter_%s.mp4' % time.strftime('%Y%m%d_%H%M%S')),
+                pts, boxes=boxes or None,
+                op=getattr(args, 'mask_op', 'remove'), prompt_frame=getattr(args, 'frame', 0),
+                size=args.size, device=args.device, yolo=bool(getattr(args, 'yolo', False)),
+                classes=classes, conf=conf)
+            print(f"{r['output']}（{r['frames']} 帧 @{r['fps']:.1f}fps op={r['op']}）")
+            return
         if args.op == 'color':
             r = se.video_color(args.input, args.output or
                                os.path.join('output', 'edit_%s.mp4' % time.strftime('%Y%m%d_%H%M%S')),
@@ -995,8 +1005,8 @@ def build_parser():
     p_edit.add_argument('--mode', default='pixel', help='mosaic：pixel/blur')
     p_edit.add_argument('--strength', type=int, default=16, help='mosaic/blur 强度')
     p_edit.add_argument('--bg', default='', help='replace_bg：hex 色（如 101827）或 blur')
-    p_edit.add_argument('--engine', choices=['cv', 'flux', 'vace'], default='cv',
-                        help='inpaint/replace_bg 引擎：cv=TELEA 快速 / flux=FLUX.1 Fill 生成式重绘（v16.x M5）/ vace=视频级 VACE 生成式（video 专用）')
+    p_edit.add_argument('--engine', choices=['cv', 'flux', 'vace', 'propainter'], default='cv',
+                        help='inpaint/replace_bg 引擎：cv=TELEA 快速 / flux=FLUX.1 Fill 生成式重绘（v16.x M5）/ vace=视频级 VACE 生成式（video 专用）/ propainter=视频级流传播移除（video 专用）')
     p_edit.add_argument('--prompt', default='', help='flux/vace 引擎重绘内容描述（如 empty ground；instruct=编辑指令）')
     p_edit.add_argument('--steps', type=int, default=30, help='flux Fill 采样步数（默认 30；vace 默认 25）')
     p_edit.add_argument('--guidance', type=float, default=30.0, help='flux Fill guidance（默认 30）')

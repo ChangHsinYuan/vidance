@@ -14,6 +14,8 @@
 | **Union ControlNet**（Shakker-Labs pro fp8） | flux 8192 | canny 边缘结构保持重绘 | 改物种但要保留姿态/轮廓 |
 | **Qwen-Image-Edit 2509 fp8** | flux 8192 | 指令式编辑：一句话（中文可）整图生效，无需 mask | "把猫换成狗"这类全局改写 |
 | **Wan2.1 VACE 1.3B fp16** | wan 8189 | 参考图 → 主体一致视频（480×832@16fps，81 帧内 4n+1）；视频级生成式 inpaint | 角色参考图生视频（M7，`vace` 命令）+ 视频移除/替换物体（`edit video --engine vace`） |
+| **Wan2.1 VACE 14B fp16** | wan 8189（GPU2 ~40GB） | 同上，质量显著更高 | 换新物体首选（`--vace-model 14b`，81 帧 ~20-25 分钟/次） |
+| **ProPainter**（RAFT+transformer） | 本地 GPU（SAM2 同进程） | 双向光流传播视频 inpaint，非生成式 | 视频移除物体（`edit video --engine propainter`，73 帧 ~5 分钟，不长新物体） |
 
 ### 服务依赖速查
 
@@ -23,6 +25,7 @@
 | `inpaint`/`replace_bg --engine flux`、`instruct`、`--controlnet canny` | flux 8192 | RuntimeError（cv 引擎可兜底） |
 | `video` 全部 op（mosaic/blur_bg/cutout/color） | SAM2（宿主） | — |
 | `video --engine vace` | SAM2（宿主）+ wan 8189 | RuntimeError |
+| `video --engine propainter` | SAM2 + ProPainter（本地） | RuntimeError |
 | `vace` | wan 8189 | RuntimeError |
 
 ---
@@ -136,18 +139,47 @@ op 一览：`mosaic`（打码）/ `blur_bg`（背景虚化）/ `cutout`（主体
 
 ### v16.x VACE 生成式视频 inpaint（engine=vace）
 
-SAM2 逐帧 mask → Wan2.1 VACE 视频级生成式重绘——移除/替换物体后画面由模型补全（非黑底/打码），时序一致。需 wan 8189 在线，~5-10 分钟，异步。
+SAM2 逐帧 mask → Wan2.1 VACE 视频级生成式重绘——移除/替换物体后画面由模型补全（非黑底/打码），时序一致。需 wan 8189 在线；1.3B ~5-10 分钟、14B ~20-25 分钟，异步。
 
 ```bash
 # 移除物体（物体区白=重绘，背景保留；VACE mask 白=重绘该区）
 python core/vidance.py edit 视频.mp4 video --yolo --frame 0 --engine vace --mask-op remove --prompt "empty ground" -o out.mp4
+# 14B 高质量版（换新物体首选）
+python core/vidance.py edit 视频.mp4 video --yolo --classes bird --frame 0 --engine vace --vace-model 14b --mask-op remove --prompt "a fluffy orange cat riding a bicycle" -o out.mp4
 # 只保留主体（keep=mask 反转，背景重绘）
 python core/vidance.py edit 视频.mp4 video --yolo --frame 0 --engine vace --mask-op keep --prompt "a sunny park" -o out.mp4
 # 框提示（YOLO 检不准时手动框）
 python core/vidance.py edit 视频.mp4 video --box "x1,y1,x2,y2" --engine vace --prompt "empty ground"
 ```
 
-要点：`--mask-op remove` 是默认（去掉 mask 内物体）；**VACE mask 语义（像素级实测确认）：mask 白(1)=重绘该区、黑(0)=保留**——remove 直接用 SAM mask（物体白=重绘），keep 才反转。验证口径：**像素级分区差异（狗区应大幅变化、背景应基本不变）+ YOLO 复检**，单靠 YOLO 会被背景重绘干扰误判（实测极性搞反时背景差异 66-101、狗区 28-37 相关 0.85+，YOLO 仍报 4/5 帧消失但狗肉眼可见）。修正后：狗区差异 36-54、背景 12-22，YOLO 4/5 帧消失（残影帧 conf 0.26）。输出 81 帧@16fps（4n+1 补齐，原 24fps 视频会慢放）。
+要点：`--mask-op remove` 是默认（去掉 mask 内物体）；**VACE mask 语义（像素级实测确认）：mask 白(1)=重绘该区、黑(0)=保留**——remove 直接用 SAM mask（物体白=重绘），keep 才反转。验证口径：**像素级分区差异（狗区应大幅变化、背景应基本不变）+ YOLO 复检**，单靠 YOLO 会被背景重绘干扰误判（实测极性搞反时背景差异 66-101、狗区 28-37 相关 0.85+，YOLO 仍报 4/5 帧消失但狗肉眼可见）。修正后：狗区差异 36-54、背景 12-22。输出 81 帧@16fps（4n+1 补齐，原 24fps 视频会慢放）。
+
+**14B 实战教训（prompt 决定成败）**：
+- prompt 必须**具体描述要画什么**：`"a fluffy orange cat riding a bicycle"` 成功（鹈鹕 3/3 帧消失、自行车 0.9 保留）；`"empty grass"` 会自创白鸭（3 组 prompt/negative 均复现，白占比 12%+）
+- negative 写 `duck/bird` 反而可能注意力泄漏召唤它们；`no animals` 压不住——生成式的创造性只能靠正向 prompt 引导
+- 提示帧选**目标单独可见**的帧：猫狗同框帧 YOLO 按置信度排序可能框错目标（cat 0.92 > dog 0.90），用 `--classes` 锁定 + `--frame 0`（猫不可见的帧）
+- mask 验收：覆盖率 + 单连通域分析（框提示猫狗叠住时 SAM 只出 13.6% 半身+碎片，换帧 0 后 31.9% 全宽单域）
+
+### ProPainter 光流传播移除（engine=propainter）
+
+SAM2 逐帧 mask → RAFT 双向光流 + 补全网络 + transformer 特征传播——掩码区由前后帧**真实内容**填满，**非生成式，不会长出新物体**，物体移除融合最自然。本地 GPU 即可（无需 ComfyUI），73 帧 ~5 分钟。
+
+```bash
+# 移除物体（YOLO 找目标 → SAM2 追踪 → ProPainter 传播填补）
+python core/vidance.py edit 视频.mp4 video --yolo --classes dog --frame 0 --engine propainter --mask-op remove -o out.mp4
+# 只保留主体（keep=mask 反转）
+python core/vidance.py edit 视频.mp4 video --yolo --frame 0 --engine propainter --mask-op keep -o out.mp4
+```
+
+验证：easy_dog_grass（狗移除）+ pelican_bike（鸟移除）双视频 YOLO 全帧 0 检出。前置：ProPainter 仓库 + weights/ 三权重（ProPainter/raft-things/recurrent_flow_completion .pth）。
+
+### 三引擎分工（视频物体移除/替换选型）
+
+| 场景 | 引擎 | 理由 |
+|------|------|------|
+| 固定机位 + 背景会露出 | 时序中位背景板 | 免费零幻觉完美（有 --engine plate 待接入时用 /tmp 脚本版） |
+| 相机运动 + 纯移除 | **propainter** | 光流传播真实背景，不长新物体 |
+| 要换新物体 / 大面积重绘 | **vace 14B** | 生成式质量高，接受其创造性（prompt 具体化） |
 
 ---
 
@@ -161,7 +193,9 @@ python core/vidance.py edit 视频.mp4 video --box "x1,y1,x2,y2" --engine vace -
 | 换背景（生成式新场景） | **M5** invert | `edit 图.jpg replace_bg --box "..." --engine flux --prompt "a sunny beach"` |
 | 全局改写（中文一句话） | **M8** instruct | `edit 图.jpg instruct --prompt "把猫换成金毛犬"` |
 | 参考图生视频 | **M7** vace | `vace ref.png "a dog running on grass" --length 45` |
+| **视频**移除物体（非生成式，最自然） | **propainter** | `edit 视频.mp4 video --yolo --classes dog --engine propainter` |
 | **视频**移除物体（生成式补全） | **v16.x** engine=vace | `edit 视频.mp4 video --yolo --engine vace --prompt "empty ground"` |
+| **视频**换新物体（质量优先） | **vace 14B** | 上例加 `--vace-model 14b` + 具体 prompt |
 
 ### vace — 参考图生视频（单独命令）
 
@@ -180,9 +214,11 @@ python core/vidance.py vace ref.png "a dog running on grass"                    
 3. **移除类操作用整框矩形 mask**（`--box` 或 `--yolo`）：SAM 点提示 mask 对大物体只盖部分，去不干净；做完用 YOLO 复检目标是否消失
 4. **API 参数序与 CLI 相反**：HTTP 分发首 token 是命令名时自动与路径交换（`图.jpg instruct` 和 `instruct 图.jpg` 都通，但写路径在前最稳）
 5. **编辑是异步 job**：提交立即返回 job_id，画布转圈 1-2 分钟（图像）/ 5-10 分钟（视频），agent 日志在左侧日志面板实时可见
-6. **flux 引擎需要 8192 在线**：`--engine flux`/`instruct`/`--controlnet` 都走 flux 实例；cv 引擎不需要
+6. **flux 引擎需要 8192 在线**：`--engine flux`/`instruct`/`--controlnet` 都走 flux 实例；cv/propainter 引擎不需要
 7. **vace 尺寸坑**：CLI 默认 480×832 竖屏，API 默认 832×480 横屏，混用时显式传 `--width/--height`
 8. **产出不覆盖**：已有路径自动加序号，放心反复跑
+9. **视频引擎选型**：固定机位→plate 兜底（免费零幻觉）；相机运动纯移除→propainter（非生成式）；换新物体→vace 14B（prompt 具体化，"empty grass" 会长怪东西）
+10. **propainter 首跑报 save_fps/路径错**：已修复（fps 取整 + 子进程绝对路径），若旧版报 `invalid int value: '24.0'` 或 `No such file: frames` 升级 sam_edit.py
 
 ---
 

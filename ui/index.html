@@ -1157,7 +1157,7 @@ function pollH3(jobId) {
   const isSvg = /^svg_/.test(jobId);
   const isEdit = /^edit_/.test(jobId);
   const isVace = /^vace_/.test(jobId);
-  const hint = isEdit ? '编辑中，通常 1-2 分钟，agent 日志见左侧面板…'
+  const hint = isEdit ? '编辑中：图像 1-2 分钟 / 视频移除 3-10 分钟（propainter）/ VACE 生成 5-30 分钟，agent 日志见左侧面板…'
     : isVace ? 'VACE 视频生成中，约 5-10 分钟，可离开页面稍后回来…'
     : isSvg ? 'LLM 生成中…' : 'H3 生成中，通常 15-20 分钟，可离开页面稍后回来…';
   addBot('<div class="stream-log" id="jl-' + jobId + '">' +

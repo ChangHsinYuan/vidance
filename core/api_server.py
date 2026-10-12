@@ -885,6 +885,53 @@ def _run_editjob(job_id: str, video: str, points: list, op: str, flags: dict):
         _agent_log(job_id, '✗ 失败: %s' % str(e)[:300])
 
 
+def _run_propaintereditjob(job_id: str, video: str, points: list, flags: dict):
+    """ProPainter 流传播视频移除（异步 job：SAM2 mask → ProPainter 光流传播）。"""
+    try:
+        from agents.post.tools import sam_edit as se
+        boxes = []
+        for tok in (flags.get('box') or '').replace(';', ' ').split():
+            parts = tok.split(',')
+            if len(parts) == 4:
+                try:
+                    boxes.append(tuple(int(float(v)) for v in parts))
+                except ValueError:
+                    pass
+        yolo = str(flags.get('yolo') or '').lower() in ('true', '1', 'yes') or bool(flags.get('classes'))
+        with _h3_jobs_lock:
+            if job_id in _h3_jobs:
+                _h3_jobs[job_id]['stage'] = 'SAM2 逐帧 mask 提取中'
+        out = os.path.join('output', os.path.splitext(os.path.basename(video))[0]
+                           + '_propainter.mp4')
+
+        def _stage(s):
+            with _h3_jobs_lock:
+                if job_id in _h3_jobs:
+                    _h3_jobs[job_id]['stage'] = s
+
+        r = se.video_inpaint_propainter(
+            video, out, points, boxes=boxes or None,
+            op=flags.get('mask_op') or 'remove',
+            prompt_frame=int(flags.get('frame') or 0),
+            size=flags.get('size') or 'small', device=flags.get('device') or '',
+            yolo=yolo,
+            classes=[c for c in (flags.get('classes') or '').split(',') if c] or None,
+            conf=float(flags.get('conf') or 0.25),
+            on_stage=_stage)
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'completed', 'output': r['output'],
+                'video_url': '/api/file?path=' + r['output'],
+                'frames': str(r['frames']), 'completed_at': datetime.now().isoformat(),
+            })
+        _agent_log(job_id, '■ 完成 %s（%s 帧）' % (r['output'], r['frames']))
+    except Exception as e:
+        with _h3_jobs_lock:
+            if job_id in _h3_jobs:
+                _h3_jobs[job_id].update({'status': 'failed', 'error': str(e)[:300]})
+        _agent_log(job_id, '■ 失败: %s' % str(e)[:200])
+
+
 def _run_vaceeditjob(job_id: str, video: str, points: list, flags: dict):
     """VACE 生成式视频 inpaint（异步 job：SAM2 mask → wan 8189 VACE 重绘）。"""
     try:
@@ -921,6 +968,10 @@ def _run_vaceeditjob(job_id: str, video: str, points: list, flags: dict):
             conf=float(flags.get('conf') or 0.25),
             steps=int(flags.get('steps') or 25), cfg=float(flags.get('cfg') or 5.0),
             vace_strength=float(flags.get('vace_strength') or 1.0),
+            model={'1.3b': 'wan2.1_vace_1.3B_fp16.safetensors',
+                   '14b': 'wan2.1_vace_14B_fp16.safetensors'}.get(
+                (flags.get('vace_model') or '1.3B').lower(),
+                'wan2.1_vace_1.3B_fp16.safetensors'),
             on_stage=_stage)
         with _h3_jobs_lock:
             _h3_jobs[job_id].update({
@@ -1299,10 +1350,12 @@ TOOLS = [
           {'key': '--classes', 'type': 'text', 'desc': 'YOLO 类别过滤（逗号分隔，如 cat,dog）'},
           {'key': '--conf', 'type': 'number', 'desc': 'YOLO 置信度阈值（默认 0.25）'},
           {'key': '--frame', 'type': 'number', 'desc': 'video 提示帧号（双向传播，默认 0）'},
-          {'key': '--op', 'type': 'text', 'desc': 'video 模式：mosaic/blur_bg/cutout/color'},
-          {'key': '--bg', 'type': 'text', 'desc': 'replace_bg：hex 色（101827）或 blur'},
-           {'key': '--engine', 'type': 'text', 'desc': 'inpaint/replace_bg 引擎：cv=TELEA / flux=FLUX.1 Fill 生成式重绘'},
-           {'key': '--prompt', 'type': 'text', 'desc': 'flux 引擎重绘内容描述（如 empty wooden floor）'},
+           {'key': '--op', 'type': 'text', 'desc': 'video 模式：mosaic/blur_bg/cutout/color'},
+           {'key': '--mask-op', 'type': 'text', 'desc': 'vace/propainter 引擎：remove=去掉物体（默认）/ keep=只保留主体'},
+           {'key': '--bg', 'type': 'text', 'desc': 'replace_bg：hex 色（101827）或 blur'},
+            {'key': '--engine', 'type': 'text', 'desc': 'inpaint/replace_bg 引擎：cv=TELEA / flux=FLUX.1 Fill / vace=视频级生成式（video 专用）/ propainter=视频级流传播移除（video 专用）'},
+            {'key': '--prompt', 'type': 'text', 'desc': 'flux/vace 引擎重绘内容描述（英文推荐，如 empty green grass / a orange cat riding a bicycle）'},
+            {'key': '--vace-model', 'type': 'text', 'desc': 'vace 引擎模型：1.3B（快）/ 14B（质量高，默认 1.3B）'},
            {'key': '--steps', 'type': 'number', 'desc': 'flux Fill 采样步数（默认 30）'},
            {'key': '--guidance', 'type': 'number', 'desc': 'flux Fill guidance（默认 30）'},
            {'key': '--controlnet', 'type': 'text', 'desc': 'flux 联动 ControlNet：canny=结构保持重绘（v16.x M6）'},
@@ -1887,7 +1940,20 @@ def tool_dispatch(name: str, req: ToolRequest):
                 threading.Thread(target=_run_vaceeditjob,
                                  args=(job_id, inp, pts, fl),
                                  daemon=True).start()
-                return {'message': 'VACE 视频编辑已提交（SAM2 mask + VACE 生成，约 5-10 分钟）',
+                return {'message': 'VACE 视频编辑已提交（SAM2 mask + VACE 生成，约 5-30 分钟）',
+                        'job_id': job_id, 'poll': f'/api/h3shot/{job_id}', 'h3_job_id': job_id}
+            # v16.x ProPainter 流传播视频移除（SAM2 mask → RAFT 光流传播，异步 job）
+            if (fl.get('engine') or 'cv') == 'propainter':
+                job_id = f'edit_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+                with _h3_jobs_lock:
+                    _h3_jobs[job_id] = {'job_id': job_id, 'concept': os.path.basename(inp),
+                                        'status': 'running',
+                                        'created_at': datetime.now().isoformat()}
+                _agent_log(job_id, '▶ 调用 agent post.edit · video propainter（SAM2 mask + 流传播移除）')
+                threading.Thread(target=_run_propaintereditjob,
+                                 args=(job_id, inp, pts, fl),
+                                 daemon=True).start()
+                return {'message': 'ProPainter 视频移除已提交（SAM2 mask + 流传播，约 3-10 分钟）',
                         'job_id': job_id, 'poll': f'/api/h3shot/{job_id}', 'h3_job_id': job_id}
             job_id = f'edit_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
             with _h3_jobs_lock:

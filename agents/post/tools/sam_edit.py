@@ -882,10 +882,12 @@ def video_inpaint_propainter(in_path, out_path, points=None, boxes=None, op='rem
                 shutil.copyfile(mp, os.path.join(maskd, os.path.basename(mp)))
         _stage(f'ProPainter 流传播中（{r["length"]} 帧 {r["width"]}x{r["height"]}）')
         tmp_out = os.path.join(workd, 'out')
-        cmd = [sys.executable, 'inference_propainter.py',
-               '-i', framesd, '-m', maskd, '-o', tmp_out,
+        # ProPainter 子进程 cwd 在其仓库内，所有路径必须绝对化
+        cmd = [sys.executable, os.path.join(_PROPAINTER_SRC, 'inference_propainter.py'),
+               '-i', os.path.abspath(framesd), '-m', os.path.abspath(maskd),
+               '-o', os.path.abspath(tmp_out),
                '--mask_dilation', str(mask_dilation),
-               '--save_fps', str(r['fps'])]
+               '--save_fps', str(int(round(r['fps'])))]
         if fp16 and not device.startswith('cpu'):
             cmd.append('--fp16')
         env = dict(os.environ)
@@ -894,7 +896,8 @@ def video_inpaint_propainter(in_path, out_path, points=None, boxes=None, op='rem
         if proc.returncode != 0:
             tail = (proc.stderr or proc.stdout or '')[-2000:]
             raise RuntimeError(f'ProPainter 推理失败: {tail}')
-        src = os.path.join(tmp_out, os.path.basename(framesd), 'inpaint_out.mp4')
+        src = os.path.join(os.path.abspath(tmp_out),
+                           os.path.basename(os.path.abspath(framesd)), 'inpaint_out.mp4')
         if not os.path.isfile(src):
             raise RuntimeError(f'ProPainter 未产出 {src}')
         os.makedirs(os.path.dirname(out_path) or '.', exist_ok=True)

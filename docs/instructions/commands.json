@@ -840,7 +840,7 @@
       "name": "edit",
       "version": "v16.x",
       "brief": "SAM2+YOLO 编辑 + 生成式编辑：分割/抠图/换底/打码/彩色多物体/YOLO 自动/框提示/视频双向追踪 + FLUX Fill 重绘/ControlNet/VACE/指令式编辑",
-      "detail": "图七模式：segment（mask）/cutout（透明抠图）/replace_bg（换底：hex 色或 blur）/mosaic（打码 pixel/blur）/inpaint（去水印 cv2 TELEA）/visualize（彩色多物体可视化，SAM demo 风格+标签）。视频：--point 点或 --box 框（YOLO --yolo 自动检出）提示→SAM2 双向传播（--frame 任意提示帧）→mosaic/blur_bg/cutout/color（彩色多物体）重拼 mp4。图省略提示自动主体（网格打点并集）。视频异步 job（画布轮询）。classes 铁律：空串 split 返回 [\"\"]，必须过滤空段。 生成式增强（v16.x，需 flux 8192/wan 8189 在线）：edit inpaint --engine flux --prompt（M5 Fill mask 内重绘，替代 cv2 TELEA）；edit replace_bg --engine flux --prompt（M5 生成式换底，mask 反转）；--controlnet canny（M6 结构保持改物种，误伤降 10 倍）；edit instruct --prompt（M8 Qwen-Image-Edit 中文指令式，无需 mask）；vidance vace ref.png prompt（M7 VACE 参考图生视频）；edit video --engine vace --prompt（v16.x VACE 生成式视频 inpaint：SAM2 逐帧 mask→VACE 重绘，VACE 语义 mask 白=重绘该区，mask_op=remove 原样去物体/keep 反转保主体，验证=像素级狗区差异 36-54 背景仅 12-22 + YOLO 4/5 帧消失）。教训：移除类用整框矩形 mask + YOLO 复检目标物消失（SAM mask 对大物体只盖部分）；YOLO 复检会被背景重绘干扰，需加像素级分区差异验证。",
+      "detail": "图七模式：segment（mask）/cutout（透明抠图）/replace_bg（换底：hex 色或 blur）/mosaic（打码 pixel/blur）/inpaint（去水印 cv2 TELEA）/visualize（彩色多物体可视化，SAM demo 风格+标签）。视频：--point 点或 --box 框（YOLO --yolo 自动检出）提示→SAM2 双向传播（--frame 任意提示帧）→mosaic/blur_bg/cutout/color（彩色多物体）重拼 mp4。图省略提示自动主体（网格打点并集）。视频异步 job（画布轮询）。classes 铁律：空串 split 返回 [\"\"]，必须过滤空段。 生成式增强（v16.x，需 flux 8192/wan 8189 在线）：edit inpaint --engine flux --prompt（M5 Fill mask 内重绘，替代 cv2 TELEA）；edit replace_bg --engine flux --prompt（M5 生成式换底，mask 反转）；--controlnet canny（M6 结构保持改物种，误伤降 10 倍）；edit instruct --prompt（M8 Qwen-Image-Edit 中文指令式，无需 mask）；vidance vace ref.png prompt（M7 VACE 参考图生视频）；edit video --engine vace --prompt --vace-model 1.3B|14B（v16.x VACE 生成式视频 inpaint：SAM2 逐帧 mask→VACE 重绘，VACE 语义 mask 白=重绘该区，mask_op=remove 原样去物体/keep 反转保主体；14B 换物体效果好，生成式会自创——移除区可能画白鸭，prompt 必须具体描述要画什么，negative 写 duck 反而可能召唤）；edit video --engine propainter --mask-op（ProPainter 流传播移除：RAFT 双向光流补全+特征传播，非生成式不长新物体，物体移除融合最自然，双视频 YOLO 全帧 0 检出验证）。三引擎分工：plate=固定机位免费零幻觉 / propainter=相机运动移除 / VACE 14B=换新物体（接受创造性）。教训：移除类用整框矩形 mask + YOLO 复检目标物消失（SAM mask 对大物体只盖部分）；提示帧选目标单独可见帧（猫狗同框帧 YOLO 置信度顺序可能框错目标，用 --classes 锁定）；YOLO 复检会被背景重绘干扰，需加像素级分区差异验证。",
       "params": [
         {
           "key": "input",
@@ -892,15 +892,19 @@
         },
         {
           "key": "--engine",
-          "desc": "inpaint/replace_bg 引擎：cv=TELEA（快）/ flux=FLUX.1 Fill 生成式（v16.x M5）/ vace=视频级 VACE 生成式（video 专用，wan 8189）"
+          "desc": "inpaint/replace_bg 引擎：cv=TELEA（快）/ flux=FLUX.1 Fill 生成式（v16.x M5）/ vace=视频级 VACE 生成式（video 专用，wan 8189）/ propainter=视频级光流传播移除（video 专用，本地 GPU，非生成式不长新物体）"
         },
         {
           "key": "--prompt",
-          "desc": "flux/vace 重绘内容描述（instruct=编辑指令，中文可用）"
+          "desc": "flux/vace 重绘内容描述（英文更稳，须具体：'a fluffy orange cat riding a bicycle' ✓ vs 'empty grass' 易长怪东西；instruct=编辑指令，中文可用）"
         },
         {
           "key": "--mask-op",
-          "desc": "vace 引擎：remove=去掉物体（物体区重绘）/ keep=只保留主体（背景重绘）"
+          "desc": "vace/propainter 引擎：remove=去掉物体（物体区重绘/传播填补）/ keep=只保留主体（背景重绘）"
+        },
+        {
+          "key": "--vace-model",
+          "desc": "vace 引擎模型：1.3B（快，默认）/ 14B（质量高，~20-25 分钟/81 帧，GPU2 ~40GB）"
         },
         {
           "key": "--vace-strength",
@@ -950,13 +954,22 @@
         "/edit output/test_inputs/scene_cat_dog.png inpaint --yolo --classes cat --engine flux --prompt \"a golden retriever puppy\" --controlnet canny --controlnet-strength 0.55 -o output/edit_demo/my_canny.png",
         "# M5 生成式换底（mask 反转重绘背景）",
         "/edit output/test_inputs/scene_cat_dog.png replace_bg --box \"x1,y1,x2,y2\" --engine flux --prompt \"a sunny beach\" -o output/edit_demo/my_beach.png",
-        "# ── v16.x VACE 生成式视频 inpaint（需 wan 8189 在线，~5-10min，异步） ──",
-        "# 视频移除物体：YOLO 找目标 → SAM2 逐帧 mask → VACE 按 prompt 重绘（YOLO 复检 4/5 帧消失）",
+        "# ── v16.x VACE 生成式视频 inpaint（需 wan 8189 在线，异步） ──",
+        "# 视频移除物体：YOLO 找目标 → SAM2 逐帧 mask → VACE 按 prompt 重绘",
+        "# 14B 换新物体效果最好（生成式有创造性，移除留背景可能自创白鸭等；prompt 必须具体描述要画什么）",
+        "/edit output/test_inputs/cat_dog_fight.mp4 video --yolo --frame 0 --engine vace --vace-model 14b --mask-op remove --prompt \"empty green grass field\" -o output/edit_demo/my_vace14b.mp4",
+        "# 提示帧选目标清晰可见的帧（如 frame 0 只有一只狗时锁定 --classes dog），猫狗同框帧 YOLO 顺序可能框错目标",
+        "/edit output/pelican_bike.mp4 video --yolo --classes bird --frame 0 --engine vace --vace-model 14b --mask-op remove --prompt \"a fluffy orange cat riding a bicycle\" -o output/pelican_to_cat_14b.mp4",
+        "# 1.3B 快速版（默认，~5 分钟）",
         "/edit output/test_inputs/cat_dog_fight.mp4 video --yolo --frame 0 --engine vace --mask-op remove --prompt \"empty ground\" -o output/edit_demo/my_vace.mp4",
         "# 只保留主体（背景重绘，keep=mask 反转）",
         "/edit output/test_inputs/cat_dog_fight.mp4 video --yolo --frame 0 --engine vace --mask-op keep --prompt \"a sunny park\" -o output/edit_demo/my_keep.mp4",
         "# 框提示（YOLO 检不准时手动框，同图编辑）",
         "/edit output/test_inputs/cat_dog_fight.mp4 video --box \"1,52,832,305\" --engine vace --prompt \"empty ground\"",
+        "# ── ProPainter 光流传播移除（本地 GPU，~3-10 分钟，非生成式） ──",
+        "# 物体移除融合最自然（前后帧光流传播填补，不会长出新物体）；固定机位推荐先试 plate 兜底（免费零幻觉）",
+        "/edit output/easy_dog_grass.mp4 video --yolo --classes dog --frame 0 --engine propainter --mask-op remove -o output/easy_propainter.mp4",
+        "/edit output/pelican_bike.mp4 video --yolo --classes bird --frame 0 --engine propainter --mask-op remove -o output/pelican_propainter.mp4",
         "# ── M7 VACE 参考图生视频（单独命令，见 vace 条目） ──",
         "/vace output/test_inputs/_vace_ref_dog.png \"a dog running on grass\" --length 45 -o output/vace_my.mp4",
         "# ── API 路径（参数序：路径在前最稳） ──",
