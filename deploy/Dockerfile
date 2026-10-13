@@ -18,8 +18,9 @@ RUN apt-get update \
 WORKDIR /app
 
 # 重依赖层在 COPY 前（代码改动只作废 COPY 层，pip/Chromium 缓存复用）
+# v17：python-multipart（/api/upload multipart 表单解析）
 RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple \
-    fastapi uvicorn pydantic requests edge-tts pillow numpy scipy moviepy bs4 feedparser playwright \
+    fastapi uvicorn pydantic requests edge-tts pillow numpy scipy moviepy bs4 feedparser playwright python-multipart \
     && PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright playwright install chromium
 
 COPY . /app
