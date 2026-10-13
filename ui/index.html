@@ -1000,9 +1000,10 @@ async function send() {
   try {
     if (text.startsWith('/')) {
       await dispatchSlash(text);
-      pendingFiles = []; renderChips();
+      markChipsUsed();
     } else {
       await sendNatural(text);
+      markChipsUsed();
     }
   } catch (e) {
     addBot('<b>✗ 请求失败</b> ' + escapeHtml(String(e)));
@@ -1246,7 +1247,11 @@ async function sendNatural(text) {
   // 先问 LLM 是否出片意图；闲聊则直接回复
   const c = await fetch('/api/chat', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({
+      text,
+      attachments: pendingFiles.map(a => ({ name: a.name, kind: a.kind })),
+      session_id: sessionId(),
+    }),
   });
   const cd = await c.json();
   if (!c.ok) { addBot('<b>✗ ' + escapeHtml(cd.detail || c.status) + '</b>'); return; }
@@ -1348,9 +1353,14 @@ function renderChips() {
   box.innerHTML = pendingFiles.map((a, i) => {
     const th = a.kind === 'image' ? `<img src="${a.url}" onclick="window.open('${a.url}')" alt="">` : '';
     const icon = a.kind === 'video' ? '🎬' : a.kind === 'audio' ? '🎵' : a.kind === 'doc' ? '📄' : '';
-    return `<span class="atchip" title="${escapeHtml(a.name)} — 命令里用 @${i + 1} 引用">${th}${icon}<span class="nm">@${i + 1} ${escapeHtml(a.name)}</span><span class="x" onclick="removeChip(${i})">✕</span></span>`;
+    // v17 M3：发送后 chip 保留灰显（used 标记），可继续 @N 复用或 ✕ 移除
+    const used = a._used ? ' opacity:.45' : '';
+    return `<span class="atchip${used}" title="${escapeHtml(a.name)} — ${a._used ? '上条已用，可继续' : ''}命令里用 @${i + 1} 引用">${th}${icon}<span class="nm">@${i + 1} ${escapeHtml(a.name)}</span><span class="x" onclick="removeChip(${i})">✕</span></span>`;
   }).join('');
 }
+
+/* 发送后不丢附件：全部标灰保留，供下条消息继续 @N 引用 */
+function markChipsUsed() { pendingFiles.forEach(a => { a._used = true; }); renderChips(); }
 
 function removeChip(i) { pendingFiles.splice(i, 1); renderChips(); }
 
@@ -1389,7 +1399,7 @@ async function openBufferPanel() {
   }).join('');
   addBot(`<b>🗂 本会话 buffer（${assets.length} 个资产，会话 ${sessionId().slice(0, 8)}…）</b>
     <div class="bpanel">${grid}</div>
-    <i>点图看原图 · ✕ 删除 · 发命令时附件按「待用」顺序以 @1/@2 引用</i>`);
+    <i>点图看原图 · ✕ 删除 · 输入框 chip 上的 @N 即引用序号（灰显=上条已用，可继续复用）</i>`);
 }
 
 async function delBufferAsset(id) {

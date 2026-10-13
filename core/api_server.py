@@ -1059,6 +1059,9 @@ class DialogReply(BaseModel):
 class ChatReq(BaseModel):
     text: str
     history: Optional[list] = None  # [{role, content}]，前端可带上下文
+    # v17 M3：会话附件清单注入（让 LLM 知道有 @1/@2 可用）
+    attachments: Optional[list] = None  # [{name, kind}]
+    session_id: Optional[str] = None
 
 
 @app.post('/api/chat')
@@ -1078,6 +1081,15 @@ def chat_endpoint(req: ChatReq):
         '   用户只是描述主题但没说要做视频时不要触发。\n'
         '3. 不要输出多余解释。'
     )
+    # v17 M3：附件上下文 → LLM 知道可用 @N 引用，概念里可点名用第几个附件
+    if req.attachments:
+        att_lines = '\n'.join(
+            f'  @{i} {a.get("name", "?")}（{a.get("kind", "file")}）'
+            for i, a in enumerate(req.attachments[:9], 1))
+        system += (
+            f'\n用户当前挂了 {len(req.attachments)} 个会话附件：\n{att_lines}\n'
+            '用户提到"这个图/那个视频/我的附件"时，在概念里注明用哪个附件（如"用 @1 作为角色参考"），'
+            '不要编造不存在的附件。')
     msgs = [{'role': 'system', 'content': system}]
     if req.history:
         for m in req.history[-8:]:
