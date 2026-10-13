@@ -368,7 +368,8 @@ def run_custom(ref_images: list, script_path: str,
     # STT 字幕
     if post_kwargs.get('use_stt'):
         print(f'\n=== [8] STT 字幕 ===')
-        stt_srt = post.run_stt(output_path, task_dir)
+        script_text = '\n'.join(s['desc'] for s in parsed.get('shots', []) if s.get('desc')) or None
+        stt_srt = post.run_stt(output_path, task_dir, script_text=script_text)
         if stt_srt:
             meta['srt'] = stt_srt
             print(f'  STT SRT: {stt_srt}')

@@ -2,16 +2,16 @@
 
 > 对象：`/mnt/disk_sdb/zxy/MoneyPrinterTurbo/`（本机源码，核心 8700 行通读）。
 > 结论：MPT 是"文案→库存素材→剪辑"拼装流水线（无 AI 视频生成），工程质量高（防御性注释/原子写/锁/限流齐全）。
-> 分档：**A 强烈推荐 / B 已有等价物 / C 看情况**。A 档打包一个阶段（估 1.5-2 天）落地。
+> 分档：**A 强烈推荐 / B 已有等价物 / C 看情况**。**A 档四项已于 2026-10-13 全部实施**（见 reports-20261001.md 同日节）。
 
-## A. 强烈推荐（性价比最高）
+## A. 强烈推荐（✅ 已全部落地）
 
-| # | 机制 | MPT 实现（源码位置） | 对 Vidance 的价值 |
+| # | 机制 | MPT 实现（源码位置） | Vidance 落地（2026-10-13） |
 |---|------|---------------------|------------------|
-| 1 | **字幕智能纠正** | `app/services/subtitle.py:209 correct()`——STT 转写与剧本按标点分段，Levenshtein 相似度 >0.8 时把转写段合并/替换回剧本原文 | STT 字幕直接烧转写文本，TTS 专有名词错字直接上屏。~60 行纯算法零依赖，直接提升成片质量 |
-| 2 | **preflight 预检** | `app/services/task.py:1295-1392`——开跑前统一校验 API key/ffmpeg/供应商可用性，失败标 `stage=preflight` | Vidance 现在是"中途降级兜底"，MPT 是"开跑前拦住"。互补：fast/hot 爬 20 分钟图后 I2V 才发现模型挂了这类浪费可避免 |
-| 3 | **素材下载验证 + 全局去重缓存** | `app/services/material.py:1007 save_video()`——URL md5 命名（`vid-{md5}.mp4`，同 URL 跨任务秒回）+ 下载后 VideoFileClip 验证，坏文件即删 | asset_crawler 只有同目录 md5 去重，无跨任务全局缓存、无下载后完整性验证（坏图/坏视频混入才靠 magic bytes 兜底） |
-| 4 | **搜索结果 24h TTL 缓存** | `app/services/material_cache.py`——同关键词搜索结果缓存，24h 内不重爬 | 配合 #3，fast/hot 连跑不再重复打必应接口 |
+| 1 | **字幕智能纠正** ✅ | `app/services/subtitle.py:209 correct()` | `utils/subtitle_correct.py`（Levenshtein 对齐+剧本文本替换+幻觉丢弃）；run_stt 三链路接线；13/13 测试 |
+| 2 | **preflight 预检** ✅ | `app/services/task.py:1295-1392` | `core/preflight.py`（硬依赖拦/可降级警示的改良版）+ 5 子命令 `--no-preflight`；6/6 测试 + 实网拦截验证 |
+| 3 | **素材下载验证 + 全局去重缓存** ✅ | `app/services/material.py:1007 save_video()` | `utils/material_cache.py`（URL md5 `img-{md5}` + PIL 验证 + 原子写）；asset_crawler 接线；20/20 测试 + E2E 二次 0.0s |
+| 4 | **搜索结果 24h TTL 缓存** ✅ | `app/services/material_cache.py` | 同上模块 `search_get/put`（空结果不缓存）+ 白名单 TTL 清理 |
 
 ## B. 已有等价物（无需借鉴）
 
@@ -41,4 +41,4 @@
 
 ## 执行建议
 
-A 档 1→2→3+4 打包一个阶段；#5 看需求单独决定。
+~~A 档 1→2→3+4 打包一个阶段~~ **已全部实施**（2026-10-13，A1/A2/A3/A4）；#5 看需求单独决定。

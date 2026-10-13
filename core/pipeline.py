@@ -120,7 +120,8 @@ class Pipeline:
             slowmo_override: int = None,
             no_asset_reuse: bool = False,
             task_id: str = None,
-            resume: str = None) -> dict:
+            resume: str = None,
+            no_preflight: bool = False) -> dict:
         """端到端生成有声短片
 
         character_mode:
@@ -158,6 +159,10 @@ class Pipeline:
         char_dir = os.path.join(task_dir, 'character')
         os.makedirs(clips_dir, exist_ok=True)
         os.makedirs(char_dir, exist_ok=True)
+
+        # preflight 预检（MPT 式 fail-fast：硬依赖挂直接拦，可降级依赖只警示）
+        from core.preflight import Preflight
+        Preflight(self.config).check('auto', character=character_desc, skip=no_preflight)
 
         meta = {
             'task_id': task_id,
@@ -380,7 +385,8 @@ class Pipeline:
         # ── 5.7 STT 字幕兜底 ──
         if self.stt_config.get('enabled', False) or use_stt:
             print(f'\n=== [5.7] STT 字幕对齐 ===')
-            stt_srt = self.post.run_stt(output_path, task_dir)
+            narration_text = '\n'.join(shot.get('narration', '') for shot in (script or []))
+            stt_srt = self.post.run_stt(output_path, task_dir, script_text=narration_text or None)
             if stt_srt:
                 srt_path = stt_srt
                 print(f'  STT SRT: {stt_srt}')

@@ -1161,19 +1161,21 @@ def dialog_reply(dialog_id: str, req: DialogReply):
 # ══ v7 前端：只读端点 + / 斜杠命令统一分发 + 静态 UI ══
 
 # ── /api/video/{task_id}：成片视频流 ──
+def _find_final_video(task_id: str) -> str:
+    """兜底：output/{task_id}/final.mp4 或 final_slow.mp4（CLI 直跑的任务不在 tasks.sqlite）"""
+    for name in ('final.mp4', 'final_slow.mp4'):
+        cand = os.path.join(load_config().get('output_dir', 'output'), task_id, name)
+        if os.path.exists(cand):
+            return cand
+    return None
+
+
 @app.get('/api/video/{task_id}')
 def video_stream(task_id: str):
     task = queue.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail='Task not found')
-    output = task.get('output')
+    output = task.get('output') if task else None
     if not output or not os.path.exists(output):
-        # 兜底：output/{task_id}/final.mp4 或 final_slow.mp4
-        for name in ('final.mp4', 'final_slow.mp4'):
-            cand = os.path.join(load_config().get('output_dir', 'output'), task_id, name)
-            if os.path.exists(cand):
-                output = cand
-                break
+        output = _find_final_video(task_id)
     if not output or not os.path.exists(output):
         raise HTTPException(status_code=404, detail='Video not found (task may still be running)')
     return FileResponse(output, media_type='video/mp4', filename=os.path.basename(output))
@@ -1886,7 +1888,23 @@ def tool_dispatch(name: str, req: ToolRequest):
         task_id = pos[0]
         task = queue.get_task(task_id)
         if not task:
-            raise HTTPException(status_code=404, detail='Task not found')
+            # CLI 直跑的任务不在 tasks.sqlite：目录里有成片照样给看
+            final = _find_final_video(task_id)
+            if not final:
+                raise HTTPException(status_code=404, detail='Task not found')
+            meta = {}
+            meta_path = os.path.join(load_config().get('output_dir', 'output'), task_id, 'meta.json')
+            if os.path.isfile(meta_path):
+                try:
+                    with open(meta_path, encoding='utf-8') as f:
+                        meta = json.load(f)
+                except Exception:
+                    pass
+            task = {'task_id': task_id, 'status': 'completed',
+                    'output': final, 'concept': meta.get('concept', ''),
+                    'progress': 100, 'stage': 'done', 'source': 'cli'}
+            return {'message': f'任务 {task_id}（CLI 直跑）状态 completed',
+                    'task': task, 'video_url': f'/api/video/{task_id}'}
         return {'message': f'任务 {task_id} 状态 {task["status"]}',
                 'task': task, 'video_url': f'/api/video/{task_id}'}
 

@@ -328,7 +328,7 @@ class FastLine:
             task_id=None, no_rife=False, no_color=False, bgm_override=None,
             no_bgm=False, use_stt=False, lut_override=None, slowmo=None,
             images_source='crawl', source_topic=None, trend_date=None,
-            show_source=True, effects='off') -> dict:
+            show_source=True, effects='off', no_preflight=False) -> dict:
         """一键出片。返回 meta。
 
         images_source: 'crawl'(必应爬图，默认，不足时 FLUX 补足) / 'flux'(纯 FLUX 文生图)。
@@ -344,6 +344,10 @@ class FastLine:
         os.makedirs(task_dir, exist_ok=True)
         clips_dir = os.path.join(task_dir, 'clips')
         os.makedirs(clips_dir, exist_ok=True)
+
+        # preflight 预检（硬依赖挂直接拦，可降级依赖只警示）
+        from core.preflight import Preflight
+        Preflight(self.config).check('fast' if not source_topic else 'hot', skip=no_preflight)
 
         # 1) 旁白规划
         print(f'\n=== [fast] 旁白规划（{n} 段）===')
@@ -412,6 +416,7 @@ class FastLine:
             concept=concept, no_rife=True,
             lut_override=lut_override, no_color=no_color,
             bgm_override=bgm_override, no_bgm=no_bgm, use_stt=use_stt,
+            script_text='\n'.join(s['text'] for s in (segments or [])) or None,
         )
 
         # 5.5) 片头/顶部热搜来源角标（drawtext，独立于字幕，不造成错位）

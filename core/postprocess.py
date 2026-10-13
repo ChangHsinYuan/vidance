@@ -341,12 +341,13 @@ class PostProcessor:
                 shutil.move(temp, video_path)
             return False
 
-    def run_stt(self, video_path: str, task_dir: str) -> str:
+    def run_stt(self, video_path: str, task_dir: str, script_text: str = None) -> str:
         """用 faster-whisper 对成片音频做 STT 转写，生成 SRT 并烧录字幕。
 
         Args:
             video_path: 成片视频路径
             task_dir: 任务目录
+            script_text: 剧本旁白原文（提供时用原文纠正 STT 错字，借鉴 MPT subtitle.correct）
 
         Returns:
             STT SRT 文件路径，或 None
@@ -383,6 +384,14 @@ class PostProcessor:
         srt_path = os.path.join(task_dir, 'subtitle_stt.srt')
         generate_srt(segments, srt_path)
 
+        # 字幕纠正：STT 只贡献时间轴，文本以剧本原文为准（MPT subtitle.correct）
+        if script_text:
+            try:
+                from utils.subtitle_correct import correct_srt
+                correct_srt(srt_path, script_text)
+            except Exception as e:
+                print(f'  ⚠ 字幕纠正失败（保留原转写）: {e}')
+
         # 烧录 STT 字幕
         if self.burn_subtitles(video_path, srt_path):
             return srt_path
@@ -396,7 +405,7 @@ class PostProcessor:
                 no_rife: bool = False, lut_override: str = None,
                 no_color: bool = False, bgm_override: str = None,
                 no_bgm: bool = False, use_stt: bool = False,
-                transition_types: list = None) -> dict:
+                transition_types: list = None, script_text: str = None) -> dict:
         """一键执行全部后处理（RIFE→LUT→BGM→STT）。
 
         用于 custom 模式：concat 之后逐步施加。
@@ -442,7 +451,7 @@ class PostProcessor:
         # STT 字幕
         if use_stt or self.stt_config.get('enabled', False):
             print(f'\n=== [post] STT 字幕 ===')
-            stt_srt = self.run_stt(video_path, task_dir)
+            stt_srt = self.run_stt(video_path, task_dir, script_text=script_text)
             if stt_srt:
                 result['srt'] = stt_srt
                 print(f'  STT SRT: {stt_srt}')

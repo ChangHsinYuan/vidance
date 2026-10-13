@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.pipeline import Pipeline
 from core.custom_gen import run_custom, concat_videos
 from core.postprocess import PostProcessor
+from core.preflight import PreflightError
 from utils.fastline import FastLine
 
 
@@ -63,6 +64,7 @@ def cmd_auto(args):
         no_asset_reuse=args.no_asset_reuse,
         task_id=getattr(args, 'task_id', None),
         resume=getattr(args, 'resume', None),
+        no_preflight=getattr(args, 'no_preflight', False),
     )
     print(f'\nDone: {meta["output"]}')
 
@@ -71,6 +73,10 @@ def cmd_custom(args):
     """custom 子命令：参考图 + 脚本 → H3 ref2va → 后处理"""
     from agents.common.tools.config_loader import require as _tier
     _tier('custom')
+    # preflight 预检：H3 是硬依赖，挂了直接拦
+    from core.preflight import Preflight
+    from utils.config_loader import load_config as _lc
+    Preflight(_lc()).check('custom', skip=getattr(args, 'no_preflight', False))
     post_kwargs = dict(
         no_rife=args.no_rife,
         lut_override=args.lut,
@@ -108,6 +114,7 @@ def cmd_quick(args):
         bgm_override=None,
         use_stt=False,
         task_id=args.task_id,
+        no_preflight=getattr(args, 'no_preflight', False),
     )
     print(f'\nDone: {meta["output"]}')
 
@@ -202,6 +209,11 @@ def cmd_hot(args):
     from utils.crawler import Crawler
     from datetime import datetime
 
+    # preflight 预检：爬热点前拦住必挂的依赖（爬虫/LLM 硬依赖，TTS/图源可降级）
+    from core.preflight import Preflight
+    from utils.config_loader import load_config as _lc
+    Preflight(_lc()).check('hot', skip=getattr(args, 'no_preflight', False))
+
     fl = FastLine()
     llm = fl.llm
 
@@ -234,6 +246,7 @@ def cmd_hot(args):
         show_source=not args.no_source,
         task_id=args.task_id,
         effects=getattr(args, 'effects', 'off'),
+        no_preflight=True,  # hot 已在爬热点前预检过，避免重复探测
     )
     print(f'\nDone: {meta["output"]}')
 
@@ -250,6 +263,7 @@ def cmd_fast(args):
         slowmo=args.slowmo, images_source=args.images_source,
         source_topic=args.source_topic, trend_date=args.trend_date,
         show_source=not args.no_source, effects=getattr(args, 'effects', 'off'),
+        no_preflight=getattr(args, 'no_preflight', False),
     )
     print(f'\nDone: {meta["output"]}')
 
@@ -812,6 +826,8 @@ def build_parser():
                         help='外部指定 task_id（调度器传入），不指定则自动生成时间戳')
     p_auto.add_argument('--resume', default=None, metavar='TASK_ID',
                         help='v17 M4 断点续跑：传已有 task_id，从 checkpoint 恢复（跳过已完成阶段/镜头；概念可不传）')
+    p_auto.add_argument('--no-preflight', action='store_true',
+                        help='跳过开跑前预检（默认开跑前探测依赖服务，硬依赖挂则拒绝启动）')
     p_auto.set_defaults(func=cmd_auto)
 
     # ── custom 子命令 ──
@@ -823,6 +839,8 @@ def build_parser():
                           help='分镜脚本文件路径（prompt.txt 格式）')
     p_custom.add_argument('--ref-image-size', choices=['match', 'max'], default='match',
                           help='H3 参考图尺寸: match (更快) / max (2048px, 最佳身份保真)')
+    p_custom.add_argument('--no-preflight', action='store_true',
+                          help='跳过开跑前预检')
     p_custom.set_defaults(func=cmd_custom)
 
     # ── quick 子命令 ──
@@ -833,6 +851,8 @@ def build_parser():
                          help='TTS 音色 (如 edge-moe)')
     p_quick.add_argument('--task-id', default=None,
                          help='外部指定 task_id（调度器传入），不指定则自动生成时间戳')
+    p_quick.add_argument('--no-preflight', action='store_true',
+                         help='跳过开跑前预检')
     p_quick.set_defaults(func=cmd_quick)
 
     # ── concat 子命令 ──
@@ -873,6 +893,8 @@ def build_parser():
                        choices=['auto', 'off'],
                        help='v5 剪辑特效: auto(LLM 选) / off(关闭，默认)')
     p_hot.add_argument('--task-id', default=None)
+    p_hot.add_argument('--no-preflight', action='store_true',
+                       help='跳过开跑前预检')
     p_hot.set_defaults(func=cmd_hot)
 
     # ── fast 子命令（v4 M6 快速营销号链路） ──
@@ -916,6 +938,8 @@ def build_parser():
     p_fast.add_argument('--stt', action='store_true', help='STT 字幕对齐')
     p_fast.add_argument('--task-id', default=None,
                         help='外部指定 task_id（调度器传入）')
+    p_fast.add_argument('--no-preflight', action='store_true',
+                        help='跳过开跑前预检')
     p_fast.set_defaults(func=cmd_fast)
 
     # ── ask 子命令（v6 prompt 多轮核实） ──
@@ -1091,7 +1115,11 @@ def main():
         set_live(lambda d: print(d, end='', flush=True))
     except Exception:
         pass
-    args.func(args)
+    try:
+        args.func(args)
+    except PreflightError as e:
+        print(f'\n✗ {e}', file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == '__main__':

@@ -67,7 +67,21 @@ MOOD_FEEL = {
 
 
 class AssetCrawler:
-    """素材爬取器：参考图（Pexels 首选 / 必应兜底）+ BGM（incompetech）。"""
+    """素材爬取器：参考图（Pexels 首选 / 必应兜底）+ BGM（incompetech）。
+
+    v17 MPT 借鉴：素材 URL md5 全局缓存（跨任务秒回）+ 下载后 PIL 完整性验证
+    （utils/material_cache.py，MPT save_video 同思路）；同关键词搜索结果 24h TTL
+    缓存（MPT material_cache 同思路），fast/hot 连跑不重复打图源接口。
+    """
+
+    _mc = None
+
+    @classmethod
+    def _material_cache(cls):
+        if cls._mc is None:
+            from utils.material_cache import MaterialCache
+            cls._mc = MaterialCache()
+        return cls._mc
 
     @staticmethod
     def _pexels_search(keyword: str, top: int = 10) -> list:
@@ -118,11 +132,17 @@ class AssetCrawler:
 
         **Pexels 首选**（图库 API，精准返回对应概念版权图，干净）；
         Pexels 无 key/失败时回退必应正式 images/search 页（聚合图源，可能有无关图）。
+        **24h TTL 搜索缓存**（MPT material_cache 思路）：同关键词直接回上次结果。
         """
+        cached = self._material_cache().search_get(keyword)
+        if cached:
+            print(f'  [素材缓存] "{keyword[:20]}" 搜索结果命中（{len(cached)} 条，24h 内免重爬）')
+            return cached
         pex = self._pexels_search(keyword, top=top)
-        if pex:
-            return pex
-        return self._search_bing(keyword, top=top)
+        results = pex if pex else self._search_bing(keyword, top=top)
+        if results:
+            self._material_cache().search_put(keyword, results)
+        return results
 
     def _search_bing(self, keyword: str, top: int = 40) -> list:
         """必应正式 images/search 页面（聚合图源，返回 {murl,turl,md5}）。"""
@@ -193,14 +213,17 @@ class AssetCrawler:
             if c.get('murl'):
                 tried.append((c['murl'], 2))
         tried = sorted(set(tried), key=lambda x: x[1])
+        mc = self._material_cache()
+        cache_hits = 0
         for url, _prio in tried:
             if len(out) >= top:
                 break
-            try:
-                req = urllib.request.Request(url, headers={'User-Agent': UA})
-                data = urllib.request.urlopen(req, timeout=15).read()
-            except Exception:
+            # 带全局缓存的下载（URL md5 命中秒回 + PIL 完整性验证，坏图不落盘）
+            cache_hit, data = mc.fetch(url, kind='img', headers={'User-Agent': UA})
+            if data is None:
                 continue
+            if cache_hit:
+                cache_hits += 1
             if len(data) < min_bytes or not self._magic_ok(data):
                 continue
             md5 = hashlib.md5(data).hexdigest()
@@ -216,6 +239,8 @@ class AssetCrawler:
             with open(path, 'wb') as f:
                 f.write(data)
             out.append({'path': os.path.abspath(path), 'url': url, 'size': len(data)})
+        if cache_hits:
+            print(f'  [素材缓存] {cache_hits} 张命中全局缓存（免下载）')
         return out
 
     # ══ 2. LLM concept → 图片搜索关键词 ══
