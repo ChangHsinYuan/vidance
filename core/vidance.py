@@ -39,6 +39,8 @@ def cmd_auto(args):
     """auto 子命令：概念 → LLM 编剧 → 生成 → 后处理"""
     from agents.common.tools.config_loader import require as _tier
     _tier('auto')
+    if not getattr(args, 'resume', None) and not args.concept:
+        raise SystemExit('auto: 需要概念参数（--resume 续跑时可不传，概念从 checkpoint 取）')
     pipeline = Pipeline()
     if args.no_rife:
         pipeline.rife_config['enabled'] = False
@@ -60,6 +62,7 @@ def cmd_auto(args):
         slowmo_override=args.slowmo,
         no_asset_reuse=args.no_asset_reuse,
         task_id=getattr(args, 'task_id', None),
+        resume=getattr(args, 'resume', None),
     )
     print(f'\nDone: {meta["output"]}')
 
@@ -790,7 +793,8 @@ def build_parser():
     # ── auto 子命令 ──
     p_auto = sub.add_parser('auto', parents=[output_parent, post_parent],
                             help='概念 → LLM 编剧 → Wan/FLUX 生成 → 后处理')
-    p_auto.add_argument('concept', help='视频概念（中文）')
+    p_auto.add_argument('concept', nargs='?', default=None,
+                        help='视频概念（中文；--resume 时可省略，从 checkpoint 取）')
     p_auto.add_argument('--character', default=None,
                         help='角色描述（中文，如：穿红斗篷的少年）')
     p_auto.add_argument('--character-mode', default='auto',
@@ -806,6 +810,8 @@ def build_parser():
                         help='全局慢动作帧倍率（如 2 = 2x 慢放，覆盖所有镜头）')
     p_auto.add_argument('--task-id', default=None,
                         help='外部指定 task_id（调度器传入），不指定则自动生成时间戳')
+    p_auto.add_argument('--resume', default=None, metavar='TASK_ID',
+                        help='v17 M4 断点续跑：传已有 task_id，从 checkpoint 恢复（跳过已完成阶段/镜头；概念可不传）')
     p_auto.set_defaults(func=cmd_auto)
 
     # ── custom 子命令 ──

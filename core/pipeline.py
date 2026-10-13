@@ -78,6 +78,40 @@ class Pipeline:
                 config=self.config, instance='wan', model_name=model)
         return self._rife_client
 
+    # ── v17 M4 断点续跑（借鉴 MoneyPrinterTurbo task_dir 归拢 + 原子写）──
+    @staticmethod
+    def _save_ckpt(task_dir: str, patch: dict):
+        """原子合并写 checkpoint.json（fsync + os.replace，崩溃不留半文件）"""
+        import tempfile
+        path = os.path.join(task_dir, 'checkpoint.json')
+        data = {}
+        if os.path.exists(path):
+            try:
+                with open(path, encoding='utf-8') as f:
+                    data = json.load(f)
+            except Exception:
+                data = {}
+        data.update(patch)
+        data['updated_at'] = time.strftime('%Y-%m-%dT%H:%M:%S')
+        fd, tmp = tempfile.mkstemp(dir=task_dir, suffix='.tmp')
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, path)
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+
+    @staticmethod
+    def _load_ckpt(task_dir: str) -> dict:
+        path = os.path.join(task_dir, 'checkpoint.json')
+        if not os.path.exists(path):
+            return {}
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+
     def run(self, concept: str, output_path: str = None,
             character_desc: str = None, voice: str = None,
             character_mode: str = 'auto', lut_override: str = None,
@@ -85,7 +119,8 @@ class Pipeline:
             target_duration: float = None,
             slowmo_override: int = None,
             no_asset_reuse: bool = False,
-            task_id: str = None) -> dict:
+            task_id: str = None,
+            resume: str = None) -> dict:
         """端到端生成有声短片
 
         character_mode:
@@ -98,10 +133,25 @@ class Pipeline:
         slowmo_override: 全局慢动作帧倍率，覆盖所有镜头（None 则用 LLM 标注）
         no_asset_reuse: True 时跳过资产库检索，强制重新重建 3D 资产
         task_id: 外部指定 task_id（调度器传入），None 时自动生成时间戳
+        resume: v17 M4 断点续跑——传已有 task_id，从 checkpoint.json 恢复（跳过已完成阶段/镜头）
         """
-        if task_id is None:
-            from agents.common.tools.config_loader import task_id_for
-            task_id = task_id_for('auto')
+        resumed_from = None
+        if resume:
+            resumed_from = resume
+            task_id = resume
+            task_dir = os.path.join(self.output_dir, task_id)
+            if not os.path.isdir(task_dir):
+                raise FileNotFoundError(f'resume: 任务目录不存在: {task_dir}')
+            ckpt = self._load_ckpt(task_dir)
+            if not ckpt:
+                raise ValueError(f'resume: {task_dir} 无 checkpoint.json（旧任务或从未跑过阶段 1）')
+            concept = ckpt.get('concept') or concept
+            character_desc = ckpt.get('character_desc') or character_desc
+            print(f'[resume] {task_id} · 已完成阶段: {[k for k in ("script", "prompts", "character") if ckpt.get(k)]} · 已完成镜头: {len(ckpt.get("clips", []))}')
+        else:
+            if task_id is None:
+                from agents.common.tools.config_loader import task_id_for
+                task_id = task_id_for('auto')
         self._task_id = task_id
         task_dir = os.path.join(self.output_dir, task_id)
         clips_dir = os.path.join(task_dir, 'clips')
@@ -119,6 +169,8 @@ class Pipeline:
             'status': 'running',
             'clips': [],
         }
+        if resumed_from:
+            meta['resumed_from'] = resumed_from
 
         print(f'[{task_id}] concept: {concept}')
         if character_desc:
@@ -132,9 +184,16 @@ class Pipeline:
             self.max_retries = 0
         # ── 1. 编剧 ──
         print('\n=== [1] 编剧 ===')
-        script = self.llm.script_write(concept, character_desc=character_desc,
-                                        target_duration=target_duration)
+        ckpt = self._load_ckpt(task_dir) if resumed_from else {}
+        if resumed_from and ckpt.get('script'):
+            script = ckpt['script']
+            print(f'  [resume] 跳过编剧（{len(script["shots"])} 镜已缓存）')
+        else:
+            script = self.llm.script_write(concept, character_desc=character_desc,
+                                            target_duration=target_duration)
         meta['script'] = script
+        self._save_ckpt(task_dir, {'concept': concept, 'character_desc': character_desc,
+                                   'target_duration': target_duration, 'script': script})
         print(f'  title: {script["title"]}')
         print(f'  shots: {len(script["shots"])}')
         self._log('▸ [1] 编剧完成: %s · %d 镜 · review=%s' % (
@@ -158,17 +217,27 @@ class Pipeline:
             print(f'  character_prompt: {character_prompt[:80]}...')
 
         # 每镜 video_prompt + background_prompt
-        for shot in script['shots']:
-            shot['style'] = style
-            shot['video_prompt'] = self.llm.optimize_prompt(shot['scene_desc'], style)
-            bg_desc = shot.get('background_desc', shot['scene_desc'])
-            shot['background_prompt'] = self.llm.optimize_background_prompt(bg_desc, style)
-            print(f'  shot {shot["id"]}: video={shot["video_prompt"][:50]}...')
-            print(f'           bg={shot["background_prompt"][:50]}...')
+        ckpt = self._load_ckpt(task_dir)
+        if resumed_from and ckpt.get('prompts_done') and all(
+                s.get('video_prompt') for s in script['shots']):
+            print('  [resume] 跳过 prompt 优化（已缓存）')
+        else:
+            for shot in script['shots']:
+                shot['style'] = style
+                shot['video_prompt'] = self.llm.optimize_prompt(shot['scene_desc'], style)
+                bg_desc = shot.get('background_desc', shot['scene_desc'])
+                shot['background_prompt'] = self.llm.optimize_background_prompt(bg_desc, style)
+                print(f'  shot {shot["id"]}: video={shot["video_prompt"][:50]}...')
+                print(f'           bg={shot["background_prompt"][:50]}...')
+            self._save_ckpt(task_dir, {'prompts_done': True, 'script': script})
 
         # ── 3. 角色锚阶段 ──
         character = None
-        if character_prompt:
+        ckpt = self._load_ckpt(task_dir)
+        if resumed_from and ckpt.get('character'):
+            character = ckpt['character']
+            print(f'  [resume] 跳过角色锚（mode={character.get("mode")} 已缓存）')
+        elif character_prompt:
             print(f'\n=== [3] 角色锚阶段 (mode={character_mode}) ===')
             character = self._build_character_anchor(
                 character_prompt, char_dir, task_id, character_mode,
@@ -177,6 +246,7 @@ class Pipeline:
             )
             character['desc'] = character_desc
             meta['character'] = character
+            self._save_ckpt(task_dir, {'character': character})
 
             if character['mode'] in ('3dgs', 'mesh') and not character.get('review', {}).get('pass', False):
                 if character_mode == 'auto':
@@ -197,20 +267,41 @@ class Pipeline:
         i2v_h = self.i2v_defaults.get('height', 480)
         bg_w = self.flux_defaults.get('background_width', i2v_w)
         bg_h = self.flux_defaults.get('background_height', i2v_h)
+
+        # v17 M4：resume 时恢复已完成镜头（final_video 健在才复用，否则重做）
+        ckpt = self._load_ckpt(task_dir)
+        done_clips = {}
+        if resumed_from:
+            for ci in ckpt.get('clips', []):
+                fv = ci.get('final_video')
+                ap = (ci.get('audio') or {}).get('audio_path')
+                if fv and os.path.isfile(fv) and ap and os.path.isfile(ap):
+                    done_clips[ci['shot_id']] = ci
+                else:
+                    print(f'  [resume] clip shot {ci.get("shot_id")} 文件缺失，将重做')
+            if done_clips:
+                print(f'  [resume] 复用 {len(done_clips)} 个已完成镜头')
+
+        to_prefetch = [s for s in script['shots'] if s['id'] not in done_clips]
         prefetched = self._prefetch_shots(
-            script['shots'], character, clips_dir, task_id,
+            to_prefetch, character, clips_dir, task_id,
             voice, i2v_w, i2v_h, bg_w, bg_h,
-        )
+        ) if to_prefetch else {}
 
         for shot in script['shots']:
             sid = shot['id']
-            print(f'\n=== [4] shot {sid} 生成 ===')
-            self._log('▸ [4] shot %s 生成' % sid)
-            clip_info = self._process_shot(
-                shot, clips_dir, task_id, character, voice,
-                prefetched=prefetched.get(sid),
-                slowmo_override=slowmo_override,
-            )
+            if sid in done_clips:
+                clip_info = done_clips[sid]
+                print(f'\n=== [4] shot {sid} 已完成（resume 复用）===')
+            else:
+                print(f'\n=== [4] shot {sid} 生成 ===')
+                self._log('▸ [4] shot %s 生成' % sid)
+                clip_info = self._process_shot(
+                    shot, clips_dir, task_id, character, voice,
+                    prefetched=prefetched.get(sid),
+                    slowmo_override=slowmo_override,
+                )
+                self._save_ckpt(task_dir, {'clips': self._load_ckpt(task_dir).get('clips', []) + [clip_info]})
             meta['clips'].append(clip_info)
             all_clips.append(clip_info['final_video'])
             all_audios.append(clip_info['audio']['audio_path'])

@@ -187,13 +187,43 @@ class LLMClient:
 
     def chat_json(self, messages: list, model: str = None,
                   temperature: float = 0.7, timeout: int = 300, retries: int = 0) -> dict:
-        """调用 LLM 并解析 JSON 结果（提取 ```json 代码块或直接解析）"""
-        text = self.chat(messages, model=model, temperature=temperature, timeout=timeout, retries=retries)
-        return self._extract_json(text)
+        """调用 LLM 并解析 JSON 结果（提取 ```json 代码块或直接解析）
 
-    @staticmethod
-    def _extract_json(text: str) -> dict:
-        """从 LLM 回复中提取 JSON（支持 ```json 代码块和裸 JSON）"""
+        v17 M4：解析失败时带报错重试（把畸形输出+错误信息回喂 LLM 让其自修），默认 2 次。
+        """
+        last_err = None
+        last_text = ''
+        for i in range(retries + 1 + 2):  # 用户 retries + 解析重试 2 次
+            text = (last_text if i and last_text else
+                    self.chat(messages, model=model, temperature=temperature,
+                              timeout=timeout, retries=retries))
+            try:
+                return self._extract_json(text)
+            except (json.JSONDecodeError, ValueError) as e:
+                last_err, last_text = e, text
+                print(f'  [json] parse failed ({e}), retry {i + 1}/2 with error feedback...')
+                messages = messages + [
+                    {'role': 'assistant', 'content': text},
+                    {'role': 'user', 'content':
+                        f'你的输出不是合法 JSON（错误：{e}）。\n'
+                        '请重新输出，严格 JSON 格式，不要加任何解释文字或 markdown 代码块。'},
+                ]
+        raise ValueError(f'LLM JSON parse failed after retries: {last_err}')
+
+    # v17 M4：常见畸形修复（尾逗号/单引号/裸键/Python 字面量/智能引号/代码块残留）
+    _RE_TRAILING = __import__('re').compile(r',\s*([}\]])')
+    _RE_PY_LIT = __import__('re').compile(r'\b(True|False|None)\b')
+
+    @classmethod
+    def _repair_json(cls, text: str) -> str:
+        text = text.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
+        text = cls._RE_PY_LIT.sub(lambda m: {'True': 'true', 'False': 'false', 'None': 'null'}[m.group(1)], text)
+        text = cls._RE_TRAILING.sub(r'\1', text)
+        return text
+
+    @classmethod
+    def _extract_json(cls, text: str) -> dict:
+        """从 LLM 回复中提取 JSON（支持 ```json 代码块和裸 JSON + 畸形修复）"""
         text = text.strip()
         if text.startswith('```'):
             lines = text.split('\n')
@@ -205,8 +235,12 @@ class LLMClient:
             start = text.find('{')
             end = text.rfind('}')
             if start != -1 and end != -1:
-                return json.loads(text[start:end + 1])
-            raise
+                cand = text[start:end + 1]
+                try:
+                    return json.loads(cand)
+                except json.JSONDecodeError:
+                    return json.loads(cls._repair_json(cand))
+            return json.loads(cls._repair_json(text))
 
     @staticmethod
     def _image_to_base64(path: str, max_size: int = 512) -> str:
