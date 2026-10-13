@@ -496,7 +496,7 @@ def _run_h3shot(job_id: str, req: H3ShotRequest):
         with _h3_jobs_lock:
             _h3_jobs[job_id].update({
                 'status': 'completed', 'output': output_path,
-                'video_url': '/api/file?path=' + output_path,
+                'video_url': _file_url(output_path),
                 'seed': result.get('seed'), 'seconds': seconds,
                 'completed_at': datetime.now().isoformat(),
             })
@@ -533,7 +533,7 @@ def _run_custom_job(job_id: str, rr: dict):
         with _h3_jobs_lock:
             _h3_jobs[job_id].update({
                 'status': 'completed', 'output': out,
-                'video_url': ('/api/file?path=' + out) if out else '',
+                'video_url': (_file_url(out)) if out else '',
                 'task_id': meta.get('task_id'),
                 'completed_at': datetime.now().isoformat(),
             })
@@ -596,7 +596,7 @@ def _run_svgjob(job_id: str, concept, n: int, say: list, flags: dict, voiced: bo
         with _h3_jobs_lock:
             _h3_jobs[job_id].update({
                 'status': 'completed', 'output': out,
-                'video_url': ('/api/file?path=' + out) if out else '',
+                'video_url': (_file_url(out)) if out else '',
                 'completed_at': datetime.now().isoformat(),
             })
         _agent_log(job_id, '■ 完成 %s' % (out or ''))
@@ -657,7 +657,7 @@ def _run_pptjob(job_id: str, concept, n: int, say: list, flags: dict,
         with _h3_jobs_lock:
             _h3_jobs[job_id].update({
                 'status': 'completed', 'output': out,
-                'video_url': ('/api/file?path=' + out) if out and out.endswith('.mp4') else '',
+                'video_url': (_file_url(out)) if out and out.endswith('.mp4') else '',
                 'completed_at': datetime.now().isoformat(),
             })
         _agent_log(job_id, '■ 完成 %s' % (out or ''))
@@ -708,7 +708,7 @@ def _run_blenderjob(job_id: str, concept, n: int, say: list, flags: dict):
         with _h3_jobs_lock:
             _h3_jobs[job_id].update({
                 'status': 'completed', 'output': out,
-                'video_url': ('/api/file?path=' + out) if out else '',
+                'video_url': (_file_url(out)) if out else '',
                 'completed_at': datetime.now().isoformat(),
             })
         _agent_log(job_id, '■ 完成 %s' % (out or ''))
@@ -748,7 +748,7 @@ def _run_editimagejob(job_id: str, inp: str, cmd: str, fl: dict):
             with _h3_jobs_lock:
                 _h3_jobs[job_id].update({
                     'status': 'completed', 'output': out,
-                    'image_url': '/api/file?path=' + out,
+                    'image_url': _file_url(out),
                     'completed_at': datetime.now().isoformat(),
                 })
             _agent_log(job_id, '■ 完成 %s（instruct）' % out)
@@ -797,7 +797,7 @@ def _run_editimagejob(job_id: str, inp: str, cmd: str, fl: dict):
             with _h3_jobs_lock:
                 _h3_jobs[job_id].update({
                     'status': 'completed', 'output': out,
-                    'image_url': '/api/file?path=' + out,
+                    'image_url': _file_url(out),
                     'completed_at': datetime.now().isoformat(),
                     **(extra or {})})
             _agent_log(job_id, '■ 完成 %s' % out)
@@ -889,7 +889,7 @@ def _run_editjob(job_id: str, video: str, points: list, op: str, flags: dict):
             with _h3_jobs_lock:
                 _h3_jobs[job_id].update({
                     'status': 'completed', 'output': out,
-                    'video_url': '/api/file?path=' + out,
+                    'video_url': _file_url(out),
                     'objects': r.get('objects'),
                     'completed_at': datetime.now().isoformat(),
                 })
@@ -906,7 +906,7 @@ def _run_editjob(job_id: str, video: str, points: list, op: str, flags: dict):
         with _h3_jobs_lock:
             _h3_jobs[job_id].update({
                 'status': 'completed', 'output': out,
-                'video_url': '/api/file?path=' + out,
+                'video_url': _file_url(out),
                 'completed_at': datetime.now().isoformat(),
             })
         _agent_log(job_id, '■ 完成 %s' % out)
@@ -955,7 +955,7 @@ def _run_propaintereditjob(job_id: str, video: str, points: list, flags: dict):
         with _h3_jobs_lock:
             _h3_jobs[job_id].update({
                 'status': 'completed', 'output': r['output'],
-                'video_url': '/api/file?path=' + r['output'],
+                'video_url': _file_url(r['output']),
                 'frames': str(r['frames']), 'completed_at': datetime.now().isoformat(),
             })
         _agent_log(job_id, '■ 完成 %s（%s 帧）' % (r['output'], r['frames']))
@@ -1010,7 +1010,7 @@ def _run_vaceeditjob(job_id: str, video: str, points: list, flags: dict):
         with _h3_jobs_lock:
             _h3_jobs[job_id].update({
                 'status': 'completed', 'output': r['output'],
-                'video_url': '/api/file?path=' + r['output'],
+                'video_url': _file_url(r['output']),
                 'frames': str(r['frames']), 'completed_at': datetime.now().isoformat(),
             })
         _agent_log(job_id, '■ 完成 %s（%s 帧 seed=%s）' % (r['output'], r['frames'], r['seed']))
@@ -1168,6 +1168,12 @@ def video_stream(task_id: str):
 
 
 # ── /api/file?path=...：通用本地文件流（限制在 output_dir 与项目目录内）──
+def _file_url(path: str) -> str:
+    """/api/file 链接统一构造：path 必须 URL 编码（中文/空格/+&#+ 否则被截断 → file not found）"""
+    from urllib.parse import quote
+    return '/api/file?path=' + quote(os.path.abspath(path).replace(os.sep, '/'), safe='')
+
+
 @app.get('/api/file')
 def file_stream(path: str):
     import os as _os
@@ -1201,7 +1207,7 @@ async def upload_asset(request: Request, session_id: str = Query(...), as_name: 
     except ValueError as ex:
         raise HTTPException(status_code=400, detail=str(ex))
     abs_path = os.path.join(_buffer().root, session_id, e['path'])
-    e['url'] = '/api/file?path=' + os.path.abspath(abs_path).replace(os.sep, '/')
+    e['url'] = _file_url(abs_path)
     return e
 
 
@@ -1261,7 +1267,7 @@ def archive_asset(session_id: str = Query(...), body: ArchiveRequest = None):
     except (ValueError, FileNotFoundError) as ex:
         raise HTTPException(status_code=400, detail=str(ex))
     e['abs_file'] = e.pop('abs_path', real) if 'abs_path' in e else real
-    e['url'] = '/api/file?path=' + os.path.abspath(real).replace(os.sep, '/')
+    e['url'] = _file_url(real)
     return e
 
 
@@ -1929,7 +1935,7 @@ def tool_dispatch(name: str, req: ToolRequest):
         out = run_timeline(pos[0], flags.get('output'))
         return {'message': '成片已生成', 'output': out,
                 'compose_output': out,
-                'video_url': ('/api/file?path=' + out) if out else ''}
+                'video_url': (_file_url(out)) if out else ''}
 
     # ── svg（v13（原 v15）流水线：全部异步 job（无声 concept_to_mp4 / 有声 narrate_to_mp4），前端 pollH3 复用）──
     if name == 'svg':
@@ -2178,7 +2184,7 @@ def tool_dispatch(name: str, req: ToolRequest):
                 with _h3_jobs_lock:
                     _h3_jobs[job_id].update({'status': 'completed',
                                              'output': vout,
-                                             'video_url': '/api/file?path=' + vout})
+                                             'video_url': _file_url(vout)})
                 _agent_log(job_id, '■ 完成 %s' % vout)
             except Exception as e:
                 with _h3_jobs_lock:
@@ -2211,7 +2217,7 @@ def tool_dispatch(name: str, req: ToolRequest):
             raise HTTPException(status_code=500,
                                 detail='concat 失败: ' + ((r.stderr or '') + (r.stdout or ''))[-400:])
         return {'message': '拼接完成', 'output': out, 'compose_output': out,
-                'video_url': '/api/file?path=' + out}
+                'video_url': _file_url(out)}
 
     # ── arch（架构总览：层/Agent/服务 数据驱动 + 端口在线探测）──
     if name == 'arch':

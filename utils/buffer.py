@@ -220,8 +220,9 @@ class BufferManager:
             p = self._abs_asset(session_id, a)
             exists = bool(p) and os.path.exists(p)
             url_path = p if a.get('is_ref') else os.path.join(self.root, session_id, a['path'])
+            from urllib.parse import quote
             out.append({**a, 'exists': exists, 'abs_file': p,
-                        'url': '/api/file?path=' + os.path.abspath(url_path).replace(os.sep, '/')})
+                        'url': '/api/file?path=' + quote(os.path.abspath(url_path).replace(os.sep, '/'), safe='')})
         return out
 
     def _abs_asset(self, session_id: str, asset: dict) -> str:
