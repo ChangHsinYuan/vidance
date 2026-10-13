@@ -417,23 +417,30 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ### v17 — 整合已有开源仓库（原 v12）（🎯 待开发）
 
-**目标**：吸收成熟开源项目的工程能力，不重复造轮子。
+**目标**：吸收成熟开源项目的工程能力，不重复造轮子；并补上系统一直缺的"会话资产层"——上传素材/中间产物有统一缓冲区管理（生命周期跟会话走），前端支持类 ChatGPT 附件交互，指令用 @引用 替代自然语言指代。
 
 **范围**：
+
+*会话资产层（2026-10-12 新增，M1-M3 优先）*：
+- **buffer 会话缓冲区**：`output/buffer/{session_id}/` 管理会话相关资产（用户上传图/视频/音频 + 任务中间产物）——上传即入 buffer、agent 产物可归档进 buffer、会话删除联动删目录、TTL 定期清理兜底
+- **前端附件**：类 ChatGPT 交互——拖拽/粘贴/附件按钮上传，消息带附件 chip，发送时 attachments 随命令提交；任务产出的视频/图片卡一键"存入 buffer"复用
+- **@ 引用语法**：命令/自然语言中 `@1 @2` 按附件顺序引用（后端发送前替换为 buffer 绝对路径），替代"参考下面第一张图"式指代；LLM 意图层把"用第一张图"规整为 @1（t2c SFT 语料同步采用该格式）
+
+*原有范围*：
 - 断点续跑机制：每步输出持久化，中断后可恢复（ViMax checkpoint/resume）
 - JSON 容错解析：LLM 输出不稳定时容错（TrailingCommaTolerantParser）
 - 结构化视频提示词模板：`[Visual]/[Motion]/[Camera]/[Audio]/[Narrative]` 五维
-- RAG 管线：FAISS + BGE Reranker，长文本输入处理
+- RAG 管线：FAISS + BGE Reranker，长文本输入处理（索引源=buffer 内文档资产）
 - 结构化剧本拆解：非结构化文本→角色/场景/道具
-- 本地语义嵌入 ONNX（all-MiniLM-L6-v2）：资产匹配/场景关联
+- 本地语义嵌入 ONNX（all-MiniLM-L6-v2）：资产匹配/场景关联（buffer 资产检索复用）
 - 重试标准化：tenacity 统一 API 重试
-- 候选整合对象：MoneyPrinterTurbo（架构参考）、ViMax、Toonflow、BigBanana、OpenCut
+- 候选整合对象：MoneyPrinterTurbo（架构参考）、ViMax、Toonflow、BigBanana、OpenCut、Open WebUI（会话附件交互）、Dify（message.files 上传协议）、Gradio（临时文件 TTL 清理）
 
-**里程碑**：M1 断点续跑+JSON 容错 → M2 五维提示词模板+RAG → M3 剧本拆解 → M4 嵌入+重试标准化
+**里程碑**：M1 buffer 目录+上传 API+会话联动删除+TTL 清理 → M2 前端附件（拖拽/粘贴/chip/产物归档）→ M3 @ 引用（后端替换+LLM 意图规整+t2c 语料）→ M4 断点续跑+JSON 容错 → M5 五维提示词模板+RAG → M6 剧本拆解 → M7 嵌入+重试标准化
 
-**参考**：ViMax、Toonflow、BigBanana、MoneyPrinterTurbo（本机 `/mnt/disk_sdb/zxy/MoneyPrinterTurbo/`）。
+**参考**：ViMax、Toonflow、BigBanana、MoneyPrinterTurbo（本机 `/mnt/disk_sdb/zxy/MoneyPrinterTurbo/`）；会话资产层专项见 [v17-design.md](./v17-design.md)。
 
-**依赖**：多智能体（v11，原 v13）黑板/chain 是断点续跑的挂载点。
+**依赖**：多智能体（v11，原 v13）黑板/chain 是断点续跑的挂载点；会话资产层（M1-M3）是 RAG（M5 文档索引）与 t2c 重训（@ 语料）的前置。
 
 ---
 
