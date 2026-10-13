@@ -43,12 +43,46 @@ from typing import Optional
 from core.scheduler import TaskQueue, Scheduler, load_config
 
 from agents.common.tools.config_loader import capabilities
+from utils.buffer import BufferManager, ConflictError, new_session_id
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.json')
 
 app = FastAPI(title='Vidance Task Queue', version='4.2.0')
 queue = TaskQueue()
 scheduler = None
+
+# v17 M1 会话资产缓冲区（output/buffer/{session_id}/）
+_buffer_cfg = None
+
+
+def _buffer() -> BufferManager:
+    global _buffer_cfg
+    cfg = load_config()
+    bcfg = cfg.get('buffer') or {}
+    key = (bcfg.get('root', ''), bcfg.get('max_file_size', 0), bcfg.get('ttl_days', 0))
+    if _buffer_cfg is None or _buffer_cfg[0] != key:
+        root = bcfg.get('root') or os.path.join(cfg.get('output_dir', 'output'), 'buffer')
+        _buffer_cfg = (key, BufferManager(
+            root, max_file_size=int(bcfg.get('max_file_size', 200 * 1024 * 1024)),
+            ttl_days=float(bcfg.get('ttl_days', 7))))
+    return _buffer_cfg[1]
+
+
+def _start_buffer_cleanup_daemon():
+    """TTL 兜底清理守护线程（每 6h 扫一次，api_server 生命周期内常驻）。"""
+    def _loop():
+        while True:
+            try:
+                r = _buffer().cleanup()
+                if r['removed_sessions'] or r['orphan_refs_reclaimed']:
+                    print('[buffer] cleanup:', r)
+            except Exception as e:
+                print('[buffer] cleanup error:', e)
+            time.sleep(6 * 3600)
+    threading.Thread(target=_loop, daemon=True).start()
+
+
+_start_buffer_cleanup_daemon()
 
 
 class TaskSubmit(BaseModel):
@@ -1151,6 +1185,86 @@ def file_stream(path: str):
     return FileResponse(real, media_type=media, filename=_os.path.basename(real))
 
 
+# ── v17 M1 会话资产缓冲区：/api/upload /api/assets /api/session ──
+@app.post('/api/upload')
+async def upload_asset(request: Request, session_id: str = Query(...), as_name: str = Query('')):
+    """上传资产进 buffer（multipart file 字段）。返回 {asset_id, path, url, name...}"""
+    form = await request.form()
+    up = form.get('file')
+    if up is None or not hasattr(up, 'filename'):
+        raise HTTPException(status_code=400, detail='missing multipart field: file')
+    data = await up.read()
+    if not data:
+        raise HTTPException(status_code=400, detail='empty file')
+    try:
+        e = _buffer().add_upload(session_id, up.filename, data, as_name=as_name)
+    except ValueError as ex:
+        raise HTTPException(status_code=400, detail=str(ex))
+    abs_path = os.path.join(_buffer().root, session_id, e['path'])
+    e['url'] = '/api/file?path=' + os.path.abspath(abs_path).replace(os.sep, '/')
+    return e
+
+
+@app.get('/api/assets')
+def list_assets(session_id: str = Query(...)):
+    try:
+        return {'session_id': session_id, 'assets': _buffer().list_assets(session_id)}
+    except ValueError as ex:
+        raise HTTPException(status_code=400, detail=str(ex))
+
+
+@app.delete('/api/assets/{asset_id}')
+def delete_asset(asset_id: str, session_id: str = Query(...), force: bool = False):
+    try:
+        if not _buffer().remove_asset(session_id, asset_id, force=force):
+            raise HTTPException(status_code=404, detail='asset not found')
+    except ConflictError as ex:
+        raise HTTPException(status_code=409, detail=str(ex))
+    return {'deleted': asset_id}
+
+
+@app.delete('/api/session/{session_id}')
+def delete_session(session_id: str):
+    """删会话=删 buffer/{id}/ 整目录（uploads 真删、archive 只删引用记录，output/ 成片不动）。"""
+    try:
+        return _buffer().delete_session(session_id)
+    except ValueError as ex:
+        raise HTTPException(status_code=400, detail=str(ex))
+
+
+@app.post('/api/assets/{asset_id}/ref')
+def mark_asset_ref(asset_id: str, body: dict, session_id: str = Query(...)):
+    """job 引用资产时登记 job_id（引用计数）。body: {job_id: "..."}"""
+    ok = _buffer().mark_ref(session_id, asset_id, str(body.get('job_id') or ''))
+    if not ok:
+        raise HTTPException(status_code=404, detail='asset not found')
+    return {'marked': asset_id, 'job_id': body.get('job_id')}
+
+
+class ArchiveRequest(BaseModel):
+    path: str
+    name: Optional[str] = None
+
+
+@app.post('/api/assets/archive')
+def archive_asset(session_id: str = Query(...), body: ArchiveRequest = None):
+    """产物「存入 buffer」：output/ 内产物登记为引用（不拷贝）。body: {path, name?}"""
+    if not body or not body.path:
+        raise HTTPException(status_code=400, detail='missing body: {path}')
+    cfg = load_config()
+    out_root = os.path.realpath(cfg.get('output_dir', 'output'))
+    real = os.path.realpath(body.path)
+    if not (real.startswith(out_root) and os.path.isfile(real)):
+        raise HTTPException(status_code=403, detail='only existing files under output/ can be archived')
+    try:
+        e = _buffer().add_reference(session_id, real, name=body.name or '')
+    except (ValueError, FileNotFoundError) as ex:
+        raise HTTPException(status_code=400, detail=str(ex))
+    e['abs_file'] = e.pop('abs_path', real) if 'abs_path' in e else real
+    e['url'] = '/api/file?path=' + os.path.abspath(real).replace(os.sep, '/')
+    return e
+
+
 # ── /api/tasks/{task_id}/log：任务详细日志（v7 折叠日志面板用）──
 @app.get('/api/tasks/{task_id}/log')
 def task_log(task_id: str, tail: int = Query(400, ge=1, le=5000)):
@@ -1440,6 +1554,43 @@ def tools():
 
 class ToolRequest(BaseModel):
     args: str = ''
+    # v17 M2/M3：会话附件（asset_id 列表随请求提交，args 中 @N 替换为 buffer 路径）
+    attachments: Optional[list] = None
+    session_id: Optional[str] = None
+
+
+def _resolve_attachments(args: str, attachments, session_id) -> tuple:
+    """@ 引用预处理：args 中 @N → 第 N 个附件路径（v17 M3）。
+
+    返回 (new_args, resolved_paths)。附件数不足/序号非法时抛 400。
+    路径安全：替换值来自 refs.json（服务端资产清单），非用户任意输入；
+    is_ref 引用型资产取其登记的 abs_path（output/ 内产物），上传型取 buffer 内文件。
+    """
+    if not attachments:
+        return args, []
+    if not session_id:
+        raise HTTPException(status_code=400, detail='使用 @N 引用需同时传 session_id')
+    bm = _buffer()
+    assets = []
+    for i, aid in enumerate(attachments[:9], 1):
+        a = bm.get_asset(session_id, str(aid))
+        if not a:
+            raise HTTPException(status_code=400, detail=f'附件 {i}（{aid}）不存在或已删除')
+        if not a['exists']:
+            raise HTTPException(status_code=410, detail=f'附件 {i} 文件缺失: {a["name"]}')
+        assets.append(a)
+    import re as _re
+
+    def _sub(m):
+        n = int(m.group(1))
+        if n < 1 or n > len(assets):
+            raise HTTPException(
+                status_code=400,
+                detail=f'@{n} 超出附件范围（当前 {len(assets)} 个附件）')
+        return assets[n - 1]['abs_file']
+
+    new_args = _re.sub(r'@([1-9])\b', _sub, args)
+    return new_args, [a['id'] for a in assets]
 
 
 def _parse_tool_args(argstr: str) -> dict:
@@ -1632,6 +1783,16 @@ def tool_dispatch(name: str, req: ToolRequest):
             f'当前部署档 {tier} 不支持 /{name}（能力见 GET /api/health）；'
             f'换档：VIDANCE_TIER=<none|flux|wan|h3|full>，或用该档可用命令（/svg /fast 等）'))
     a = _parse_tool_args(req.args or '')
+    # v17 M3：@N 引用替换（附件路径来自服务端 refs.json，杜绝任意路径注入）
+    if req.attachments:
+        a['args_raw'] = req.args or ''
+        req.args, ref_ids = _resolve_attachments(req.args, req.attachments, req.session_id)
+        a = _parse_tool_args(req.args)
+        for rid in ref_ids:
+            try:
+                _buffer().mark_ref(req.session_id, rid, f'tool_{int(time.time())}')
+            except Exception:
+                pass
     pos = a['positional']
     flags = a['flags']
 
