@@ -434,11 +434,11 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 - 结构化剧本拆解：非结构化文本→角色/场景/道具
 - 本地语义嵌入 ONNX（all-MiniLM-L6-v2）：资产匹配/场景关联（buffer 资产检索复用）
 - 重试标准化：tenacity 统一 API 重试
-- 候选整合对象：MoneyPrinterTurbo（架构参考）、ViMax、Toonflow、BigBanana、OpenCut、Open WebUI（会话附件交互）、Dify（message.files 上传协议）、Gradio（临时文件 TTL 清理）
+- 候选整合对象：**MoneyPrinterTurbo（本机可深读：task_dir 归拢/原子写 JSON/TTL 缓存清理/上传安全）、ViMax（会话复用+渲染 checkpoint）、Toonflow（@ mention 资产系统+路径围栏+sha256 revision）、BigBanana（Script-to-Asset-to-Keyframe+一致性三重保障）**——借鉴细节见 v17-design.md §1
 
 **里程碑**：M1 buffer 目录+上传 API+会话联动删除+TTL 清理 → M2 前端附件（拖拽/粘贴/chip/产物归档）→ M3 @ 引用（后端替换+LLM 意图规整+t2c 语料）→ M4 断点续跑+JSON 容错 → M5 五维提示词模板+RAG → M6 剧本拆解 → M7 嵌入+重试标准化
 
-**参考**：ViMax、Toonflow、BigBanana、MoneyPrinterTurbo（本机 `/mnt/disk_sdb/zxy/MoneyPrinterTurbo/`）；会话资产层专项见 [v17-design.md](./v17-design.md)。
+**参考**：MoneyPrinterTurbo（本机 `/mnt/disk_sdb/zxy/MoneyPrinterTurbo/`，源码级）、Toonflow（已克隆，源码级）、ViMax、BigBanana（README 级）；四项目借鉴映射与会话资产层专项设计见 [v17-design.md](./v17-design.md)。
 
 **依赖**：多智能体（v11，原 v13）黑板/chain 是断点续跑的挂载点；会话资产层（M1-M3）是 RAG（M5 文档索引）与 t2c 重训（@ 语料）的前置。
 
