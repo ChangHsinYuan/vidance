@@ -83,6 +83,36 @@ def main():
     changed = correct_srt(srt_path, script5)
     ok('identical no change', not changed)
 
+    # 7.5 STT 单长段展开：whisper 长段合并（1 段 vs 剧本多句）→ 按剧本句字符占比切时间轴
+    from utils.subtitle_correct import _t2s, _s2t
+    ok('t2s/s2t roundtrip', _s2t(_t2s('00:00:25,280')) == '00:00:25,280'
+       and _s2t(_t2s('00:01:02,500')) == '00:01:02,500')
+    script6 = ('海平线吞下最后一缕光时灯塔开始呼吸\n'
+               '守塔人的影子被拉长像另一座沉默的塔\n'
+               '他转动透镜把时间切成均匀的扇面\n'
+               '黎明前他熄灭灯把自己还给了寂静')
+    _write_srt(srt_path, [('00:00:00,000', '00:00:25,280',
+                           '日,海平线吞下最后一缕光时,灯塔开始呼吸,日,守塔人的影子被拉长,'
+                           '他转动透镜,把时间切成均匀的扇面,黎明前他熄灭灯,把自己还给了寂静')])
+    changed = correct_srt(srt_path, script6)
+    items = _parse_srt(srt_path)
+    ok('coarse expand fires', changed and len(items) == 4)
+    ok('coarse expand texts = script',
+       [it[2] for it in items] == split_script_lines(script6))
+    # 时间轴单调且覆盖全段
+    spans = [tuple(_t2s(x) for x in it[1].split(' --> ')) for it in items]
+    ok('coarse expand monotonic',
+       all(spans[i][1] <= spans[i + 1][0] + 0.001 for i in range(len(spans) - 1)))
+    ok('coarse expand full span', spans[0][0] == 0.0 and abs(spans[-1][1] - 25.28) < 0.01)
+    ok('coarse expand no 25s-single-line', spans[0][1] < 10.0)
+
+    # 7.6 真漏识别（STT 字数 < 剧本 60%）→ 不展开，维持宁缺勿错
+    script7 = '甲句内容完整\n乙句内容完整\n丙句内容完整\n丁句内容完整'
+    _write_srt(srt_path, [('00:00:00,000', '00:00:03,000', '甲句内容完整')])
+    changed = correct_srt(srt_path, script7)
+    items = _parse_srt(srt_path)
+    ok('real-missing keeps minimal', len(items) == 1 and items[0][2] == '甲句内容完整')
+
     # 8. CLI 入口
     import subprocess
     r = subprocess.run(

@@ -116,10 +116,67 @@ def split_script_lines(text: str) -> list:
     return list(filter(None, result))
 
 
+def _t2s(t: str) -> float:
+    """SRT 时间 "HH:MM:SS,mmm" → 秒。"""
+    t = t.strip().replace(',', '.')
+    parts = t.split(':')
+    while len(parts) < 3:
+        parts.insert(0, '0')
+    h, m, s = parts
+    return int(h) * 3600 + int(m) * 60 + float(s)
+
+
+def _s2t(sec: float) -> str:
+    """秒 → SRT 时间 "HH:MM:SS,mmm"（总毫秒取整，防 999→1000 溢出）。"""
+    ms = max(0, int(round(max(0.0, sec) * 1000)))
+    h, rem = divmod(ms, 3600_000)
+    m, rem = divmod(rem, 60_000)
+    s, ms = divmod(rem, 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def _expand_coarse_segments(subtitle_items: list, script_lines: list) -> list:
+    """STT 粗段展开：whisper 把多句旁白并成少量长段（长文案+BGM 常见）时，
+    按剧本句字符占比把 STT 时间轴切成句级伪字幕（文本=剧本句原文）。
+
+    触发：STT 段数 < 剧本句数，且 STT 总字数 ≥ 剧本总字数 60%（内容基本都在，
+    只是没分段；真漏识别多则维持原行为——宁缺勿错）。
+    """
+    n_stt, n_scr = len(subtitle_items), len(script_lines)
+    if n_stt <= 0 or n_stt >= n_scr:
+        return subtitle_items
+    stt_chars = sum(len(it[2]) for it in subtitle_items)
+    scr_chars = sum(len(l) for l in script_lines)
+    if scr_chars <= 0 or stt_chars < scr_chars * 0.6:
+        return subtitle_items
+
+    print(f'  [字幕纠正] STT 段数({n_stt}) 远少于剧本句数({n_scr})，'
+          f'按剧本句字符占比展开时间轴')
+    # 时间轴范围 = 首段起点 → 末段终点（段间隙忽略，whisper 连续转写间隙极小）
+    start_all = _t2s(subtitle_items[0][1].split(' --> ')[0])
+    end_all = _t2s(subtitle_items[-1][1].split(' --> ')[-1])
+    total = end_all - start_all
+    chars = [max(1, len(l)) for l in script_lines]
+    char_sum = sum(chars)
+
+    expanded = []
+    t = start_all
+    for l, c in zip(script_lines, chars):
+        dur = total * (c / char_sum)
+        expanded.append((len(expanded) + 1, f'{_s2t(t)} --> {_s2t(t + dur)}', l))
+        t += dur
+    # 末句终点对齐段终点（防累计误差）
+    expanded[-1] = (len(expanded),
+                    f'{_s2t(end_all - (total * chars[-1] / char_sum))} --> {_s2t(end_all)}',
+                    script_lines[-1])
+    return expanded
+
+
 def correct_srt(srt_path: str, script_text: str, threshold: float = 0.8) -> bool:
     """用剧本原文纠正 STT 字幕文本（原地重写 SRT，返回是否有改动）。
 
-    算法（MPT correct()）：
+    算法（MPT correct() + vidance 扩展）：
+    0. STT 段数远少于剧本句数（长段合并）→ 先按剧本句字符占比展开时间轴
     1. 剧本切句、字幕逐段扫描，双指针推进
     2. 当前剧本句与当前字幕相似度不够时，尝试向后合并字幕段
        （合并后相似度提升才继续合并）
@@ -134,6 +191,15 @@ def correct_srt(srt_path: str, script_text: str, threshold: float = 0.8) -> bool
     script_lines = split_script_lines(_normalize_script(script_text))
     if not script_lines:
         return False
+
+    expanded_items = _expand_coarse_segments(subtitle_items, script_lines)
+    if expanded_items is not subtitle_items:
+        subtitle_items = expanded_items
+        # 时间轴已被展开重排：伪段文本=剧本句，exact-match 直通，但需强制写回
+        with open(srt_path, 'w', encoding='utf-8') as f:
+            for i, (_, timespan, text) in enumerate(subtitle_items):
+                f.write(f'{i + 1}\n{timespan}\n{text}\n\n')
+        return True
 
     new_items = []
     script_index = 0
