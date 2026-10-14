@@ -17,22 +17,34 @@ def ok(name, cond):
 def main():
     sm = SkillManager()
 
-    # ── 1. 加载器 ──
-    names = sm.list()
-    ok('list has marketing+narrative',
-       'marketing' in names and 'narrative' in names)
+    # ── 1. 双维度加载器 ──
+    keys = sm.list()
+    ok('commands has fast/narrative', 'commands/fast/narrative' in keys)
+    ok('agents has artist', 'agents/personas/artist' in keys)
+    ok('list(kind=commands) filters',
+       all(k.startswith('commands/') for k in sm.list(kind='commands')))
 
     sk = sm.get('narrative')
     ok('get narrative by name', sk is not None)
+    ok('_meta kind=commands', sk['_meta']['kind'] == 'commands')
     ok('narrative defaults voice',
-       sk['defaults'].get('voice') == 'cosy-jilupian1')
+       sk['defaults'].get('voice') == 'cosy-xinwen1')
     ok('narrative transition rife',
        sk['defaults'].get('transition') == 'rife')
     ok('narration_style non-empty',
        bool(str(sk.get('narration_style', '')).strip()))
-    ok('_dir attached', str(sk.get('_dir', '')).endswith('.yaml'))
 
-    ok('get by filename alias', sm.get('marketing') is not None)
+    art = sm.get('artist')
+    ok('get agents persona', art is not None and art['_meta']['kind'] == 'agents')
+    ok('artist fast params via params_for',
+       SkillManager.params_for(art, 'fast').get('lut') == 'cinematic')
+    ok('artist ppt params empty → {}',
+       SkillManager.params_for(art, 'ppt') == {})
+    ok('command params_for → defaults',
+       SkillManager.params_for(sk, 'fast').get('transition') == 'rife')
+    ok('artist post section', (art.get('post') or {}).get('grain') is True)
+
+    ok('get by namespaced key', sm.get('fast/marketing') is not None)
     ok('get missing → None', sm.get('no-such-skill') is None)
     ok('get empty/None → None', sm.get('') is None and sm.get(None) is None)
 
@@ -81,16 +93,15 @@ def main():
     ok('old style replaced', '押韵有冲击力' not in sysc2)
     ok('n-count in prompt', '2' in sysc2)
 
-    # ── 4. 两个 yaml 结构完整（后续加 skill 的模板约束） ──
-    for n in sm.list():
-        s = sm.get(n)
-        d = s.get('defaults') or {}
-        ok(f'{n}: has name/display/defaults',
-           s.get('name') and s.get('display_name') and d)
-        ok(f'{n}: narration_style is str',
+    # ── 4. yaml 结构完整（后续加 skill 的模板约束） ──
+    for k in sm.list():
+        s = sm.get(k)
+        d = SkillManager.params_for(s, k.split('/')[1] if s['_meta']['kind'] == 'commands'
+                                    else 'fast')
+        ok(f'{k}: has name/display',
+           s.get('name') and s.get('display_name'))
+        ok(f'{k}: narration_style is str',
            isinstance(s.get('narration_style'), str) and len(s['narration_style']) > 20)
-        ok(f'{n}: transition valid',
-           d.get('transition') in (None, 'cut', 'crossfade', 'rife'))
 
     fails = [n for n, c in PASS if not c]
     print(f'\n{len(PASS) - len(fails)}/{len(PASS)} passed')

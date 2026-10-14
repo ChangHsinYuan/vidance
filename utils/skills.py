@@ -89,7 +89,8 @@ class SkillManager:
             stem = os.path.splitext(os.path.basename(path))[0].lower()
             name = (sk.get('name') or stem).lower()
             ns = '/'.join([kind] + ([mod] if mod else []) + [name])
-            if ns == key:
+            # 全键命中，或不带 kind 前缀的尾部命中（fast/marketing ≈ commands/fast/marketing）
+            if ns == key or ns.endswith('/' + key):
                 sk['_meta'] = {'kind': kind, 'module': mod, 'path': path,
                                'file': os.path.basename(path)}
                 return sk

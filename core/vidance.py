@@ -898,7 +898,10 @@ def build_parser():
                         help='全局慢动作帧倍率（如 2 = 2x 慢放，覆盖所有镜头）')
     p_auto.add_argument('--task-id', default=None,
                         help='外部指定 task_id（调度器传入），不指定则自动生成时间戳')
-    p_auto.add_argument('--resume', default=None, metavar='TASK_ID',                        help='v17 M4 断点续跑：传已有 task_id，从 checkpoint 恢复（跳过已完成阶段/镜头；概念可不传）')
+    p_auto.add_argument('--resume', default=None, metavar='TASK_ID',
+                        help='v17 M4 断点续跑：传已有 task_id，从 checkpoint 恢复（跳过已完成阶段/镜头；概念可不传）')
+    p_auto.add_argument('--skill', default=None,
+                        help='风格技能（SKILL/commands/auto 或 agents 配方名，如 healing/artist）')
     p_auto.add_argument('--no-preflight', action='store_true',
                         help='跳过开跑前预检（默认开跑前探测依赖服务，硬依赖挂则拒绝启动）')
     p_auto.set_defaults(func=cmd_auto)
@@ -924,6 +927,8 @@ def build_parser():
                          help='TTS 音色 (如 edge-moe)')
     p_quick.add_argument('--task-id', default=None,
                          help='外部指定 task_id（调度器传入），不指定则自动生成时间戳')
+    p_quick.add_argument('--skill', default=None,
+                         help='风格技能（文风注入编剧，如 healing/artist）')
     p_quick.add_argument('--no-preflight', action='store_true',
                          help='跳过开跑前预检')
     p_quick.set_defaults(func=cmd_quick)
@@ -1058,6 +1063,8 @@ def build_parser():
     p_svg.add_argument('-n', type=int, default=3, help='S5：LLM 旁白段数（默认 3）')
     p_svg.add_argument('--lut', default=None, help='S5：调色风格')
     p_svg.add_argument('--bgm', default=None, help='S5：BGM mood')
+    p_svg.add_argument('--skill', default=None,
+                       help='风格技能（文风注入 SVG 生成/旁白，如 minimal/artist）')
     p_svg.set_defaults(func=cmd_svg)
 
     # ── ppt 子命令（v15：LLM 生成 PPT/幻灯片）──
@@ -1079,6 +1086,8 @@ def build_parser():
     p_ppt.add_argument('--lut', default=None, help='调色风格（mp4）')
     p_ppt.add_argument('--bgm', default=None, help='BGM mood（mp4）')
     p_ppt.add_argument('--no-html', action='store_true', help='不落 deck.html')
+    p_ppt.add_argument('--skill', default=None,
+                       help='风格技能（deck 文风+参数包，如 formal/researcher）')
     p_ppt.set_defaults(func=cmd_ppt)
 
     # ── blender3d 子命令（v13 blender 线：LLM 3D 场景 + bpy EEVEE 渲染）──
@@ -1092,6 +1101,8 @@ def build_parser():
     p_b3d.add_argument('--voice', default=None, help='配音音色')
     p_b3d.add_argument('--say', action='append', default=None, help='手动旁白（第一句为副标题+旁白）')
     p_b3d.add_argument('--model', default=None, help='LLM 模型')
+    p_b3d.add_argument('--skill', default=None,
+                       help='风格技能（3D 场景文风+参数包，如 showcase/artist）')
     p_b3d.set_defaults(func=cmd_blender3d)
 
     # ── edit 子命令（v16（原 v19）：SAM2 分割/抠图/换底/打码/inpaint + 视频传播）──
