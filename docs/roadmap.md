@@ -510,7 +510,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 - **M1 部署分档** ✅（2026-09-26 改五档落地，见 [deploy-tiers.md](./deploy-tiers.md)、deploy/README.md）：五档阶梯 `none`（无 GPU：svg + fast 爬图，LLM/edge-tts 全走远程接口）/ `flux`（+SDXL/FLUX 生图）/ `wan`（+Wan T2V/I2V+RIFE+auto/quick）/ `h3`（+MiniMax-H3 ref2va+custom/h3shot）/ `full`（全量全家桶）——同一份代码 + `VIDANCE_TIER` 环境变量 + `config/tiers/{档}.json` 覆盖（`agents/common/tools/config_loader.py` 深合并，缺省 full 宿主机零变化）；守卫点 `/api/health` 报档 / `/api/tools` 按档过滤 / tool 分发 400 / CLI require() 退出提示换档；Docker：`deploy/Dockerfile`（API 层 ~2GB：ffmpeg+Noto CJK+playwright/Chromium）+ `deploy/Dockerfile.comfyui`（GPU 模板，模型卷挂不进镜像）+ `deploy/docker-compose.yml`（profiles 五档，API 缺省挂 9400，host 网络直连宿主服务）——本机 full 档演示：`VIDANCE_TIER=full VIDANCE_PORT=9401 docker compose -f deploy/docker-compose.yml up -d vidance`
 - **M2 一键安装**：`install.sh` 按 M0 探测选档 → 拉镜像/建环境 → start_services 接管 → 冒烟自检（复用 start_services.sh test）
 - **M3 面向用户细节**：config 向导（首次填 LLM key/选端口）、失败自诊断提示（端口占用/显存不足/外网不通点名到人）、输出目录与清理策略 UI 化、版本更新通道
-- **M4 交付包装**：版本号语义化 + `vidance --version`、CHANGELOG、docs/usage.md 按档重写成用户手册
+- **M4 交付包装**：版本号语义化 + `vidance --version`、CHANGELOG、docs/usage.md 按档重写成用户手册；**SKILL demo 随行**——最后最好每个 skill 的 yaml 旁边都有一个成功的 demo（`{skill}.demo.mp4`，出片验收后复制到 yaml 旁，用户翻 SKILL 目录即可看效果样片）
 
 **依赖**：v13 轻量化（原 v15）是 lite 档地基；v11 多智能体（原 v13）agent API 是网关/机器人接入面。
 
