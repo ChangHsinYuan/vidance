@@ -1,0 +1,22 @@
+# ── 风格技能：极简动效海报（svg） ────────────────────────
+# 用法: python core/vidance.py svg --concept "主题" --skill minimal --voice cosy-xinwen1
+# S5 有声模式旁白文风走 narration_style；渲染参数走 defaults。
+
+name: minimal
+display_name: 极简动效海报
+description: 线条几何风 SVG 动画——留白多、动效克制，适合概念演示/封面动画
+
+defaults:
+  duration: 5               # 动画时长（秒）
+  n: 3                      # S5 有声模式旁白段数
+  voice: cosy-xinwen1
+  lut: cool                 # 冷色克制冷调（S5 有声模式）
+  bgm: mysterious           # 氛围底噪（S5 有声模式）
+
+narration_style: |
+  极简演示旁白：一句话说清一个概念，每句 12-20 字，理性克制，
+  像苹果发布会字幕。禁止感叹号，禁止网络热词。
+
+test_cases:
+  - "光的折射原理"
+  - "城市通勤数据一瞥"

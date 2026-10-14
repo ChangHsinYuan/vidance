@@ -282,8 +282,11 @@ class PptLine:
             fps=24, duration=3.0, transition='fade', t_dur=0.5, theme=None,
             model=None, lut=None, bgm=None,
             video=True, html_out=True, pdf=False, pngs=False,
-            stage_cb=None, on_chunk=None, on_frame=None) -> dict:
-        """一键出 PPT（多形态并行）。say 给定时用手动大纲（每元素一页标题），否则 LLM 规划。"""
+            stage_cb=None, on_chunk=None, on_frame=None, style_hint=None) -> dict:
+        """一键出 PPT（多形态并行）。say 给定时用手动大纲（每元素一页标题），否则 LLM 规划。
+
+        style_hint: SKILL 文风指令（注入 plan_deck system prompt）。
+        """
         import json as _json
         from datetime import datetime
         from utils.ffmpeg_tools import compose
@@ -311,7 +314,8 @@ class PptLine:
                      'notes': s})
         else:
             print(f'[M1] deck 规划（{n} 页）…')
-            plan = self._plan(concept, n, model=model, on_chunk=on_chunk)
+            plan = self._plan(concept, n, model=model, on_chunk=on_chunk,
+                              style_hint=style_hint)
             if theme:
                 plan['theme'].update(theme)
         slides_plan = plan['slides']

@@ -1,0 +1,41 @@
+# ── agent 式配方：艺术工作者 ────────────────────────────
+# 跨命令完整配方：艺术创作者出片口味——胶片质感、氛围配乐、慢节奏、镜头内轻特效。
+# 用法（任一命令均可挂）: fast "概念" --skill artist / auto "概念" --skill artist
+# agents/ 配方按命令给参数；没写的命令走该命令自身默认。
+
+name: artist
+display_name: 艺术工作者
+description: 胶片质感+柔转场+氛围配乐——风景/情绪短片创作口味，画面与声音都克制
+
+commands:
+  fast:
+    n: 5
+    voice: cosy-xinwen1
+    bgm: calm
+    lut: cinematic
+    transition: rife
+    clip_speed: 1.0
+    effects: grain_vignette
+    keywords_hint: 胶片质感 氛围光影 摄影 柔和 黄昏
+  auto:
+    character_mode: flux
+    lut: soft
+    bgm: calm
+  svg:
+    lut: soft
+    bgm: calm
+
+# 独立后处理配方（post 链/agent 消费）
+post:
+  grain: true            # 胶片颗粒
+  vignette: true         # 暗角
+  warmth: 0.15           # 轻度暖色偏移
+  transition: rife       # 柔和光流过渡
+
+narration_style: |
+  艺术创作解说：第一人称或有温度的旁观视角，意象化表达（光、风、时间、呼吸），
+  每句 15-25 字，情绪克制留白，结尾收余韵。禁止网络热词、禁止感叹号堆砌。
+
+test_cases:
+  - "海边的废弃钢琴"
+  - "雪落旧城"

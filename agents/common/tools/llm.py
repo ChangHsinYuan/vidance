@@ -258,12 +258,13 @@ class LLMClient:
         return f'data:image/jpeg;base64,{data}'
 
     def script_write(self, concept: str, character_desc: str = None,
-                     target_duration: float = None) -> dict:
+                     target_duration: float = None, style_hint: str = None) -> dict:
         """概念→分镜脚本 JSON（v1: 含角色锚 + 每镜 camera 角度 + 背景描述）
 
         Args:
             target_duration: 目标总时长（秒）。None 时默认 2-5 镜短片，
                 指定时按每镜~4s 动态计算镜头数（解锁长片）。
+            style_hint: SKILL 文风指令（注入 system prompt，如"治愈系短片剧本：…"）。
         """
         char_section = ''
         if character_desc:
@@ -281,7 +282,8 @@ class LLMClient:
 
         system = (
             f'你是视频编剧。根据用户给出的中文概念，{shot_instruction}\n'
-            '输出严格JSON格式，不要加任何解释文字。\n'
+            + (f'文风要求：{str(style_hint).strip()}\n' if style_hint else '')
+            + '输出严格JSON格式，不要加任何解释文字。\n'
             'JSON schema:\n'
             '{\n'
             f'{char_section}'

@@ -122,6 +122,8 @@ def generate_svg(concept: str, duration: float = 3.0, width: int = 800, height: 
                  on_chunk=None) -> str:
     llm = LLMClient(load_config())
     sys_p = SYSTEM.format(duration=duration)
+    if _STYLE_HINT:
+        sys_p += f'\n风格要求：{_STYLE_HINT}'
     user_p = USER.format(concept=concept, width=width, height=height, duration=duration)
     messages = [{'role': 'system', 'content': sys_p},
                 {'role': 'user', 'content': user_p}]
@@ -152,6 +154,15 @@ NARR_SYS = """你是科普/营销短视频的旁白撰稿人。根据主题写 {
 [{{"text": "旁白文本", "scene": "画面视觉描述"}}]"""
 
 
+def set_style_hint(style: str):
+    """SKILL 文风注入（模块级，对 generate_svg + plan_narration 生效；None 清除）。"""
+    global _STYLE_HINT
+    _STYLE_HINT = (str(style).strip() or None) if style else None
+
+
+_STYLE_HINT = None
+
+
 def plan_narration(concept: str, n: int = 3, model: str = None, on_chunk=None) -> list:
     """概念 → LLM → n 段旁白 [{text, scene}]（S5 配音模式的剧本层）。
 
@@ -159,6 +170,8 @@ def plan_narration(concept: str, n: int = 3, model: str = None, on_chunk=None) -
     """
     llm = LLMClient(load_config())
     sys_p = NARR_SYS.format(n=n)
+    if _STYLE_HINT:
+        sys_p += f'\n文风要求：{_STYLE_HINT}'
     messages = [{'role': 'system', 'content': sys_p},
                 {'role': 'user', 'content': f'主题：{concept}'}]
     import json as _json

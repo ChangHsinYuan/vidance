@@ -4,11 +4,12 @@
 
 name: narrative
 display_name: 优雅叙事
-description: 纪录片式低沉男声 + 胶片氛围 + RIFE 光流柔和过渡，6 图约 40s
+description: 纪录片式播音男声 + 胶片氛围 + RIFE 光流柔和过渡，6 图约 50s
 
 defaults:
-  n: 6                          # 图多片长（约 40s）
-  voice: cosy-jilupian1         # 纪录片男声（克隆音色，低沉娓娓道来；不可用时 CLI 可换 edge-deep）
+  n: 6                          # 图多片长（约 50s）
+  voice: cosy-xinwen1           # 新闻播音男声（本地克隆，STT 回验逐字全对；备选 edge-deep 需外网）
+                                # ⚠ 勿用 cosy-jilupian1：克隆素材是"优优独播剧场"水印口播，产物乱语
   bgm: calm                     # 舒缓 BGM
   lut: cinematic                # 电影感（轻度，温馨偏暗的氛围质感）
   transition: rife              # RIFE 光流过渡（GPU2:8189 不在线时自动回退 crossfade）

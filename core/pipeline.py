@@ -121,7 +121,8 @@ class Pipeline:
             no_asset_reuse: bool = False,
             task_id: str = None,
             resume: str = None,
-            no_preflight: bool = False) -> dict:
+            no_preflight: bool = False,
+            style_hint: str = None) -> dict:
         """端到端生成有声短片
 
         character_mode:
@@ -195,7 +196,8 @@ class Pipeline:
             print(f'  [resume] 跳过编剧（{len(script["shots"])} 镜已缓存）')
         else:
             script = self.llm.script_write(concept, character_desc=character_desc,
-                                            target_duration=target_duration)
+                                            target_duration=target_duration,
+                                            style_hint=style_hint)
         meta['script'] = script
         self._save_ckpt(task_dir, {'concept': concept, 'character_desc': character_desc,
                                    'target_duration': target_duration, 'script': script})

@@ -1,0 +1,41 @@
+# ── agent 式配方：科研工作者 ────────────────────────────
+# 跨命令完整配方：科研汇报口味——严谨、数据优先、无花哨特效、正式播音音色。
+# 用法（任一命令均可挂）: ppt "主题" --skill researcher / auto "概念" --skill researcher
+
+name: researcher
+display_name: 科研工作者
+description: 严谨汇报口味——正式播音+冷调+硬切无特效，PPT/短片都走数据说话路线
+
+commands:
+  ppt:
+    n: 7
+    duration: 5.0
+    transition: cut
+    voice: cosy-xinwen1
+    lut: cool
+    bgm: mysterious        # 低存在感底乐，不抢汇报
+  fast:
+    n: 3
+    voice: cosy-xinwen1
+    bgm: mysterious
+    lut: cool
+    transition: cut
+    clip_speed: 1.0
+    effects: off           # 科研画面不做镜头内花活
+  svg:
+    lut: cool
+    bgm: mysterious
+
+post:
+  grain: false
+  vignette: false
+  sharpen: true            # 轻锐化，图表文字更清楚
+  transition: cut
+
+narration_style: |
+  科研汇报口吻：客观陈述、术语准确、结论先行；每页/每镜一个论点，
+  尽量带数字、对比或因果；旁白 12-20 字一句，语速平稳。禁止营销腔、禁止网感词。
+
+test_cases:
+  - "llama 微调实验对比汇报"
+  - "RIFE 插帧消融实验解读"

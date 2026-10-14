@@ -42,6 +42,18 @@ def cmd_auto(args):
     _tier('auto')
     if not getattr(args, 'resume', None) and not args.concept:
         raise SystemExit('auto: 需要概念参数（--resume 续跑时可不传，概念从 checkpoint 取）')
+    skill = _load_skill(args, 'auto')
+    from utils.skills import SkillManager as _SM
+    style = _SM.style_for(skill) if skill else None
+    d = (skill and _SM.params_for(skill, 'auto')) or {}
+    if d.get('character_mode') and args.character_mode == 'auto':
+        args.character_mode = d['character_mode']
+    if d.get('character') and not args.character:
+        args.character = d['character']
+    if d.get('duration') and args.duration is None:
+        args.duration = float(d['duration'])
+    if d.get('stt'):
+        args.stt = True
     pipeline = Pipeline()
     if args.no_rife:
         pipeline.rife_config['enabled'] = False
@@ -65,6 +77,7 @@ def cmd_auto(args):
         task_id=getattr(args, 'task_id', None),
         resume=getattr(args, 'resume', None),
         no_preflight=getattr(args, 'no_preflight', False),
+        style_hint=style,
     )
     print(f'\nDone: {meta["output"]}')
 
@@ -99,6 +112,9 @@ def cmd_quick(args):
     """quick 子命令：纯 T2V，无角色无后处理"""
     from agents.common.tools.config_loader import require as _tier
     _tier('auto')
+    skill = _load_skill(args, 'quick')
+    from utils.skills import SkillManager as _SM
+    style = _SM.style_for(skill) if skill else None
     pipeline = Pipeline()
     pipeline.rife_config['enabled'] = False
     pipeline.color_config['enabled'] = False
@@ -115,6 +131,7 @@ def cmd_quick(args):
         use_stt=False,
         task_id=args.task_id,
         no_preflight=getattr(args, 'no_preflight', False),
+        style_hint=style,
     )
     print(f'\nDone: {meta["output"]}')
 
@@ -231,8 +248,8 @@ def cmd_hot(args):
     date = datetime.now().strftime('%Y-%m-%d')
     print(f'选中: {top["predicted_score"]}分 | 源自: {date}: {source}')
 
-    # 3) fast 出片（--skill 风格预设：defaults 已套进 args）
-    skill = _load_skill(args)
+    # 3) fast 出片（--skill 风格预设：参数包已套进 args）
+    skill = _load_skill(args, 'fast')
     meta = fl.run(
         top['concept'],
         images_source=args.images_source,
@@ -253,24 +270,28 @@ def cmd_hot(args):
     print(f'\nDone: {meta["output"]}')
 
 
-def _load_skill(args):
-    """--skill 加载 SKILL/*.yaml 并把 defaults 套进 args（CLI 显式传参优先）。
+def _load_skill(args, module: str):
+    """--skill 加载 SKILL 技能并把参数包套进 args（CLI 显式传参优先）。
 
+    命令式（commands/）→ defaults；agent 式（agents/）→ commands[module] 段。
     argparse 默认值视为"未传"：n=5 / effects='off' / lut,bgm,voice=None。
-    返回 skill dict（供 fastline 直接用，省二次加载）；无 --skill 返回 None。
+    返回 skill dict（供底层取 narration_style）；无 --skill 返回 None。
     """
     name = getattr(args, 'skill', None)
     if not name:
         return None
     from utils.skills import SkillManager
-    sk = SkillManager().get(name)
+    sm = SkillManager()
+    sk = sm.get(name)
     if sk is None:
-        print(f'  ⚠ skill "{name}" 不存在（可用: {", ".join(SkillManager().list())}），按默认风格跑')
+        print(f'  ⚠ skill "{name}" 不存在（可用: {", ".join(sm.list())}），按默认风格跑')
         return None
-    d = sk.get('defaults') or {}
-    if d.get('n') and args.images_count == 5:
+    d = sm.params_for(sk, module)
+    if d.get('n') and getattr(args, 'images_count', None) == 5:
         args.images_count = int(d['n'])
-    if d.get('voice') and not args.voice:
+    if d.get('n') and getattr(args, 'n', None) == 5:
+        args.n = int(d['n'])
+    if d.get('voice') and not getattr(args, 'voice', None):
         args.voice = d['voice']
     if d.get('lut') and not getattr(args, 'lut', None):
         args.lut = d['lut']
@@ -284,7 +305,7 @@ def _load_skill(args):
 
 def cmd_fast(args):
     """fast 子命令：图片 + 运镜动效组成视频，跳过视频模型（v4 M6 快速链路）"""
-    skill = _load_skill(args)
+    skill = _load_skill(args, 'fast')
     fl = FastLine()
     meta = fl.run(
         args.concept, output_path=args.output, images_dir=args.images,
@@ -406,6 +427,13 @@ def cmd_svg(args):
     import sys, os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from utils import svg_pipeline as sp
+    from utils.skills import SkillManager as _SM
+
+    skill = _load_skill(args, 'svg')
+    style = _SM.style_for(skill) if skill else None
+    if style:
+        # S5 有声/无声两条路都走 LLM：文风注入 plan_narration / generate_svg
+        sp.set_style_hint(style)
 
     out = args.output
     if out is None:
@@ -453,6 +481,13 @@ def cmd_ppt(args):
     import sys, os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from agents.generator.tools import ppt_pipeline as pp
+    from agents.generator.tools import ppt_llm as pl
+
+    skill = _load_skill(args, 'ppt')
+    style_hint = None
+    if skill:
+        from utils.skills import SkillManager as _SM
+        style_hint = _SM.style_for(skill)
 
     # 渲染模式：已有 deck.html → mp4/pdf/pngs
     if args.deck:
@@ -479,7 +514,8 @@ def cmd_ppt(args):
                     fps=24, duration=args.duration, transition=args.transition,
                     model=args.model, lut=args.lut, bgm=args.bgm,
                     video=args.video or not (args.pdf or args.pngs),
-                    html_out=not args.no_html, pdf=args.pdf, pngs=args.pngs)
+                    html_out=not args.no_html, pdf=args.pdf, pngs=args.pngs,
+                    style_hint=style_hint)
     print(meta.get('output') or meta.get('html') or '')
 
 
@@ -502,9 +538,14 @@ def cmd_blender3d(args):
     if not args.concept:
         print('usage: blender3d "主题" [--duration 8] | blender3d --scene scene.json -o out.mp4')
         return
+    skill = _load_skill(args, 'blender3d')
+    style_hint = None
+    if skill:
+        from utils.skills import SkillManager as _SM
+        style_hint = _SM.style_for(skill)
     line = bp.BlenderLine()
     meta = line.run(args.concept, n=args.n, say=args.say, voice=args.voice,
-                    duration=args.duration, model=args.model)
+                    duration=args.duration, model=args.model, style_hint=style_hint)
     print(meta.get('output') or '')
 
 
@@ -857,8 +898,7 @@ def build_parser():
                         help='全局慢动作帧倍率（如 2 = 2x 慢放，覆盖所有镜头）')
     p_auto.add_argument('--task-id', default=None,
                         help='外部指定 task_id（调度器传入），不指定则自动生成时间戳')
-    p_auto.add_argument('--resume', default=None, metavar='TASK_ID',
-                        help='v17 M4 断点续跑：传已有 task_id，从 checkpoint 恢复（跳过已完成阶段/镜头；概念可不传）')
+    p_auto.add_argument('--resume', default=None, metavar='TASK_ID',                        help='v17 M4 断点续跑：传已有 task_id，从 checkpoint 恢复（跳过已完成阶段/镜头；概念可不传）')
     p_auto.add_argument('--no-preflight', action='store_true',
                         help='跳过开跑前预检（默认开跑前探测依赖服务，硬依赖挂则拒绝启动）')
     p_auto.set_defaults(func=cmd_auto)

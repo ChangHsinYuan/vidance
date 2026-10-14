@@ -1,0 +1,21 @@
+# ── 风格技能：产品展台（blender3d） ──────────────────────
+# 用法: python core/vidance.py blender3d "主题" --skill showcase
+# 3D 场景规划文风(narration_style)注入 plan_scene；渲染参数走 defaults。
+
+name: showcase
+display_name: 产品展台
+description: 3D 产品展示短片——聚光灯展台 + 缓慢环绕运镜，适合单品发布
+
+defaults:
+  n: 1                      # 物体数提示（约 n*4 个场景元素）
+  duration: 10              # 时长（秒，4-20）
+  voice: cosy-xinwen1
+
+narration_style: |
+  3D 产品展示场景：主体居中放在展台/基座上，聚光灯打亮，背景简洁渐变；
+  运镜缓慢环绕（turntable）+ 一次推近特写。配色克制（深底 + 单一强调色）。
+  旁白一句点题，15 字内，像发布会口播。
+
+test_cases:
+  - "悬浮智能音箱发布会"
+  - "限量款机械键盘展示"

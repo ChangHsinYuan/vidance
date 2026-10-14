@@ -299,7 +299,7 @@ class BlenderLine:
     def run(self, concept, n=1, say=None, voice=None, out_path=None,
             duration=8.0, model=None, say_voice_note=True,
             stage_cb=None, on_chunk=None, on_frame=None,
-            save_scene=True, png_dir=None) -> dict:
+            save_scene=True, png_dir=None, style_hint=None) -> dict:
         import json as _j
         from datetime import datetime
         from agents.common.tools.config_loader import task_id_for
@@ -324,7 +324,8 @@ class BlenderLine:
                                  'duration': duration}, concept)
             scene['notes'] = say[0] if say else ''
         else:
-            scene = plan_scene(concept, n=n, model=model, on_chunk=on_chunk)
+            scene = plan_scene(concept, n=n, model=model, on_chunk=on_chunk,
+                               style_hint=style_hint)
         if duration:
             scene['duration'] = float(duration)
         scene.setdefault('notes', scene.get('subtitle', ''))

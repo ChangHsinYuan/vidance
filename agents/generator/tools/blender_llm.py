@@ -121,8 +121,12 @@ def _norm_scene(raw: dict, concept: str) -> dict:
     return scene
 
 
-def plan_scene(concept: str, n: int = 1, model: str = None, on_chunk=None) -> dict:
-    """概念 → LLM → 3D 场景 JSON。解析失败时用内置默认（title3d + ocean）。"""
+def plan_scene(concept: str, n: int = 1, model: str = None, on_chunk=None,
+               style_hint: str = None) -> dict:
+    """概念 → LLM → 3D 场景 JSON。解析失败时用内置默认（title3d + ocean）。
+
+    style_hint: SKILL 文风指令（追加到 system，控制场景布局/配色/运镜）。
+    """
     from utils.config_loader import load_config
     llm = None
     try:
@@ -130,7 +134,10 @@ def plan_scene(concept: str, n: int = 1, model: str = None, on_chunk=None) -> di
         llm = LLMClient(load_config())
     except Exception:
         pass
-    messages = [{'role': 'system', 'content': PLAN_SYS.format(n=max(3, n * 4))},
+    sys_p = PLAN_SYS.format(n=max(3, n * 4))
+    if style_hint:
+        sys_p += f'\n场景风格要求：{str(style_hint).strip()}'
+    messages = [{'role': 'system', 'content': sys_p},
                 {'role': 'user', 'content': f'主题：{concept}'}]
     if llm is not None:
         try:

@@ -1,0 +1,17 @@
+# ── 风格技能：治愈系裸片（quick 纯 T2V） ─────────────────
+# 用法: python core/vidance.py quick "概念" --skill healing
+# quick 无后处理（无 LUT/BGM/STT），skill 只控音色与编剧文风。
+
+name: healing
+display_name: 治愈系裸片
+description: quick 纯 T2V 的治愈文风版——播音男声 + 慢节奏分镜文风
+
+defaults:
+  voice: cosy-xinwen1
+
+narration_style: |
+  治愈系短片剧本：镜头文案舒缓温暖，多用自然意象，每镜 10-20 字，
+  情绪克制留白。禁止网络热词与感叹号堆砌。
+
+test_cases:
+  - "一只白猫在窗台看雨"

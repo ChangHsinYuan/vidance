@@ -1,0 +1,24 @@
+# ── 风格技能：正式汇报（ppt） ────────────────────────────
+# 用法: python core/vidance.py ppt "主题" --skill formal --video
+# deck 规划文风(narration_style)注入 plan_deck；渲染参数走 defaults。
+
+name: formal
+display_name: 正式汇报
+description: 商务汇报 deck——结论先行、一页一论点，mp4 旁白正式稳重
+
+defaults:
+  n: 6                      # 页数
+  duration: 4.0             # 无声页时长
+  transition: fade          # 页间转场
+  voice: cosy-xinwen1       # 播音男声，正式感
+  lut: cool                 # 冷调商务
+  bgm: uplifting            # 积极底乐
+
+narration_style: |
+  商务汇报 deck：每页一个明确论点，标题 12 字内动词开头（"三步收口/数据说话"），
+  要点 3 条以内每条一行；最后一页必须是行动号召页。
+  禁止空洞形容词，每个论点尽量带数字或对比。
+
+test_cases:
+  - "Vidance 项目季度进展汇报"
+  - "三季度内容增长复盘"

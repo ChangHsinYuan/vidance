@@ -1,0 +1,25 @@
+# ── 风格技能：治愈系短片（auto 全管线） ──────────────────
+# 用法: python core/vidance.py auto "概念" --skill healing
+# LLM 编剧文风(narration_style)注入 script_write 分镜脚本；defaults 只填未传项。
+
+name: healing
+display_name: 治愈系短片
+description: 慢节奏治愈短片——Wan/FLUX 生成，柔和调色舒缓配乐，约 30s 7 镜
+
+defaults:
+  character_mode: flux      # FLUX 直出角色+场景（一致性最稳）
+  character: 一只毛茸茸的橘色小猫，眼神温柔
+  duration: 30              # 目标总时长（秒）→ 约 7 镜
+  voice: cosy-xinwen1       # 播音男声（STT 回验最稳的本地音色）
+  lut: soft                 # 柔光调色
+  bgm: calm                 # 舒缓配乐
+  stt: true                 # STT 字幕对齐
+
+narration_style: |
+  治愈系短片剧本：镜头文案舒缓温暖，多用自然意象（光、风、四季、呼吸），
+  每镜 narration 10-20 字，情绪克制留白，像宫崎骏式的静谧注解。
+  camera 以 slow push-in / gentle pan 为主。禁止网络热词与感叹号堆砌。
+
+test_cases:
+  - "小猫与飘落的银杏叶"
+  - "清晨阳台上的多肉植物"

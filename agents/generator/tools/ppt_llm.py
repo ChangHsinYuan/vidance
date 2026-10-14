@@ -126,8 +126,12 @@ def _norm_plan(raw: dict, concept: str, n: int) -> dict:
     return {'title': title, 'theme': theme, 'slides': slides}
 
 
-def plan_deck(concept: str, n: int = 5, model: str = None, on_chunk=None) -> dict:
-    """概念 → LLM → deck 规划 JSON（M1 剧本层）。解析失败/页数不足时兜底。"""
+def plan_deck(concept: str, n: int = 5, model: str = None, on_chunk=None,
+              style_hint: str = None) -> dict:
+    """概念 → LLM → deck 规划 JSON（M1 剧本层）。解析失败/页数不足时兜底。
+
+    style_hint: SKILL 文风指令（追加到 system，控制 deck 论点组织/标题口吻）。
+    """
     llm = None
     try:
         from utils.llm import LLMClient
@@ -135,6 +139,8 @@ def plan_deck(concept: str, n: int = 5, model: str = None, on_chunk=None) -> dic
     except Exception:
         pass
     sys_p = PLAN_SYS.format(n=n)
+    if style_hint:
+        sys_p += f'\n文风要求：{str(style_hint).strip()}'
     messages = [{'role': 'system', 'content': sys_p},
                 {'role': 'user', 'content': f'主题：{concept}'}]
     if llm is not None:
