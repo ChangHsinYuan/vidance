@@ -63,19 +63,24 @@ class FastLine:
         self.i2v = self.config.get('i2v_defaults', {})
 
     # ══ 1. LLM 出旁白 + 每段运镜 ══
-    def plan_narration(self, concept, n, motion_override=None) -> list:
+    def plan_narration(self, concept, n, motion_override=None, narration_style=None) -> list:
         """LLM 把旁白拆成 n 段（每段对应一张图），附每段运镜。
 
         返回 [{text, motion}]，text=该图配的旁白，motion=pan/zoom-in/zoom-out。
+        narration_style: SKILL 文风指令（注入 system prompt，替换默认营销号文风）。
         无 llm 或失败时退化为均匀切分概念文本 + 默认 motion。
         """
         motions = ['pan', 'zoom-in', 'zoom-out'] if motion_override is None \
             else [motion_override] * n
+        if narration_style:
+            style_rule = str(narration_style).strip()
+        else:
+            style_rule = ('押韵有冲击力的营销号旁白短句，每段 text 控制在 8-18 字')
         prompt = [
             {'role': 'system', 'content':
-             '你是营销号短视频文案策划。把给定概念/主题写成 n 句押韵有冲击力的旁白短句，'
+             f'你是短视频文案策划。把给定概念/主题写成 {style_rule}。'
              '每句配一种运镜。只输出 JSON：{"segments":[{"text":"短句","motion":"pan"}...]}，'
-             '每段 text 控制在 8-18 字，motion 取值 pan/zoom-in/zoom-out。'},
+             'motion 取值 pan/zoom-in/zoom-out。'},
             {'role': 'user', 'content': f'主题: {concept}\n分 {n} 段旁白 + 每段运镜'},
         ]
         try:
@@ -102,12 +107,13 @@ class FastLine:
 
     # ══ 2. 抓取/收集图片 ══
     def collect_images(self, concept, images_dir, n, save_dir,
-                       images_source='crawl', segments=None) -> list:
+                       images_source='crawl', segments=None, keywords_hint=None) -> list:
         """返回 n 张图绝对路径列表。
 
         images_dir 有图则直接用；否则按 images_source:
           'crawl' → 必应爬图（默认，贴合真实热点画面）；不足 n 时用 FLUX 补足缺帧
           'flux'  → 直接 FLUX 逐段文生图（质量可控不依赖爬网）
+        keywords_hint: skill 画面风格提示（拼进搜索概念，如"胶片质感 氛围光影"）
         """
         if images_dir and os.path.isdir(images_dir):
             exts = ('.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp')
@@ -132,8 +138,9 @@ class FastLine:
             #   不达标删除，不足再由 FLUX 补足——与 FLUX 路径同口径（之前 crawl 裸爬不审，
             #   导致"爬的图完全不对"）。
             print(f'  [crawl] 为概念取参考图（目标 {n} 张，Pexels 图源）...')
+            search_concept = f'{concept}（画面风格：{keywords_hint}）' if keywords_hint else concept
             try:
-                keywords = self.crawler.extract_keywords(concept, llm=self.llm, n=n)
+                keywords = self.crawler.extract_keywords(search_concept, llm=self.llm, n=n)
             except Exception:
                 keywords = [concept]
             print(f'  [crawl] 搜索词: {keywords}')
@@ -328,9 +335,14 @@ class FastLine:
             task_id=None, no_rife=False, no_color=False, bgm_override=None,
             no_bgm=False, use_stt=False, lut_override=None, slowmo=None,
             images_source='crawl', source_topic=None, trend_date=None,
-            show_source=True, effects='off', no_preflight=False) -> dict:
+            show_source=True, effects='off', no_preflight=False,
+            skill=None) -> dict:
         """一键出片。返回 meta。
 
+        skill: 风格技能名（SKILL/*.yaml）或已加载的 skill dict。
+            skill defaults 先套（CLI 显式传参优先——调用方在 argparse 层做 merge），
+            narration_style 注入旁白规划文风，transition 支持 cut/crossfade/rife，
+            clip_speed 对成片整体 setpts+atempo 变速，effects 支持逗号分隔显式特效池。
         images_source: 'crawl'(必应爬图，默认，不足时 FLUX 补足) / 'flux'(纯 FLUX 文生图)。
         slowmo>1 时保留原片 final.mp4，另出 RIFE 版 final_slow.mp4（都不删）。
         source_topic: 对应热搜标题（如实供，写进 meta + 可选片头水印，便于验证真实性）。
@@ -338,6 +350,22 @@ class FastLine:
         show_source: 是否在片头烧录 "{trend_date} 热搜: {source_topic}"。
         """
         start = time.time()
+        # ── SKILL 风格技能加载（字符串→dict；narration_style/transition/clip_speed/显式特效池） ──
+        skill_dict = None
+        if isinstance(skill, str) and skill.strip():
+            from utils.skills import SkillManager
+            skill_dict = SkillManager().get(skill)
+            if skill_dict is None:
+                print(f'  ⚠ skill "{skill}" 不存在（可用: {", ".join(SkillManager().list())}），按默认风格跑')
+        elif isinstance(skill, dict):
+            skill_dict = skill
+        narration_style = (skill_dict or {}).get('narration_style')
+        skill_transition = ((skill_dict or {}).get('defaults') or {}).get('transition')
+        skill_clip_speed = ((skill_dict or {}).get('defaults') or {}).get('clip_speed')
+        skill_meta_name = (skill_dict or {}).get('name')
+        if skill_dict:
+            print(f'\n=== [fast] 风格技能: {skill_dict.get("display_name", skill_meta_name)} ===')
+
         task_id = task_id or datetime.now().strftime('fast%Y%m%d_%H%M%S')
         trend_date = trend_date or datetime.now().strftime('%Y-%m-%d')
         task_dir = os.path.join(self.output_dir, task_id)
@@ -349,18 +377,21 @@ class FastLine:
         from core.preflight import Preflight
         Preflight(self.config).check('fast' if not source_topic else 'hot', skip=no_preflight)
 
-        # 1) 旁白规划
+        # 1) 旁白规划（skill 文风注入——七字真言的解药）
         print(f'\n=== [fast] 旁白规划（{n} 段）===')
-        segments = self.plan_narration(concept, n, motion_override=motion)
+        segments = self.plan_narration(concept, n, motion_override=motion,
+                                       narration_style=narration_style)
         n = len(segments)
         print(f'  {n} 段旁白: ' + ' | '.join(s["text"] for s in segments))
         if source_topic:
             print(f'  热搜来源: {trend_date}: {source_topic}')
 
-        # 2) 图片
+        # 2) 图片（skill keywords_hint 拼进搜索概念，引导图源画面风格）
         print(f'\n=== [fast] 图片（{n} 张，source={images_source}）===')
+        skill_hint = ((skill_dict or {}).get('defaults') or {}).get('keywords_hint')
         images = self.collect_images(concept, images_dir, n, task_dir,
-                                     images_source=images_source, segments=segments)
+                                     images_source=images_source, segments=segments,
+                                     keywords_hint=skill_hint)
         images = _pad_list(images, n)
 
         # 3) 每段 TTS + Ken Burns
@@ -385,8 +416,11 @@ class FastLine:
             audios.append(a)
             wait_tts = True
 
-        # 3.5) v5 剪辑特效：--effects auto 由 LLM 选每镜特效并施加
+        # 3.5) v5 剪辑特效：--effects auto 由 LLM 选；skill 显式池（逗号分隔）逐镜轮转
         fx_meta = {'effects': ['none'] * len(clips), 'transitions': []}
+        explicit_fx = None
+        if effects and effects not in ('auto', 'off', 'none'):
+            explicit_fx = [e.strip() for e in str(effects).split(',') if e.strip()]
         if effects == 'auto':
             print(f'\n=== [v5] 剪辑特效（LLM 自动选）===')
             from utils.effects import apply_effects_to_clips
@@ -399,15 +433,32 @@ class FastLine:
             clips = apply_effects_to_clips(clips, fx_dir, effs)
             fx_meta['effects'] = effs
             fx_meta['transitions'] = plan['transitions']
+        elif explicit_fx:
+            print(f'\n=== [v5] 剪辑特效（skill 显式池轮转: {", ".join(explicit_fx)}）===')
+            from utils.effects import apply_effects_to_clips
+            effs = [explicit_fx[i % len(explicit_fx)] for i in range(len(clips))]
+            fx_dir = os.path.join(clips_dir, 'fx')
+            clips = apply_effects_to_clips(clips, fx_dir, effs)
+            fx_meta['effects'] = effs
 
         # 4) 合成原始视频（含字幕，非 STT 用估算时间轴）
         print(f'\n=== [fast] 合成成片 ===')
-        transition_types = ['crossfade'] * max(0, len(clips) - 1)
+        # 过渡：skill transition（cut=硬切 / rife=光流插段，失败回退 crossfade / 缺省=crossfade）
+        trans_clips = None
+        if skill_transition == 'rife':
+            print(f'  [过渡] RIFE 光流（失败回退 crossfade）')
+            try:
+                trans_clips = self.post.generate_transitions(
+                    clips, clips_dir, task_id, transition_types=['rife'] * max(0, len(clips) - 1))
+            except Exception as e:
+                print(f'  ⚠ RIFE 过渡失败: {e}，回退 crossfade')
+            trans_clips = trans_clips if (trans_clips and all(trans_clips)) else None
         # 热搜来源不占字幕时间轴（避免字幕/声音错位），走顶部角标（步骤 5.5）
         srt_path = None if use_stt else self._build_srt(segments, clips_dir)
         final_path = os.path.join(task_dir, 'final_raw.mp4')
         compose(clips, audios, srt_path=srt_path, output_path=final_path,
-                transition_types=transition_types)
+                transition='cut' if skill_transition == 'cut' else 'crossfade',
+                transition_clips=trans_clips)
 
         # 5) 后处理：LUT + BGM + (可选 STT) —— 复用 PostProcessor（含 LLM 自动选）
         print(f'\n=== [fast] 后处理（LUT/BGM/STT）===')
@@ -423,6 +474,11 @@ class FastLine:
         if show_source and source_topic:
             print(f'\n=== [fast] 热搜来源角标 ===')
             self._overlay_source(final_path, f'{trend_date} 热搜: {source_topic}')
+
+        # 5.6) skill 成片整体变速（营销号 1.15x 短平快 / 叙事 1.0 原速）
+        if skill_clip_speed and abs(float(skill_clip_speed) - 1.0) > 0.01:
+            print(f'\n=== [fast] 成片变速 x{skill_clip_speed} ===')
+            self._apply_clip_speed(final_path, float(skill_clip_speed))
 
         # 6) 可选 slowmo（RIFE，GPU2，默认关）——原片保留，另出 RIFE 版
         slow_path = None
@@ -451,6 +507,7 @@ class FastLine:
             'task_id': task_id,
             'concept': concept,
             'mode': 'fast',
+            'skill': skill_meta_name,
             'images_source': images_source,
             'segments': segments,
             'clips': clips,
@@ -493,6 +550,42 @@ class FastLine:
                 return
         except Exception as e:
             print(f'  ⚠ 角标叠加失败: {e}')
+        if os.path.isfile(temp):
+            _sh.move(temp, video_path)
+
+    def _apply_clip_speed(self, video_path, speed):
+        """成片整体变速（skill clip_speed）：>1 加速 / <1 慢放。视频 setpts + 音频 atempo。就地替换。"""
+        import shutil as _sh
+        if not speed or abs(speed - 1.0) < 0.01 or not os.path.isfile(video_path):
+            return
+        temp = video_path.replace('.mp4', '_spd.mp4')
+        _sh.move(video_path, temp)
+        # atempo 链支持任意倍率（单级限 0.5-2.0，链式连乘拆开）
+        tempos = []
+        s = float(speed)
+        while s > 2.0:
+            tempos.append(2.0)
+            s /= 2.0
+        while s < 0.5:
+            tempos.append(0.5)
+            s /= 0.5
+        tempos.append(round(s, 4))
+        atempo = ','.join(f'atempo={t}' for t in tempos)
+        cmd = [
+            FFMPEG, '-y', '-i', temp,
+            '-filter_complex', f'[0:v]setpts=PTS/{speed}[v];[0:a]{atempo}[a]',
+            '-map', '[v]', '-map', '[a]',
+            '-c:v', 'libx264', '-preset', 'medium', '-crf', '20',
+            '-pix_fmt', 'yuv420p', video_path,
+        ]
+        try:
+            subprocess.run(cmd, capture_output=True, timeout=600)
+            if os.path.isfile(video_path):
+                os.remove(temp)
+                print(f'  成片变速 x{speed}')
+                return
+        except Exception as e:
+            print(f'  ⚠ 变速失败: {e}')
         if os.path.isfile(temp):
             _sh.move(temp, video_path)
 

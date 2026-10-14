@@ -1,0 +1,31 @@
+# ── 风格技能：营销号快节奏 ──────────────────────────────
+# 用法: python core/vidance.py fast "概念" --skill marketing
+# 一个 skill = 一套完整出片参数包 + LLM 编剧文风指令 + 常用测试案例。
+# defaults 里只填"与 fast 命令默认行为不同"的项；CLI 显式传参永远优先。
+
+name: marketing
+display_name: 营销号快节奏
+description: 短平快萌系配音 + 硬切 + 微加速，3 图 15s 内（原 fast 默认风格的强化版）
+
+defaults:
+  n: 3                      # 图片/段落数（短平快就 3 张）
+  voice: edge-moe           # 萌系高音-哈基米风
+  bgm: epic                 # 节奏感强的 BGM
+  lut: vivid                # 高饱和调色
+  transition: cut           # 硬拼接（不拖泥带水）
+  clip_speed: 1.15          # 成片整体微加速（setpts+atempo，>1 变快）
+  effects: punch_in,zoom    # 显式特效池：逐镜头轮转（冲击感）
+  keywords_hint: 高清特写 冲击力 实拍 热搜同款
+
+# LLM 编剧文风（替换 plan_narration 默认的"押韵短句"指令——七字真言的解药）
+narration_style: |
+  网络营销号爆款文案：口语化短句，每句 6-14 字，像念热搜标题一样带情绪。
+  制造悬念、反差、冲击力，可用"离谱/居然/真相了/别眨眼"这类网感词。
+  结尾留钩子（"最后一张看傻了"式）。
+  禁止写成七字对仗诗句，禁止文艺腔，禁止排比抒情。
+
+# 常用测试案例（回归验证直接拿去跑）
+test_cases:
+  - "旅行青蛙停运"
+  - "iPhone 18 发布"
+  - "程序员删库跑路"

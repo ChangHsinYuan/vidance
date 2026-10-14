@@ -231,7 +231,8 @@ def cmd_hot(args):
     date = datetime.now().strftime('%Y-%m-%d')
     print(f'选中: {top["predicted_score"]}分 | 源自: {date}: {source}')
 
-    # 3) fast 出片
+    # 3) fast 出片（--skill 风格预设：defaults 已套进 args）
+    skill = _load_skill(args)
     meta = fl.run(
         top['concept'],
         images_source=args.images_source,
@@ -247,12 +248,43 @@ def cmd_hot(args):
         task_id=args.task_id,
         effects=getattr(args, 'effects', 'off'),
         no_preflight=True,  # hot 已在爬热点前预检过，避免重复探测
+        skill=skill,
     )
     print(f'\nDone: {meta["output"]}')
 
 
+def _load_skill(args):
+    """--skill 加载 SKILL/*.yaml 并把 defaults 套进 args（CLI 显式传参优先）。
+
+    argparse 默认值视为"未传"：n=5 / effects='off' / lut,bgm,voice=None。
+    返回 skill dict（供 fastline 直接用，省二次加载）；无 --skill 返回 None。
+    """
+    name = getattr(args, 'skill', None)
+    if not name:
+        return None
+    from utils.skills import SkillManager
+    sk = SkillManager().get(name)
+    if sk is None:
+        print(f'  ⚠ skill "{name}" 不存在（可用: {", ".join(SkillManager().list())}），按默认风格跑')
+        return None
+    d = sk.get('defaults') or {}
+    if d.get('n') and args.images_count == 5:
+        args.images_count = int(d['n'])
+    if d.get('voice') and not args.voice:
+        args.voice = d['voice']
+    if d.get('lut') and not getattr(args, 'lut', None):
+        args.lut = d['lut']
+    if d.get('bgm') and not getattr(args, 'bgm', None):
+        args.bgm = d['bgm']
+    if d.get('effects') and getattr(args, 'effects', 'off') == 'off':
+        args.effects = d['effects']
+    print(f'=== [skill] {sk.get("display_name", name)}: {sk.get("description", "")} ===')
+    return sk
+
+
 def cmd_fast(args):
     """fast 子命令：图片 + 运镜动效组成视频，跳过视频模型（v4 M6 快速链路）"""
+    skill = _load_skill(args)
     fl = FastLine()
     meta = fl.run(
         args.concept, output_path=args.output, images_dir=args.images,
@@ -264,6 +296,7 @@ def cmd_fast(args):
         source_topic=args.source_topic, trend_date=args.trend_date,
         show_source=not args.no_source, effects=getattr(args, 'effects', 'off'),
         no_preflight=getattr(args, 'no_preflight', False),
+        skill=skill,
     )
     print(f'\nDone: {meta["output"]}')
 
@@ -893,6 +926,8 @@ def build_parser():
                        choices=['auto', 'off'],
                        help='v5 剪辑特效: auto(LLM 选) / off(关闭，默认)')
     p_hot.add_argument('--task-id', default=None)
+    p_hot.add_argument('--skill', default=None,
+                       help='风格技能（SKILL/*.yaml，如 marketing/narrative）')
     p_hot.add_argument('--no-preflight', action='store_true',
                        help='跳过开跑前预检')
     p_hot.set_defaults(func=cmd_hot)
@@ -938,6 +973,8 @@ def build_parser():
     p_fast.add_argument('--stt', action='store_true', help='STT 字幕对齐')
     p_fast.add_argument('--task-id', default=None,
                         help='外部指定 task_id（调度器传入）')
+    p_fast.add_argument('--skill', default=None,
+                        help='风格技能（SKILL/*.yaml，如 marketing/narrative；预设 voice/BGM/LUT/过渡/倍速/文风）')
     p_fast.add_argument('--no-preflight', action='store_true',
                         help='跳过开跑前预检')
     p_fast.set_defaults(func=cmd_fast)

@@ -1,0 +1,29 @@
+# ── 风格技能：优雅叙事 ──────────────────────────────────
+# 用法: python core/vidance.py fast "概念" --skill narrative
+# 纪录片质感：低沉男声娓娓道来 + 轻度氛围滤镜 + 柔和过渡，片长更长。
+
+name: narrative
+display_name: 优雅叙事
+description: 纪录片式低沉男声 + 胶片氛围 + RIFE 光流柔和过渡，6 图约 40s
+
+defaults:
+  n: 6                          # 图多片长（约 40s）
+  voice: cosy-jilupian1         # 纪录片男声（克隆音色，低沉娓娓道来；不可用时 CLI 可换 edge-deep）
+  bgm: calm                     # 舒缓 BGM
+  lut: cinematic                # 电影感（轻度，温馨偏暗的氛围质感）
+  transition: rife              # RIFE 光流过渡（GPU2:8189 不在线时自动回退 crossfade）
+  clip_speed: 1.0               # 不加速（原速叙事）
+  effects: grain_vignette       # 轻颗粒暗角（胶片感，缓慢温馨）
+  keywords_hint: 胶片质感 氛围光影 摄影 暖色调 黄昏
+
+narration_style: |
+  纪录片解说词：完整长句，每句 15-25 字，娓娓道来，情绪舒缓。
+  多用意象与比喻（光、风、时间、呼吸），像在讲一个安静的故事。
+  可以留白（不是每句都要塞满信息），开头一句定基调，结尾一句收余韵。
+  禁止网络热词，禁止感叹号堆砌，禁止七字对仗诗句。
+
+# 常用测试案例（回归验证直接拿去跑）
+test_cases:
+  - "深夜灯塔与守塔人"
+  - "黄山云海 日出"
+  - "旧书店的雨天午后"
