@@ -93,7 +93,61 @@ def main():
     ok('old style replaced', '押韵有冲击力' not in sysc2)
     ok('n-count in prompt', '2' in sysc2)
 
-    # ── 4. yaml 结构完整（后续加 skill 的模板约束） ──
+    # ── 4. post_for：post 配方读取 ──
+    ok('post_for artist dict', SkillManager.post_for(art) == (art.get('post')))
+    ok('post_for researcher has sharpen',
+       (SkillManager.post_for(sm.get('researcher')) or {}).get('sharpen') is True)
+    ok('post_for commands-style → None', SkillManager.post_for(sk) is None)
+    ok('post_for None → None', SkillManager.post_for(None) is None)
+    ok('post_for empty post → None', SkillManager.post_for({'post': {}}) is None)
+
+    # ── 5. apply_post_recipe：单次 ffmpeg 链（真跑 1s 测试视频） ──
+    import tempfile
+    import subprocess
+    from agents.post.tools.effects import apply_post_recipe, POST_KEYS
+    ok('POST_KEYS', POST_KEYS == ('grain', 'vignette', 'warmth', 'sharpen'))
+    tmpd = tempfile.mkdtemp(prefix='post_recipe_')
+    src = os.path.join(tmpd, 'src.mp4')
+    subprocess.run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=1:size=320x240:rate=12',
+                    '-pix_fmt', 'yuv420p', src], capture_output=True, timeout=60)
+    ok('testsrc created', os.path.isfile(src) and os.path.getsize(src) > 500)
+    # 5a. artist 全链（warmth+sharpen 无关，grain+vignette）原地覆写
+    dst = os.path.join(tmpd, 'artist.mp4')
+    import shutil as _sh
+    _sh.copy(src, dst)
+    try:
+        apply_post_recipe(dst, {'grain': True, 'vignette': True, 'warmth': 0.15,
+                                'transition': 'rife'})
+        ok('artist post applied in-place', os.path.getsize(dst) > 500
+           and not os.path.exists(dst + '.post.mp4'))
+    except Exception as e:
+        ok(f'artist post applied in-place (raised {e})', False)
+    # 5b. 只有命令层键 → 报错不误改
+    dst2 = os.path.join(tmpd, 'only_trans.mp4')
+    _sh.copy(src, dst2)
+    try:
+        apply_post_recipe(dst2, {'transition': 'cut'})
+        ok('transition-only raises', False)
+    except ValueError:
+        ok('transition-only raises', True)
+    except Exception as e:
+        ok(f'transition-only raises (wrong exc {e})', False)
+    ok('transition-only file untouched', os.path.getsize(dst2) == os.path.getsize(src))
+    # 5c. researcher 链（sharpen only）另存 out
+    dst3 = os.path.join(tmpd, 'sharpen_out.mp4')
+    try:
+        apply_post_recipe(src, {'sharpen': True}, out=dst3)
+        ok('sharpen out-path', os.path.isfile(dst3) and os.path.getsize(dst3) > 500)
+    except Exception as e:
+        ok(f'sharpen out-path (raised {e})', False)
+    # 5d. warmth 极值钳制不炸
+    try:
+        apply_post_recipe(src, {'warmth': 99.0}, out=os.path.join(tmpd, 'warm.mp4'))
+        ok('warmth clamped ok', True)
+    except Exception as e:
+        ok(f'warmth clamped ok (raised {e})', False)
+
+    # ── 6. yaml 结构完整（后续加 skill 的模板约束） ──
     for k in sm.list():
         s = sm.get(k)
         d = SkillManager.params_for(s, k.split('/')[1] if s['_meta']['kind'] == 'commands'

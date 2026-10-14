@@ -9,7 +9,7 @@ description: 短平快萌系配音 + 硬切 + 微加速，3 图 15s 内（原 fa
 
 defaults:
   n: 3                      # 图片/段落数（短平快就 3 张）
-  voice: edge-moe           # 萌系高音-哈基米风
+  voice: cosy-meng1         # 萌系萝莉（本地 CosyVoice 克隆，不依赖 edge 外网；⚠ edge-moe 曾因外网 500 降级）
   bgm: epic                 # 节奏感强的 BGM
   lut: vivid                # 高饱和调色
   transition: cut           # 硬拼接（不拖泥带水）

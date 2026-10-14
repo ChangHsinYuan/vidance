@@ -269,6 +269,44 @@ def apply_effects_to_clips(clips, out_dir, effects):
     return out
 
 
+# ══ SKILL post 配方（agents/*.yaml post: 段消费方）══
+
+POST_KEYS = ('grain', 'vignette', 'warmth', 'sharpen')
+
+
+def apply_post_recipe(video, recipe, out=None):
+    """把 SKILL post 配方链成单次 ffmpeg 施加到成片（yuv420p）。
+
+    recipe: SKILL agents/*.yaml 的 post: 段；transition 键由命令层消费，这里忽略。
+    顺序：warmth(色偏) → sharpen(锐化) → grain(颗粒) → vignette(暗角)。
+    out 缺省原地覆写（先写 tmp 再替换，防半截文件）。返回 out 路径，失败抛异常。
+    """
+    if not recipe:
+        raise ValueError('post 配方为空')
+    vf = []
+    warmth = float(recipe.get('warmth') or 0)
+    if abs(warmth) > 1e-3:
+        warmth = max(-1.0, min(1.0, warmth))
+        vf.append(f'colorbalance=rs={warmth * 0.3:.3f}:bs={-warmth * 0.3:.3f}')
+    if recipe.get('sharpen'):
+        vf.append('unsharp=5:5:0.6')
+    if recipe.get('grain'):
+        vf.append('noise=alls=4:allf=t')
+    if recipe.get('vignette'):
+        vf.append('vignette=PI/4.5')
+    if not vf:
+        raise ValueError('post 配方无可执行项（仅 transition 等命令层键）')
+    out = out or video
+    tmp = out + '.post.mp4'
+    if not _encode(','.join(vf), video, tmp):
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise RuntimeError(f'post 配方 ffmpeg 失败: {",".join(vf)}')
+    if os.path.normpath(tmp) != os.path.normpath(out):
+        os.replace(tmp, out)
+    return out
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(prog='effects', description='v5 剪辑特效库')

@@ -129,6 +129,17 @@ class SkillManager:
         return str(s).strip() if s else None
 
     @staticmethod
+    def post_for(skill: dict) -> dict:
+        """取 skill 的独立后处理配方（post: 段，agents/ 配方专用）。
+
+        返回 post dict（grain/vignette/warmth/sharpen/transition…）或 None。
+        """
+        if not skill:
+            return None
+        p = skill.get('post')
+        return p if isinstance(p, dict) and p else None
+
+    @staticmethod
     def merge(args_dict: dict, skill: dict) -> dict:
         """把 skill defaults 填进参数 dict：只覆盖 None/未提供的键（CLI 显式值优先）。
 

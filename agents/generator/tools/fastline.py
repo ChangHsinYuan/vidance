@@ -360,8 +360,11 @@ class FastLine:
         elif isinstance(skill, dict):
             skill_dict = skill
         narration_style = (skill_dict or {}).get('narration_style')
-        skill_transition = ((skill_dict or {}).get('defaults') or {}).get('transition')
-        skill_clip_speed = ((skill_dict or {}).get('defaults') or {}).get('clip_speed')
+        from utils.skills import SkillManager
+        # transition/clip_speed 按 skill kind 取（commands→defaults / agents→commands.fast）
+        _params = SkillManager.params_for(skill_dict, 'fast') if skill_dict else {}
+        skill_transition = _params.get('transition')
+        skill_clip_speed = _params.get('clip_speed')
         skill_meta_name = (skill_dict or {}).get('name')
         if skill_dict:
             print(f'\n=== [fast] 风格技能: {skill_dict.get("display_name", skill_meta_name)} ===')
@@ -479,6 +482,18 @@ class FastLine:
         if skill_clip_speed and abs(float(skill_clip_speed) - 1.0) > 0.01:
             print(f'\n=== [fast] 成片变速 x{skill_clip_speed} ===')
             self._apply_clip_speed(final_path, float(skill_clip_speed))
+
+        # 5.7) skill post 配方（agents/ persona：grain/vignette/warmth/sharpen 胶片质感链）
+        post_recipe = SkillManager.post_for(skill_dict) if skill_dict else None
+        if post_recipe and any(post_recipe.get(k) for k in ('grain', 'vignette', 'warmth', 'sharpen')):
+            print(f'\n=== [fast] skill post 配方 ===')
+            try:
+                from utils.effects import apply_post_recipe
+                apply_post_recipe(final_path, post_recipe)
+                done = [k for k in ('grain', 'vignette', 'warmth', 'sharpen') if post_recipe.get(k)]
+                print(f'  已套: {done}')
+            except Exception as e:
+                print(f'  ⚠ post 配方失败: {e}，保留原片')
 
         # 6) 可选 slowmo（RIFE，GPU2，默认关）——原片保留，另出 RIFE 版
         slow_path = None
