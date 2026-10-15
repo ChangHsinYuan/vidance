@@ -140,6 +140,17 @@ class SkillManager:
         return p if isinstance(p, dict) and p else None
 
     @staticmethod
+    def five_dim_guide(skill: dict) -> dict:
+        """取五维提示词模板的 guide 段（SKILL/templates/*.yaml 专用）。
+
+        返回 {visual, motion, camera, audio, narrative} 或 None。
+        """
+        if not skill:
+            return None
+        g = skill.get('five_dim_guide')
+        return g if isinstance(g, dict) and g else None
+
+    @staticmethod
     def merge(args_dict: dict, skill: dict) -> dict:
         """把 skill defaults 填进参数 dict：只覆盖 None/未提供的键（CLI 显式值优先）。
 

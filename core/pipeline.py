@@ -122,7 +122,9 @@ class Pipeline:
             task_id: str = None,
             resume: str = None,
             no_preflight: bool = False,
-            style_hint: str = None) -> dict:
+            style_hint: str = None,
+            five_dim_guide: dict = None,
+            rag_context: str = None) -> dict:
         """端到端生成有声短片
 
         character_mode:
@@ -136,6 +138,8 @@ class Pipeline:
         no_asset_reuse: True 时跳过资产库检索，强制重新重建 3D 资产
         task_id: 外部指定 task_id（调度器传入），None 时自动生成时间戳
         resume: v17 M4 断点续跑——传已有 task_id，从 checkpoint.json 恢复（跳过已完成阶段/镜头）
+        five_dim_guide: M5a 五维提示词模板（SKILL/templates/ five_dim_guide 段），注入编剧
+        rag_context: M5b RAG 检索的参考资料文本（--rag-doc 文档片段），注入编剧
         """
         resumed_from = None
         if resume:
@@ -197,7 +201,9 @@ class Pipeline:
         else:
             script = self.llm.script_write(concept, character_desc=character_desc,
                                             target_duration=target_duration,
-                                            style_hint=style_hint)
+                                            style_hint=style_hint,
+                                            five_dim_guide=five_dim_guide,
+                                            rag_context=rag_context)
         meta['script'] = script
         self._save_ckpt(task_dir, {'concept': concept, 'character_desc': character_desc,
                                    'target_duration': target_duration, 'script': script})
@@ -231,7 +237,8 @@ class Pipeline:
         else:
             for shot in script['shots']:
                 shot['style'] = style
-                shot['video_prompt'] = self.llm.optimize_prompt(shot['scene_desc'], style)
+                shot['video_prompt'] = self.llm.optimize_prompt(
+                    shot['scene_desc'], style, five_dim=shot.get('five_dim'))
                 bg_desc = shot.get('background_desc', shot['scene_desc'])
                 shot['background_prompt'] = self.llm.optimize_background_prompt(bg_desc, style)
                 print(f'  shot {shot["id"]}: video={shot["video_prompt"][:50]}...')
@@ -894,6 +901,7 @@ class Pipeline:
                 shot['video_prompt'] = self.llm.optimize_prompt(
                     shot['scene_desc'] + ' ' + review['feedback'],
                     shot.get('style', ''),
+                    five_dim=shot.get('five_dim'),
                 )
 
         # ── 慢动作后处理 ──

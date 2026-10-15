@@ -1,0 +1,13 @@
+# ── 五维提示词模板：科普纪录 ────────────────────────────
+# 用法: python core/vidance.py auto "概念" --template documentary
+
+name: documentary
+display_name: 科普纪录五维模板
+description: 客观冷静+信息密度+实证镜头——知识类短片的 T2V 提示词汇域
+
+five_dim_guide:
+  visual: 画面信息密度高但有序（macro detail shot, clean composition, accurate proportions），避免戏剧化打光，用平实的工作室光或自然光
+  motion: 动作精确平稳（precise, steady motion），过程性动作（生长/运转/变化）可视化，禁止无意义的炫技动态
+  camera: 服务于展示（top-down flat lay, macro close-up, slow orbit for 3D context, split-screen compatible framing）
+  audio: 旁白主导，BGM 极低存在感（minimal ambient bed），关键信息点留静默
+  narrative: 论点先行——本镜回答一个具体问题或展示一个证据，与上下镜构成因果链

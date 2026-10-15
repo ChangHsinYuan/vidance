@@ -37,7 +37,7 @@
 | **上传文件名净化 + 路径围栏**：文件名剥目录只留 basename（防 `../` 穿越）；`resolve_path_within_directory` 强制解析结果在基目录内，越界 403 | `app/controllers/v1/video.py::_sanitize_upload_filename`、`file_security` | M1 `/api/upload` 安全校验（照抄思路，Python 实现同款） |
 | **素材目录可配置**：`material_directory = "task"` 时素材存进任务目录 | `config.example.toml` | M1 config `buffer.*` 配置项设计 |
 
-> **2026-10-13 源码级调研收口**：全量通读核心 8700 行后的分档结论（强烈推荐/已有等价物/看情况）落 `docs/mpt-research.md`——新增高性价比候选：字幕 Levenshtein 纠正（subtitle.py `correct()`）、preflight 预检（task.py）、素材 URL-md5 全局缓存+下载后验证（material.py `save_video()`）、搜索结果 24h TTL 缓存（material_cache.py）。
+> **2026-10-13 源码级调研收口**：全量通读核心 8700 行后的分档结论（强烈推荐/已有等价物/看情况）落 `docs/research/mpt-research.md`——新增高性价比候选：字幕 Levenshtein 纠正（subtitle.py `correct()`）、preflight 预检（task.py）、素材 URL-md5 全局缓存+下载后验证（material.py `save_video()`）、搜索结果 24h TTL 缓存（material_cache.py）。
 
 ### 1.2 ViMax（HKUDS/ViMax，12.6k stars，Agentic 视频生成）
 

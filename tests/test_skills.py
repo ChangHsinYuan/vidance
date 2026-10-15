@@ -150,12 +150,82 @@ def main():
     # ── 6. yaml 结构完整（后续加 skill 的模板约束） ──
     for k in sm.list():
         s = sm.get(k)
-        d = SkillManager.params_for(s, k.split('/')[1] if s['_meta']['kind'] == 'commands'
+        kind = s['_meta']['kind']
+        d = SkillManager.params_for(s, k.split('/')[1] if kind == 'commands'
                                     else 'fast')
         ok(f'{k}: has name/display',
            s.get('name') and s.get('display_name'))
+        if kind == 'templates':
+            # 五维模板：five_dim_guide 五键齐全（M5a）
+            g = SkillManager.five_dim_guide(s) or {}
+            ok(f'{k}: five_dim_guide complete',
+               all(g.get(x) for x in ('visual', 'motion', 'camera', 'audio', 'narrative')))
+            continue
         ok(f'{k}: narration_style is str',
            isinstance(s.get('narration_style'), str) and len(s['narration_style']) > 20)
+
+    # ── 7. 五维模板加载 + script_write 注入（mock LLM） ──
+    tpl = sm.get('cinematic')
+    ok('template cinematic loads', tpl is not None and tpl['_meta']['kind'] == 'templates')
+    ok('template guide via five_dim_guide',
+       '胶片' in str(SkillManager.five_dim_guide(tpl).get('visual', '')))
+    ok('five_dim_guide non-template → None',
+       SkillManager.five_dim_guide(sk) is None and SkillManager.five_dim_guide(None) is None)
+
+    from agents.common.tools.llm import LLMClient
+    lc = LLMClient.__new__(LLMClient)  # 跳过 __init__（不连服务）
+
+    class _MockChat:
+        def __init__(self):
+            self.captured = None
+
+        def chat_json(self, messages, **kw):
+            self.captured = messages
+            return {'title': 't', 'concept': 'c',
+                    'shots': [{'id': 1, 'scene_desc': 's', 'narration': 'n',
+                               'background_desc': 'b', 'duration': 5,
+                               'five_dim': {'visual': 'v', 'motion': 'm',
+                                            'camera': 'c', 'audio': 'a',
+                                            'narrative': 'n'}}]}
+
+    mc_ = _MockChat()
+    lc.chat_json = mc_.chat_json
+    lc.models = {'script': 'mock'}
+    guide = SkillManager.five_dim_guide(tpl)
+    lc.script_write('测试概念', five_dim_guide=guide)
+    sysc = mc_.captured[0]['content']
+    ok('five_dim guide injected to script_write',
+       '五维提示词模板' in sysc and '胶片质感' in sysc)
+    ok('five_dim schema in prompt', 'five_dim' in sysc and 'narrative' in sysc)
+    lc.script_write('测试概念')  # 无模板不注入
+    sysc2 = mc_.captured[0]['content']
+    ok('no template → no guide injection', '五维提示词模板' not in sysc2)
+    ok('five_dim schema always present', 'five_dim' in sysc2)
+
+    # optimize_prompt 五维组装（mock chat）
+    class _MockChat2:
+        def __init__(self):
+            self.captured = None
+
+        def chat(self, messages, **kw):
+            self.captured = messages
+            return 'a cinematic shot'
+
+    m2 = _MockChat2()
+    lc.chat = m2.chat
+    lc.models = {'prompt_opt': 'mock'}
+    lc.optimize_prompt('场景', 'cinematic', five_dim={
+        'visual': 'golden hour beach', 'motion': 'slow waves',
+        'camera': 'slow dolly-in', 'audio': 'waves', 'narrative': 'opening'})
+    up = m2.captured[1]['content']
+    ok('optimize_prompt five-dim user block',
+       '[Visual] golden hour beach' in up and '[Motion] slow waves' in up
+       and '[Camera] slow dolly-in' in up)
+    ok('optimize_prompt skips audio/narrative', 'waves audio' not in up and 'opening' not in up)
+    ok('optimize_prompt system rule', '五维提示必须全部融入' in m2.captured[0]['content'])
+    lc.optimize_prompt('场景', 'cinematic')  # 无五维走旧路径
+    ok('optimize_prompt legacy path', '场景描述' in m2.captured[1]['content']
+       and '[Visual]' not in m2.captured[1]['content'])
 
     fails = [n for n, c in PASS if not c]
     print(f'\n{len(PASS) - len(fails)}/{len(PASS)} passed')

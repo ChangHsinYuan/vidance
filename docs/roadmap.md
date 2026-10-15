@@ -409,7 +409,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
   - **prompt 帧/框教训**：猫狗同框帧 YOLO 置信度顺序框错目标（cat 0.92>dog 0.90 但框提示只出 13.6% 半身+碎片）→ 提示帧选目标单独可见帧 + `--classes` 锁定（帧 0 后 mask 31.9% 全宽单域）
 - **换脸**（合规边界内，FaceFusion/inswapper）——**能力已被 v1 角色锚覆盖**（角色参考图→成片），不再开发
 - **教训**：①SAM mask 对大物体只盖部分（首测 18 去猫失败：mask coverage 3.8% vs 猫框 8.3%）→ 移除类用整框矩形 mask + **YOLO 复检目标物消失**；②Fill 内容感知残留（旁边有真狗时木纹阴影被 YOLO 误认 0.39-0.86，模型行为）；③SetUnionControlNetType type 合法值为组合串；④SAM set_image 需 uint8
-- 详细验证数据：docs/v16-design.md §4；汇报 docs/reports-20261001.md §4-6
+- 详细验证数据：docs/design/v16-design.md §4；汇报 docs/reports-20261001.md §4-6
 
 **参考**：SAM2（Meta，视频分割）、CoTracker（Meta，点追踪）、FaceFusion、ProPainter（视频修补）、ControlNet（构图/姿态条件控制）、FLUX.1 Fill/Canny/Depth/Kontext（Black Forest Labs，inpaint/ControlNet/指令编辑）、Wan2.2 VACE（视频编辑一体）、Qwen-Image-Edit（指令编辑）、RVM（视频抠像）。
 
@@ -510,7 +510,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 - **M1 部署分档** ✅（2026-09-26 改五档落地，见 [deploy-tiers.md](./deploy-tiers.md)、deploy/README.md）：五档阶梯 `none`（无 GPU：svg + fast 爬图，LLM/edge-tts 全走远程接口）/ `flux`（+SDXL/FLUX 生图）/ `wan`（+Wan T2V/I2V+RIFE+auto/quick）/ `h3`（+MiniMax-H3 ref2va+custom/h3shot）/ `full`（全量全家桶）——同一份代码 + `VIDANCE_TIER` 环境变量 + `config/tiers/{档}.json` 覆盖（`agents/common/tools/config_loader.py` 深合并，缺省 full 宿主机零变化）；守卫点 `/api/health` 报档 / `/api/tools` 按档过滤 / tool 分发 400 / CLI require() 退出提示换档；Docker：`deploy/Dockerfile`（API 层 ~2GB：ffmpeg+Noto CJK+playwright/Chromium）+ `deploy/Dockerfile.comfyui`（GPU 模板，模型卷挂不进镜像）+ `deploy/docker-compose.yml`（profiles 五档，API 缺省挂 9400，host 网络直连宿主服务）——本机 full 档演示：`VIDANCE_TIER=full VIDANCE_PORT=9401 docker compose -f deploy/docker-compose.yml up -d vidance`
 - **M2 一键安装**：`install.sh` 按 M0 探测选档 → 拉镜像/建环境 → start_services 接管 → 冒烟自检（复用 start_services.sh test）
 - **M3 面向用户细节**：config 向导（首次填 LLM key/选端口）、失败自诊断提示（端口占用/显存不足/外网不通点名到人）、输出目录与清理策略 UI 化、版本更新通道
-- **M4 交付包装**：版本号语义化 + `vidance --version`、CHANGELOG、docs/usage.md 按档重写成用户手册；**SKILL demo 随行**——最后最好每个 skill 的 yaml 旁边都有一个成功的 demo（`{skill}.demo.mp4`，出片验收后复制到 yaml 旁，用户翻 SKILL 目录即可看效果样片）
+- **M4 交付包装**：版本号语义化 + `vidance --version`、CHANGELOG、docs/usage/usage.md 按档重写成用户手册；**SKILL demo 随行**——最后最好每个 skill 的 yaml 旁边都有一个成功的 demo（`{skill}.demo.mp4`，出片验收后复制到 yaml 旁，用户翻 SKILL 目录即可看效果样片）
 
 **依赖**：v13 轻量化（原 v15）是 lite 档地基；v11 多智能体（原 v13）agent API 是网关/机器人接入面。
 
@@ -608,10 +608,10 @@ vidance/
 │   ├── oneshot.py             # v18（原 v14）一镜到底（🎯 待实现）
 │   ├── notify/                # v14（原 v11）机器人网关（🎯 待实现）
 │   ├── luts/  bgm/  workflows/  voices/
-├── agents/                    # v11 多智能体（原 v13）：D/G/P/V 物理分层 + 薄包装（docs/v11-design.md）
+├── agents/                    # v11 多智能体（原 v13）：D/G/P/V 物理分层 + 薄包装（docs/design/v11-design.md）
 ├── t2c/                       # t2c 模型（mt5-small 微调）+ 推理脚本 + README
 ├── ui/                        # v7/v8 前端（index.html 自包含，:8894/ui）
-├── docs/                      # roadmap + v0-v18 design + usage*.md + instructions/ + v-t2c.md
+├── docs/                      # roadmap + reports + usage/ + design/ + research/ + instructions/
 ├── voice_samples/ → /mnt/dataset/...  # 音色试听样本（软链）
 └── output/ → /mnt/dataset/zxy/vidance/output/  # 成片（软链）
 ```

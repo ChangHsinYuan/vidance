@@ -96,7 +96,7 @@
       "name": "make",
       "version": "v12",
       "brief": "统一入口：导演(llm/manual/scout) × 生成器(wan/fast/svg/h3) 排列组合",
-      "detail": "v12（原 v17）三排正交统一入口。导演层：--director llm(LLM编脚本,默认)/manual(--say/--prompt)/scout(爬热点自动选题)；生成层：--generator wan(带--character走auto全管线,否则quick)/fast(爬图+生图营销号)/svg(矢量动画,--voice出有声)/h3(--prompt整段式+--ref,或--script走custom)。后期参数 --voice/--lut/--bgm/--stt 通用。见 docs/v12-modules.md。",
+      "detail": "v12（原 v17）三排正交统一入口。导演层：--director llm(LLM编脚本,默认)/manual(--say/--prompt)/scout(爬热点自动选题)；生成层：--generator wan(带--character走auto全管线,否则quick)/fast(爬图+生图营销号)/svg(矢量动画,--voice出有声)/h3(--prompt整段式+--ref,或--script走custom)。后期参数 --voice/--lut/--bgm/--stt 通用。见 docs/design/v12-modules.md。",
       "params": [
         {
           "key": "concept",
@@ -286,7 +286,7 @@
       "name": "compose",
       "version": "v10",
       "brief": "时间线拼接：JSON 时间线 → 成片（特效/转场/画中画/文字/关键帧/掩码/贴纸/混音，纯 ffmpeg）",
-      "detail": "对已生成素材做剪辑后处理，不调生成模型，秒级。时间线含 main（主轨）/overlay（画中画·文字）/sticker（贴纸轨：PNG/GIF 循环贴图）/audio（混音+ducking）；元素支持 keyframes（x/y/scale/opacity/rotation + easing）与 mask（circle/rounded/rect/image + feather）；文字支持描边/阴影/底框。见 docs/usage-v10.md 效果总表。也可直接跟多个视频文件做快捷拼接；单文件用 python utils/compose.py split --at 2 5 --precise 分割。",
+      "detail": "对已生成素材做剪辑后处理，不调生成模型，秒级。时间线含 main（主轨）/overlay（画中画·文字）/sticker（贴纸轨：PNG/GIF 循环贴图）/audio（混音+ducking）；元素支持 keyframes（x/y/scale/opacity/rotation + easing）与 mask（circle/rounded/rect/image + feather）；文字支持描边/阴影/底框。见 docs/usage/usage-v10.md 效果总表。也可直接跟多个视频文件做快捷拼接；单文件用 python utils/compose.py split --at 2 5 --precise 分割。",
       "params": [
         {
           "key": "timeline",

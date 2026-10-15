@@ -1,0 +1,15 @@
+# ── 五维提示词模板：电影感 ──────────────────────────────
+# 用法: python core/vidance.py auto "概念" --template cinematic
+# five_dim_guide 五段注入 script_write 的 five_dim 生成（LLM 在此词汇域内填每镜五维）。
+# 模板只约束"怎么写提示词"，不改命令参数（与 SKILL/commands 的参数包互补）。
+
+name: cinematic
+display_name: 电影感五维模板
+description: 胶片质感+克制运镜+三幕叙事——T2V 提示词的词汇域约束（BigBanana 提示词面板思路）
+
+five_dim_guide:
+  visual: 胶片质感描述词（35mm film grain, natural light, shallow depth of field, muted color palette），光线写来源与方向（golden hour backlight, soft window light）
+  motion: 动作克制缓慢、有呼吸感（subtle, unhurried movement），情绪节奏递进不跳跃，禁止快切式动词
+  camera: 英文运镜术语优先（slow dolly-in, gentle pan, rack focus, wide establishing shot, low-angle hero shot）
+  audio: 环境音细节优先（风声、远处人声、脚步），配乐低沉铺底不抢旁白，留白多于填满
+  narrative: 三幕式自觉——本镜在铺垫、转折、高潮、收束中的位置，一句话点明

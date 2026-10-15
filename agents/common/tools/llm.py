@@ -258,13 +258,18 @@ class LLMClient:
         return f'data:image/jpeg;base64,{data}'
 
     def script_write(self, concept: str, character_desc: str = None,
-                     target_duration: float = None, style_hint: str = None) -> dict:
+                     target_duration: float = None, style_hint: str = None,
+                     five_dim_guide: dict = None, rag_context: str = None) -> dict:
         """概念→分镜脚本 JSON（v1: 含角色锚 + 每镜 camera 角度 + 背景描述）
 
         Args:
             target_duration: 目标总时长（秒）。None 时默认 2-5 镜短片，
                 指定时按每镜~4s 动态计算镜头数（解锁长片）。
             style_hint: SKILL 文风指令（注入 system prompt，如"治愈系短片剧本：…"）。
+            five_dim_guide: 五维提示词模板（SKILL/templates/*.yaml 的 five_dim_guide 段），
+                注入 system prompt 约束每镜 five_dim 的词汇域（M5a）。
+            rag_context: RAG 检索的参考资料文本（utils/rag.py，M5b）——
+                长文档相关片段，编剧从中取材但不照抄。
         """
         char_section = ''
         if character_desc:
@@ -280,9 +285,24 @@ class LLMClient:
         else:
             shot_instruction = '创作一个2-5个镜头的短片分镜脚本。'
 
+        fd_section = ''
+        if isinstance(five_dim_guide, dict) and five_dim_guide:
+            lines = [f'    - {k}: {str(v).strip()}' for k, v in five_dim_guide.items()
+                     if str(v or '').strip()]
+            if lines:
+                fd_section = ('五维提示词模板（每镜 five_dim 字段在此词汇域内填写）：\n'
+                              + '\n'.join(lines) + '\n')
+
+        rag_section = ''
+        if rag_context and str(rag_context).strip():
+            rag_section = ('参考资料（来自用户文档，可取材事实/数据/细节，不要照抄原句）：\n'
+                           f'{str(rag_context).strip()}\n')
+
         system = (
             f'你是视频编剧。根据用户给出的中文概念，{shot_instruction}\n'
             + (f'文风要求：{str(style_hint).strip()}\n' if style_hint else '')
+            + fd_section
+            + rag_section
             + '输出严格JSON格式，不要加任何解释文字。\n'
             'JSON schema:\n'
             '{\n'
@@ -304,6 +324,13 @@ class LLMClient:
             '        "distance": 0,\n'
             '        "desc": "镜头描述，如 wide shot, slow pan"\n'
             '      },\n'
+            '      "five_dim": {\n'
+            '        "visual": "画面主体与环境的具象描述（人物/物体/色调/光线质感）",\n'
+            '        "motion": "动作与节奏（主体动作、镜头运动速度、情绪节奏）",\n'
+            '        "camera": "运镜语言（推拉摇移/景别变化，英文如 slow dolly-in, rack focus）",\n'
+            '        "audio": "听觉设计（旁白情绪、环境音、BGM 氛围，中文一句话）",\n'
+            '        "narrative": "本镜在整片叙事中的作用（铺垫/转折/高潮/收束，一句话）"\n'
+            '      },\n'
             '      "slowmo": {"multiplier": 2, "mode": "slowmo"},\n'
             '      "transition_out": "rife"\n'
             '    }\n'
@@ -321,7 +348,8 @@ class LLMClient:
             '- 不同镜头用不同yaw角度展示角色多角度\n'
             '- 镜头之间有叙事逻辑\n'
             '- slowmo: 可选，对需要慢动作的镜头设置。multiplier为帧倍率（2=2倍慢放），mode为"slowmo"（慢放）或"smooth"（高帧率平滑）。不需要慢动作的镜头省略此字段\n'
-            '- transition_out: 此镜头到下一镜头的过渡方式。"rife"=光流插帧（默认，适合相邻场景），"crossfade"=交叉淡化（适合场景跳跃），"cut"=硬切（适合强对比）。最后一镜可省略'
+            '- transition_out: 此镜头到下一镜头的过渡方式。"rife"=光流插帧（默认，适合相邻场景），"crossfade"=交叉淡化（适合场景跳跃），"cut"=硬切（适合强对比）。最后一镜可省略\n'
+            '- five_dim: 五维结构化视频提示词（必填）。visual/motion/camera 会被拼进 T2V 生成 prompt，要具体可执行；audio/narrative 供编排与审片参照。camera 维与外层 camera 字段保持一致语义'
         )
         messages = [
             {'role': 'system', 'content': system},
@@ -329,19 +357,33 @@ class LLMClient:
         ]
         return self.chat_json(messages, model=self.models['script'], temperature=0.7)
 
-    def optimize_prompt(self, scene_desc: str, style: str) -> str:
-        """中文场景描述→英文 video_prompt"""
+    def optimize_prompt(self, scene_desc: str, style: str, five_dim: dict = None) -> str:
+        """中文场景描述→英文 video_prompt（M5a：五维提示词 [Visual]/[Motion]/[Camera] 融入）"""
+        fd_block, fd_rule = '', ''
+        if isinstance(five_dim, dict) and five_dim:
+            parts = []
+            for key, tag in (('visual', 'Visual'), ('motion', 'Motion'), ('camera', 'Camera')):
+                v = str(five_dim.get(key) or '').strip()
+                if v:
+                    parts.append(f'[{tag}] {v}')
+            if parts:
+                fd_block = '五维结构化提示：\n' + '\n'.join(parts) + '\n'
+                fd_rule = ('- 五维提示必须全部融入prompt：[Visual]=画面主体与环境，'
+                           '[Motion]=动作与节奏，[Camera]=运镜语言（直接用其英文术语）\n')
         system = (
             '你是视频生成prompt优化器。将中文场景描述翻译为英文的video generation prompt。\n'
             '要求：\n'
             '- 保留所有视觉细节（主体、动作、环境、光线）\n'
             '- 加入风格修饰词（来自style字段）\n'
-            '- 英文，不超过80词\n'
+            + fd_rule
+            + '- 英文，不超过100词\n'
             '- 不要加任何解释，只输出prompt文本'
         )
+        user = (f'{fd_block}场景描述：{scene_desc}\n风格：{style}' if fd_block
+                else f'场景描述：{scene_desc}\n风格：{style}')
         messages = [
             {'role': 'system', 'content': system},
-            {'role': 'user', 'content': f'场景描述：{scene_desc}\n风格：{style}'},
+            {'role': 'user', 'content': user},
         ]
         return self.chat(messages, model=self.models['prompt_opt'], temperature=0.5).strip()
 

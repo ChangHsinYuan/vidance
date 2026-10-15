@@ -45,7 +45,37 @@ def cmd_auto(args):
     skill = _load_skill(args, 'auto')
     from utils.skills import SkillManager as _SM
     style = _SM.style_for(skill) if skill else None
+    # 五维提示词模板（--template，SKILL/templates/）
+    five_dim_guide = None
+    tpl_name = getattr(args, 'template', None)
+    if tpl_name:
+        tpl = _SM.get(tpl_name)
+        if tpl and _SM.five_dim_guide(tpl):
+            five_dim_guide = _SM.five_dim_guide(tpl)
+            print(f'=== [template] {tpl.get("display_name", tpl_name)}: {tpl.get("description", "")} ===')
+        else:
+            print(f'  ⚠ 五维模板 "{tpl_name}" 不存在或缺 five_dim_guide 段（可用: '
+                  f'{", ".join(k for k in _SM.list() if k.startswith("templates/"))}），忽略')
     d = (skill and _SM.params_for(skill, 'auto')) or {}
+
+    # RAG 参考资料（--rag-doc，M5b）：文档入索引（md5 缓存）→ 按概念检索 → 拼上下文
+    rag_context = None
+    rag_docs = [p for p in (getattr(args, 'rag_doc', None) or []) if p]
+    if rag_docs and args.concept:
+        try:
+            from utils.rag import RagIndex
+            idx = RagIndex()
+            keys = []
+            for p in rag_docs:
+                r = idx.add_document(p)
+                keys.append(r['key'])
+                print(f'  [rag] {r["file"]}: {"缓存" if r["cached"] else "新建"}索引 '
+                      f'{r["chunks"]} 片段')
+            hits = idx.search(args.concept, k=5, doc_keys=keys)
+            rag_context = RagIndex.format_context(hits)
+            print(f'  [rag] 检索 {len(hits)} 片段注入编剧（{len(rag_context)} 字）')
+        except Exception as e:
+            print(f'  ⚠ [rag] 失败（忽略参考资料继续）: {e}')
     if d.get('character_mode') and args.character_mode == 'auto':
         args.character_mode = d['character_mode']
     if d.get('character') and not args.character:
@@ -78,6 +108,8 @@ def cmd_auto(args):
         resume=getattr(args, 'resume', None),
         no_preflight=getattr(args, 'no_preflight', False),
         style_hint=style,
+        five_dim_guide=five_dim_guide,
+        rag_context=rag_context,
     )
     print(f'\nDone: {meta["output"]}')
 
@@ -902,6 +934,10 @@ def build_parser():
                         help='v17 M4 断点续跑：传已有 task_id，从 checkpoint 恢复（跳过已完成阶段/镜头；概念可不传）')
     p_auto.add_argument('--skill', default=None,
                         help='风格技能（SKILL/commands/auto 或 agents 配方名，如 healing/artist）')
+    p_auto.add_argument('--template', default=None,
+                        help='五维提示词模板（SKILL/templates/ 名，如 cinematic/documentary；M5a）')
+    p_auto.add_argument('--rag-doc', action='append', default=None, metavar='PATH',
+                        help='参考资料文档（md/txt/pdf，可重复；RAG 检索相关片段注入编剧，M5b）')
     p_auto.add_argument('--no-preflight', action='store_true',
                         help='跳过开跑前预检（默认开跑前探测依赖服务，硬依赖挂则拒绝启动）')
     p_auto.set_defaults(func=cmd_auto)

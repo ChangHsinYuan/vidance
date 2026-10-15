@@ -8,13 +8,13 @@ Vidance 是一个基于 opencode agent 编排的本地视频生成系统。核�
 
 **统一入口**：`python core/vidance.py make`（v12（原 v17）：`--director llm|manual|scout × --generator wan|fast|svg|h3` 排列组合）或直用子命令 `{auto|custom|quick|fast|hot|svg|compose|concat|h3shot}` — auto 模式走 LLM 编剧+Wan/FLUX 生成，custom 模式走参考图+预写脚本+H3 ref2va 生成，quick 模式纯 T2V 无后处理。后处理（RIFE/LUT/BGM/STT）由 `core/postprocess.py` 共享模块提供。
 
-**当前状态：v0-v7 全部实现 + v10 时间线拼接（M1-M8）+ svg 有声流水线（S1-S5）+ t2c 自然语言→命令 + v12 make 统一入口（M1-M2，原 v17）+ v11 多智能体（M0-M4 + v11.1 前端可视化，原 v13，agents/ 目录，docs/v11-design.md）+ v15 PPT 流水线（M1-M4，原 v20：ppt_llm plan_deck/模板/svg_chart + ppt_pipeline PptLine 多形态 deck.html/PDF/PNG/mp4 + CLI ppt + generator.ppt agent + /api/tool/ppt）+ v13 blender 3D 简单版（blender_llm plan_scene/模板 title3d+shapes+bars3d + blender_pipeline bpy EEVEE + BlenderLine + CLI blender3d + generator.blender3d agent + /api/tool/blender3d）+ v13 轻量化收口（无模型四线全具备：营销号/SVG/PPT/Blender）+ v16 SAM2 编辑 + 生成式编辑增强 ✅（sam_edit segment/cutout/replace_bg/mosaic/inpaint/visualize/instruct + YOLO 自动 Grounded-SAM/框提示 + video 双向传播追踪 + v16.x M5 FLUX Fill 生成式重绘/M6 Union ControlNet canny 联动/M7 Wan2.1 VACE 参考图生视频/M8 Qwen-Image-Edit 2509 指令式编辑（中文可用）+ CLI edit --engine flux|vace|instruct + post.edit agent + /api/tool/edit|vace + deploy 环境固化三件套；docs/v16-design.md）**（v2 长视频 + v2.1 backlog + v3 M0-M7 + v4 M1-M6 + v5 M1-M4 + v6 M1-M4 + v7 前端 M1-M4 + v10 + t2c），**待开发**：v14 社交媒体（原 v11，🔗 已移交队友）/ v17 开源整合（原 v12）/ v18 长视频质量（原 v14）/ v19 二创（原 v16）/ v20 生成中审核（原 v21）/ v21 交付形态（原 v18）（2026-09-26 重排 + 2026-09-30 新增 v19-v21 + 2026-10-01 二次重排 + v13/v15 关版、v14 移交队友 + 2026-10-02 v16 M0-M4：括号内为原号）。
+**当前状态：v0-v7 全部实现 + v10 时间线拼接（M1-M8）+ svg 有声流水线（S1-S5）+ t2c 自然语言→命令 + v12 make 统一入口（M1-M2，原 v17）+ v11 多智能体（M0-M4 + v11.1 前端可视化，原 v13，agents/ 目录，docs/design/v11-design.md）+ v15 PPT 流水线（M1-M4，原 v20：ppt_llm plan_deck/模板/svg_chart + ppt_pipeline PptLine 多形态 deck.html/PDF/PNG/mp4 + CLI ppt + generator.ppt agent + /api/tool/ppt）+ v13 blender 3D 简单版（blender_llm plan_scene/模板 title3d+shapes+bars3d + blender_pipeline bpy EEVEE + BlenderLine + CLI blender3d + generator.blender3d agent + /api/tool/blender3d）+ v13 轻量化收口（无模型四线全具备：营销号/SVG/PPT/Blender）+ v16 SAM2 编辑 + 生成式编辑增强 ✅（sam_edit segment/cutout/replace_bg/mosaic/inpaint/visualize/instruct + YOLO 自动 Grounded-SAM/框提示 + video 双向传播追踪 + v16.x M5 FLUX Fill 生成式重绘/M6 Union ControlNet canny 联动/M7 Wan2.1 VACE 参考图生视频/M8 Qwen-Image-Edit 2509 指令式编辑（中文可用）+ CLI edit --engine flux|vace|instruct + post.edit agent + /api/tool/edit|vace + deploy 环境固化三件套；docs/design/v16-design.md）**（v2 长视频 + v2.1 backlog + v3 M0-M7 + v4 M1-M6 + v5 M1-M4 + v6 M1-M4 + v7 前端 M1-M4 + v10 + t2c），**待开发**：v14 社交媒体（原 v11，🔗 已移交队友）/ v17 开源整合（原 v12）/ v18 长视频质量（原 v14）/ v19 二创（原 v16）/ v20 生成中审核（原 v21）/ v21 交付形态（原 v18）（2026-09-26 重排 + 2026-09-30 新增 v19-v21 + 2026-10-01 二次重排 + v13/v15 关版、v14 移交队友 + 2026-10-02 v16 M0-M4：括号内为原号）。
 
 **版本路线**：v4 营销号流水线（fast/hot 爬图出片）→ v5 剪辑特效 → v6 prompt 多轮核实（ask + dialog API）→ v7 前端 agent WebUI（:8894/ui）→ **v8 前端增强**（资产库/分镜预览/进度可视化/时间线展示）→ **v9 API 标准化**（多 Vendor 适配/能力发现/用量限流/OpenAPI）→ **v10 拼接与特效**（OpenCut 时间线思路，后端 CLI 可被 LLM 调用）→ **v11 多智能体**（三层 Agent 解耦，原 v13）→ **v12 三排正交**（make 统一入口，原 v17）→ **v13 轻量化 ✅**（无模型四线：营销号/SVG/PPT/Blender 3D；模型加速按需后续，原 v15）→ **v14 接入社交媒体**（发布渠道 + IM 机器人网关，🔗 已移交队友，原 v11）→ **v15 LLM 生成 PPT ✅**（HTML 幻灯片→渲染 mp4/PDF，原 v20）→ **v16 视频处理编辑 ✅**（SAM2 分割/抠图/打码/inpaint/彩色多物体/YOLO 自动 Grounded-SAM/框提示 + 视频双向追踪 + v16.x 生成式编辑：M5 FLUX Fill 重绘/M6 Union ControlNet canny/M7 Wan2.1 VACE 参考图生视频/M8 Qwen-Image-Edit 指令式编辑，原 v19）→ **v17 整合开源仓库**（断点续跑/JSON 容错/RAG/五维提示词，原 v12）→ **v18 长视频质量**（关键帧驱动/一镜到底/层级一致性，原 v14）→ **v19 二创**（视频链接二创，原 v16）→ **v20 生成中审核**（tensor 边生边审，原 v21）→ **v21 交付形态**（部署分档/一键安装，原 v18）。详见 docs/roadmap.md。
 
 v1 角色锚流程：FLUX 生角色图 → TripoSplat 重建 3DGS → 每镜 RenderSplat 按角度渲染参考帧 → Wan I2V 生成。
 
-**t2c 自然语言 → 命令**（2026-09-24 接入，见 docs/v-t2c.md）：
+**t2c 自然语言 → 命令**（2026-09-24 接入，见 docs/design/v-t2c.md）：
 自建 agent_loop 的"翻译层"——用户中文口语经 mt5-small 微调模型（`t2c/model`，CPU 可跑）转成 Vidance 命令。链路：`/api/chat`（LLM 判意图，闲聊直接回 / 创作返回 `[[VIDEO:概念]]`）→ v6 dialog 多轮核实 → `POST /api/t2c`（`utils/t2c_server.py` 的 `translate(text)`）→ 得命令 → 前端展示 + ▶ 执行。网页端 `:8894/ui` 直接测；命令行 `python utils/t2c_server.py '帮我auto生成城市夜景'` → `python core/vidance.py auto "城市夜景"`。计划：全部指令（含 v10 剪辑）齐全后重训覆盖全量。
 
 
@@ -135,7 +135,7 @@ vidance/
 │       ├── rife_transition.json  # v2 RIFE 插帧 workflow（7 节点）
 │       ├── hunyuan3d_single.json  # v3 Hunyuan3Dv2 单图→mesh workflow（M1 验证）
 │       └── hunyuan3d_multiview.json  # v3 Hunyuan3Dv2 多视角→mesh workflow（M2 验证）
-├── agents/                    # v11 多智能体（原 v13）：D/G/P/V 物理分层 + 薄包装（docs/v11-design.md）
+├── agents/                    # v11 多智能体（原 v13）：D/G/P/V 物理分层 + 薄包装（docs/design/v11-design.md）
 │   ├── base.py                # TaskResult + @register 注册表 + run_agent（计时/兜底/落盘）
 │   ├── blackboard.py          # agent_runs 黑板（复用 output/tasks.sqlite）
 │   ├── runtime.py             # load_all + run_chain（${ctx.key} 引用产物）
@@ -153,8 +153,11 @@ vidance/
 ├── .opencode/
 │   ├── agents/{director,reviewer,asset,scout}.md
 │   └── skills/{scriptwriting,review,topic_scouting}/SKILL.md
-├── docs/                      # 设计文档（roadmap + hierarchy.md 方法脉络图 + v12-modules.md 三排正交 + v0-v18 design + deployed-models + instructions/ 命令库+剪辑指令库 + v-t2c.md；archive/ 历史稿）
-│   └── usage*.md              # 使用指南（usage.md 主入口 + usage-v0/v1/v2/v3/v4/v6/v7/v10/v-svg.md 分版本小工具）
+├── docs/                      # 文档（roadmap + reports；usage/ 使用指南 + design/ 设计文档 + research/ 调研 + instructions/ 命令库与部署 + example/ 示例 + archive/ 历史稿）
+│   ├── usage/                 # 使用指南（usage.md 主入口 + usage-v0/v1/v2/v3/v4/v6/v7/v10/v-svg.md 分版本小工具）
+│   ├── design/                # 设计文档（v0-v18 design + v12-modules + hierarchy + v-t2c + v-svg-pipeline）
+│   ├── research/              # 调研（mpt-research + bigbanana-research）
+│   └── instructions/          # 命令库（commands.json + compose 指令库）+ 部署（deploy-tiers/deployed-models）
 ├── voice_samples/ → /mnt/dataset/...  # 音色试听样本（软链）
 └── output/                    # 成片 + 元数据（真实目录，任务=output/{task_id}/，成片 final.mp4）
 ```
