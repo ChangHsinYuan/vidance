@@ -97,9 +97,12 @@ class TTSClient:
                 continue
             if need_validate:
                 ok, why, bounds = self._validate_boundaries(text, result)
-                if not ok and attempt == 1:
-                    print(f'  [tts] 首尾杂音检测不通过（{why}），重试 1/1')
-                    continue
+                if not ok:
+                    if attempt == 1:
+                        print(f'  [tts] 首尾杂音检测不通过（{why}），重试 1/1')
+                        continue
+                    # 重试仍失败：不再落盘幻觉版，词界尽力裁剪 + 显著告警
+                    print(f'  [tts] ⚠ 重试后仍有杂音（{why}），按词界尽力裁剪，建议换音色或调短文本')
             break
 
         if need_validate:
@@ -136,8 +139,9 @@ class TTSClient:
     def _validate_boundaries(self, text: str, result: dict):
         """校验合成音频首尾音节与文本一致。返回 (ok, 原因, 词界或None)。异常一律放行。
 
-        词界 = (first_word_start, last_word_end)，仅在首词音节匹配时可信
-        （whisper 偶发漏掉首词，此时词界不可信，回退能量裁剪）。
+        词界 = (first_word_start, last_word_end)。无论 ok 与否都尽力给出：
+        ok 时 = 首尾正文词界；fail 时 = 首个匹配首音节的词起点 / 最后匹配尾音节的词终点
+        （供 trim 尽力抢救，把幻觉段裁掉）。
         """
         try:
             import io as _io
@@ -151,21 +155,26 @@ class TTSClient:
             words = [(wd.start, wd.end, wd.word) for s in segs for wd in s.words]
             if not words:
                 return True, '', None
-            first = TTSClient._word_syllables(words[0][2])
-            last2 = []
-            for wd in words[-2:]:
-                last2 += TTSClient._word_syllables(wd[2])
             exp_first = lazy_pinyin(clean[0])[0]
             exp_last = lazy_pinyin(clean[-1])[0]
+            # 尽力定位正文首词（音节匹配的最早词）与正文尾词（含尾字音节的最晚词）
+            first_match = next((w for w in words
+                                if TTSClient._word_syllables(w[2])
+                                and TTSClient._word_syllables(w[2])[0] == exp_first), None)
+            last_match = next((w for w in reversed(words)
+                               if exp_last in TTSClient._word_syllables(w[2])), None)
+            head_ok = first_match is not None and words[0] is first_match
+            tail_ok = last_match is not None and words[-1] is last_match
             bounds = None
-            head_ok = bool(first) and first[0] == exp_first
-            tail_ok = bool(last2) and exp_last in last2
-            if head_ok and tail_ok:
-                bounds = (words[0][0], words[-1][1])
+            if first_match and last_match and first_match[0] < last_match[1]:
+                bounds = (first_match[0], last_match[1])
             if not head_ok:
-                return False, f'句首音节 {first[0] if first else "?"}≠{exp_first}（转写 {words[0][2]!r}）', None
+                why = (f'句首音节异常（首词 {words[0][2]!r}≠{clean[0]}'
+                       + (f'，正文疑似自 {first_match[2]!r} 起' if first_match else '') + '）')
+                return False, why, bounds
             if not tail_ok:
-                return False, f'句尾音节 {last2}不含{exp_last}（转写 {words[-1][2]!r}）', None
+                return False, (f'句尾词 {words[-1][2]!r} 不含尾字音节 {exp_last}'
+                               f'（疑似句尾杂音）'), bounds
             return True, '', bounds
         except Exception:
             return True, '', None
