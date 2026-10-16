@@ -124,6 +124,7 @@ class Pipeline:
             no_preflight: bool = False,
             style_hint: str = None,
             five_dim_guide: dict = None,
+            style_pack: dict = None,
             rag_context: str = None) -> dict:
         """端到端生成有声短片
 
@@ -139,6 +140,8 @@ class Pipeline:
         task_id: 外部指定 task_id（调度器传入），None 时自动生成时间戳
         resume: v17 M4 断点续跑——传已有 task_id，从 checkpoint.json 恢复（跳过已完成阶段/镜头）
         five_dim_guide: M5a 五维提示词模板（SKILL/templates/ five_dim_guide 段），注入编剧
+        style_pack: M6-S5 风格包（SKILL/templates/ style_pack 段）：锚点覆盖（style_anchor/
+          color/lighting/mood 优先于 LLM 生成）+ character_sheet 四视图风格词
         rag_context: M5b RAG 检索的参考资料文本（--rag-doc 文档片段），注入编剧
         """
         resumed_from = None
@@ -204,9 +207,30 @@ class Pipeline:
                                             style_hint=style_hint,
                                             five_dim_guide=five_dim_guide,
                                             rag_context=rag_context)
-        meta['script'] = script
+        # ── 1.5 一致性锚点（M6.1，BigBanana consistencyAnchors）──
+        # 结构守卫：编剧产物必须含 shots（LLM 回喂重问后仍缺则明确报错）
+        if not script.get('shots'):
+            raise RuntimeError('编剧产物缺 shots（LLM 输出不合规），请重试或换概念')
+        script.setdefault('title', script.get('concept', 'untitled'))
+        # M6-S5：风格包锚点优先（模板定义的"美学基因"直接覆盖 LLM 生成）
+        anchors = (ckpt.get('anchors') if resumed_from else None) or {}
+        if not anchors:
+            anchors = self.llm.consistency_anchors(script)  # 失败返回 {}，非致命
+            if anchors:
+                print(f'  anchors: {str(anchors.get("style_anchor", ""))[:70]}...')
+            merged = self._merge_style_pack_anchors(anchors, style_pack)
+            if merged != anchors:
+                print('  anchors: <style_pack override>')
+                sp = (style_pack or {}).get('style_pack') or {}
+                if sp.get('style_anchor'):
+                    script['style'] = sp['style_anchor']  # 风格域同步，避免 script.style 与锚点打架
+            anchors = merged
+        self._style_pack = style_pack or {}
+        self._anchors = anchors
+        meta['anchors'] = anchors
         self._save_ckpt(task_dir, {'concept': concept, 'character_desc': character_desc,
-                                   'target_duration': target_duration, 'script': script})
+                                   'target_duration': target_duration, 'script': script,
+                                   'anchors': anchors})
         print(f'  title: {script["title"]}')
         print(f'  shots: {len(script["shots"])}')
         self._log('▸ [1] 编剧完成: %s · %d 镜 · review=%s' % (
@@ -238,9 +262,12 @@ class Pipeline:
             for shot in script['shots']:
                 shot['style'] = style
                 shot['video_prompt'] = self.llm.optimize_prompt(
-                    shot['scene_desc'], style, five_dim=shot.get('five_dim'))
+                    shot['scene_desc'], style, five_dim=shot.get('five_dim'),
+                    ref_frame=bool(character_desc),
+                    anchors=self._anchors or None)
                 bg_desc = shot.get('background_desc', shot['scene_desc'])
-                shot['background_prompt'] = self.llm.optimize_background_prompt(bg_desc, style)
+                shot['background_prompt'] = self.llm.optimize_background_prompt(
+                    bg_desc, style, anchors=self._anchors or None)
                 print(f'  shot {shot["id"]}: video={shot["video_prompt"][:50]}...')
                 print(f'           bg={shot["background_prompt"][:50]}...')
             self._save_ckpt(task_dir, {'prompts_done': True, 'script': script})
@@ -259,6 +286,7 @@ class Pipeline:
                 no_asset_reuse=no_asset_reuse,
             )
             character['desc'] = character_desc
+            character['prompt_en'] = character_prompt
             meta['character'] = character
             self._save_ckpt(task_dir, {'character': character})
 
@@ -559,12 +587,28 @@ class Pipeline:
                         'mode': '3dgs', 'asset_id': match['id'],
                     }
 
-        # [3a] FLUX 生成角色参考图
-        print('  [3a] FLUX 生成角色参考图...')
+        # [3a] FLUX 生成角色参考图（M6-S3：四视图设定图单图=身份锚，失败回退单视图）
+        # M6-S6b 启动自愈（Toonflow fixDB 思路）：文件在即资产有效，resume 跳过再生
         ref_path = os.path.join(char_dir, 'character_ref.png')
         char_size = self.flux_defaults.get('character_size', 1024)
+        if os.path.exists(ref_path) and os.path.getsize(ref_path) > 10240:
+            print(f'  [3a] character_ref 已存在（resume 自愈检查通过），跳过再生')
+            if mode == 'flux':
+                return {
+                    'ref_image': ref_path,
+                    'mode': 'flux',
+                    'review': {'score': 10, 'pass': True, 'feedback': 'resumed, ref exists'},
+                }
+        print('  [3a] FLUX 生成角色四视图设定图...')
+        try:
+            char_prompt = self.llm.optimize_character_turnaround_prompt(character_desc)
+            sheet_terms = self._pack_terms()
+            if sheet_terms:
+                char_prompt = char_prompt.rstrip('. ') + '. ' + sheet_terms
+        except Exception:
+            char_prompt = character_prompt
         self.t2i_vendor.t2i(
-            prompt=character_prompt,
+            prompt=char_prompt,
             width=char_size, height=char_size,
             steps=self.flux_defaults.get('steps', 20),
             guidance=self.flux_defaults.get('guidance', 3.5),
@@ -702,7 +746,9 @@ class Pipeline:
 
         if use_flux_ref:
             scene_prompt = self.llm.optimize_scene_prompt(
-                character['desc'], shot['scene_desc'], shot.get('style', '')
+                character.get('prompt_en') or character['desc'],
+                shot['scene_desc'], shot.get('style', ''),
+                anchors=getattr(self, '_anchors', None) or None
             )
             composite_ref = os.path.join(clips_dir, f'composite_ref_{sid}.png')
             self.t2i_vendor.t2i(
@@ -749,6 +795,41 @@ class Pipeline:
                 print(f'  [prefetch] composite_ref (3dgs, yaw={yaw}): {sid}')
             return composite_ref
 
+    @staticmethod
+    def _merge_style_pack_anchors(anchors: dict, style_pack: dict) -> dict:
+        """M6-S5：风格包锚点覆盖（style_pack 段四键优先于 LLM 生成锚点）。
+
+        兼容两种入参形状：{'style_pack': {...}} 包装形 或 直接 {...} 内层形。
+        """
+        if not style_pack:
+            return anchors
+        sp = style_pack.get('style_pack') if 'style_pack' in style_pack else style_pack
+        sp = sp or {}
+        out = dict(anchors or {})
+        for k in ('style_anchor', 'color', 'lighting', 'mood'):
+            if sp.get(k):
+                out[k] = sp[k]
+        return out
+
+    def _pack_terms(self) -> str:
+        """S5：风格包 character_sheet 追加词（四视图 prompt 用）。"""
+        sp = (getattr(self, '_style_pack', None) or {})
+        sp = sp.get('style_pack') if 'style_pack' in sp else sp
+        return (sp or {}).get('character_sheet') or ''
+
+    def _shot_voice(self, shot: dict, voice: str) -> str:
+        """S6a 音色资产绑定（Toonflow o_assetsRole2Audio 思路）：
+        分镜 speaker 为角色名时路由到该角色绑定的音色（config tts.voice_map），
+        未配置则回退全局 voice。旁白镜头用全局 voice。"""
+        speaker = (shot.get('speaker') or '').strip()
+        if not speaker or speaker == '旁白':
+            return voice
+        vmap = (self.config.get('tts') or {}).get('voice_map') or {}
+        v = vmap.get(speaker)
+        if v:
+            print(f'  [voice] {speaker} → {v}')
+        return v or voice
+
     def _generate_tts(self, shot: dict, clips_dir: str, voice: str) -> dict:
         """生成镜头配音。可并行调用。"""
         sid = shot['id']
@@ -756,7 +837,7 @@ class Pipeline:
         tts_result = self.tts.synthesize(
             text=shot['narration'],
             output_path=audio_path,
-            voice=voice,
+            voice=self._shot_voice(shot, voice),
         )
         print(f'  [prefetch] tts: shot {sid} ({tts_result["duration"]:.1f}s)')
         return {
@@ -902,6 +983,8 @@ class Pipeline:
                     shot['scene_desc'] + ' ' + review['feedback'],
                     shot.get('style', ''),
                     five_dim=shot.get('five_dim'),
+                    ref_frame=bool(character),
+                    anchors=getattr(self, '_anchors', None) or None,
                 )
 
         # ── 慢动作后处理 ──

@@ -1,0 +1,22 @@
+# ── M6-S5 风格包：国风二次元新国潮（Toonflow art_skills 移植）──
+# 用法: python core/vidance.py auto "概念" --character "角色" --template guofeng
+# style_pack.style_anchor 等四键直接覆盖 consistency_anchors（S1 确定生效），
+# character_sheet 追加到四视图设定图 prompt（S3）。
+
+name: guofeng
+display_name: 国风二次元新国潮风格包
+description: 赛璐璐平涂+东方古韵+新国潮时尚——Toonflow 全局美学基因（风格锚点+四视图词汇+五维）
+
+five_dim_guide:
+  visual: 新国潮赛璐璐描述词（Chinese traditional colors, cel-shaded anime rendering, ink-wash accents, elegant flowing fabrics），光线写意境（misty morning light, lantern glow, moonlight through bamboo）
+  motion: 动作飘逸写意（graceful flowing movement, fabric and hair trailing elegantly），武打走写意停顿不写实搏斗
+  camera: 意境机位（slow vertical pan down from sky, wide scroll-like panorama, low-angle through foreground flowers），构图留白如卷轴
+  audio: 古典器乐点描（古琴、箫、笛、风铃），环境音用自然声（溪流、竹林沙沙、檐铃），配乐克制不抢意境
+  narrative: 东方叙事含蓄推进——本镜是意境铺陈、情感暗涌还是留白收束，一句话点明
+
+style_pack:
+  style_anchor: Chinese guofeng anime style, cel-shaded rendering with ink-wash accents, traditional Chinese color palette, elegant neo-Chic aesthetic, cinematic composition
+  color: primary ink black and vermilion red, secondary jade green and gold accents, forbidden Western neon purple tones
+  lighting: soft misty ambient light, warm lantern glow, moonlight filtering through clouds and bamboo
+  mood: elegant, serene, poetic, majestic, subtly melancholic
+  character_sheet: Chinese guofeng anime character design sheet, cel-shaded rendering with ink-wash accents, traditional Chinese color palette, flowing hanfu-inspired clothing, elegant neo-Chic aesthetic

@@ -47,11 +47,14 @@ def cmd_auto(args):
     style = _SM.style_for(skill) if skill else None
     # 五维提示词模板（--template，SKILL/templates/）
     five_dim_guide = None
+    style_pack = None
     tpl_name = getattr(args, 'template', None)
     if tpl_name:
-        tpl = _SM.get(tpl_name)
-        if tpl and _SM.five_dim_guide(tpl):
-            five_dim_guide = _SM.five_dim_guide(tpl)
+        sm = _SM()
+        tpl = sm.get(tpl_name)
+        if tpl and sm.five_dim_guide(tpl):
+            five_dim_guide = sm.five_dim_guide(tpl)
+            style_pack = tpl.get('style_pack')  # M6-S5 风格包（可缺省）
             print(f'=== [template] {tpl.get("display_name", tpl_name)}: {tpl.get("description", "")} ===')
         else:
             print(f'  ⚠ 五维模板 "{tpl_name}" 不存在或缺 five_dim_guide 段（可用: '
@@ -59,21 +62,41 @@ def cmd_auto(args):
     d = (skill and _SM.params_for(skill, 'auto')) or {}
 
     # RAG 参考资料（--rag-doc，M5b）：文档入索引（md5 缓存）→ 按概念检索 → 拼上下文
+    # M6-R-N：--rag-novel 走小说路线（分章索引+人物卡，人物卡置顶=外观唯一来源）；
+    # 未显式指定时若文档已按 novel 索引（如 UI 上传过）也自动走小说路线
     rag_context = None
     rag_docs = [p for p in (getattr(args, 'rag_doc', None) or []) if p]
     if rag_docs and args.concept:
         try:
             from utils.rag import RagIndex
             idx = RagIndex()
-            keys = []
+            want_novel = bool(getattr(args, 'rag_novel', False))
+            keys, novel_ctx = [], []
             for p in rag_docs:
-                r = idx.add_document(p)
+                if want_novel:
+                    r = idx.add_novel(p)
+                else:
+                    r = idx.add_document(p)
+                    if idx._load_meta(os.path.join(
+                            idx.index_dir, f'doc-{r["key"]}.meta.json')
+                    ).get('kind') == 'novel':
+                        want_novel = True  # 已是小说索引，后续文档沿用小说路线
                 keys.append(r['key'])
-                print(f'  [rag] {r["file"]}: {"缓存" if r["cached"] else "新建"}索引 '
-                      f'{r["chunks"]} 片段')
-            hits = idx.search(args.concept, k=5, doc_keys=keys)
-            rag_context = RagIndex.format_context(hits)
-            print(f'  [rag] 检索 {len(hits)} 片段注入编剧（{len(rag_context)} 字）')
+                print(f'  [rag] {r.get("file") or r.get("title") or p}: '
+                      f'{"缓存" if r.get("cached") else "新建"}索引 '
+                      f'{r.get("chunks", 0)} 片段'
+                      + (f' · {r.get("chapters", 0)} 章 · {len(r.get("cards") or [])} 人物卡'
+                         if want_novel else ''))
+            if want_novel:
+                hits = idx.search_novel(args.concept, k=5, novel_key=keys[0])
+                cards = idx._load_cards(keys[0])
+                rag_context = RagIndex.format_novel_context(hits, cards)
+                print(f'  [rag] 小说路线：检索 {len(hits)} 片段 + {len(cards)} 人物卡注入编剧'
+                      f'（{len(rag_context)} 字）')
+            else:
+                hits = idx.search(args.concept, k=5, doc_keys=keys)
+                rag_context = RagIndex.format_context(hits)
+                print(f'  [rag] 检索 {len(hits)} 片段注入编剧（{len(rag_context)} 字）')
         except Exception as e:
             print(f'  ⚠ [rag] 失败（忽略参考资料继续）: {e}')
     if d.get('character_mode') and args.character_mode == 'auto':
@@ -109,6 +132,7 @@ def cmd_auto(args):
         no_preflight=getattr(args, 'no_preflight', False),
         style_hint=style,
         five_dim_guide=five_dim_guide,
+        style_pack=style_pack,
         rag_context=rag_context,
     )
     print(f'\nDone: {meta["output"]}')
@@ -938,6 +962,8 @@ def build_parser():
                         help='五维提示词模板（SKILL/templates/ 名，如 cinematic/documentary；M5a）')
     p_auto.add_argument('--rag-doc', action='append', default=None, metavar='PATH',
                         help='参考资料文档（md/txt/pdf，可重复；RAG 检索相关片段注入编剧，M5b）')
+    p_auto.add_argument('--rag-novel', action='store_true',
+                        help='--rag-doc 按小说路线处理（分章索引+人物卡抽取，人物卡置顶注入编剧，M6-R-N）')
     p_auto.add_argument('--no-preflight', action='store_true',
                         help='跳过开跑前预检（默认开跑前探测依赖服务，硬依赖挂则拒绝启动）')
     p_auto.set_defaults(func=cmd_auto)

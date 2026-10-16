@@ -1206,6 +1206,84 @@ def file_stream(path: str):
 
 
 # ── v17 M1 会话资产缓冲区：/api/upload /api/assets /api/session ──
+@app.post('/api/rag/upload')
+async def rag_upload_novel(request: Request):
+    """小说/文档上传 → 后台分章建索引 + 人物卡抽取（M6 R-N）。
+
+    multipart file 字段（md/txt/pdf）。返回 {doc_key, title, chapters, chunks,
+    cards, indexing:true}——索引在后台线程完成，状态查 GET /api/rag/status?doc_key=。
+    """
+    form = await request.form()
+    up = form.get('file')
+    if up is None or not hasattr(up, 'filename'):
+        raise HTTPException(status_code=400, detail='missing multipart field: file')
+    data = await up.read()
+    if not data:
+        raise HTTPException(status_code=400, detail='empty file')
+    ext = os.path.splitext(up.filename or '')[1].lower()
+    if ext not in ('.md', '.markdown', '.txt', '.pdf', ''):
+        raise HTTPException(status_code=400, detail=f'不支持的类型: {ext}（md/txt/pdf）')
+    import tempfile
+    fd, tmp_path = tempfile.mkstemp(suffix=ext or '.txt', prefix='novel_')
+    with os.fdopen(fd, 'wb') as f:
+        f.write(data)
+    result = {}
+
+    def _index():
+        try:
+            from utils.rag import RagIndex
+            idx = RagIndex()
+            r = idx.add_novel(tmp_path, extract_cards=True)
+            result.update(r)
+        except Exception as e:
+            result['error'] = str(e)
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    import threading
+    threading.Thread(target=_index, daemon=True).start()
+    # 立即回 doc_key（内容 md5 由 RagIndex 计算——同步算 key 不建索引，快）
+    from utils.rag import _md5
+    try:
+        from utils.rag import read_document
+        key = _md5(read_document(tmp_path))
+    except Exception:
+        key = ''
+    return {'doc_key': key, 'indexing': True, 'file': up.filename,
+            'size': len(data), 'note': '索引后台进行中，稍后查 /api/rag/status'}
+
+
+@app.get('/api/rag/status')
+def rag_status(doc_key: str = Query('')):
+    """RAG 索引状态：无 doc_key 列全部文档；有则回单文档详情+人物卡。"""
+    from utils.rag import RagIndex
+    idx = RagIndex()
+    if not doc_key:
+        return {'docs': idx.list_docs()}
+    meta = idx._load_meta(os.path.join(idx.index_dir, f'doc-{doc_key}.meta.json'))
+    if not meta:
+        return {'doc_key': doc_key, 'indexed': False}
+    return {'doc_key': doc_key, 'indexed': True, 'kind': meta.get('kind', 'doc'),
+            'title': meta.get('title', meta.get('file', '')),
+            'chapters': meta.get('chapters', []),
+            'chunks': len(meta.get('chunks', [])),
+            'cards': idx._load_cards(doc_key)}
+
+
+@app.get('/api/rag/search')
+def rag_search(q: str = Query(...), k: int = Query(5, le=20),
+               doc_key: str = Query('')):
+    """调试用：直接检索已索引内容（返回片段+章节归属+人物卡注入段）。"""
+    from utils.rag import RagIndex
+    idx = RagIndex()
+    hits = idx.search_novel(q, k=k, novel_key=doc_key or None)
+    cards = idx._load_cards(doc_key) if doc_key else []
+    return {'hits': hits, 'context': RagIndex.format_novel_context(hits, cards)}
+
+
 @app.post('/api/upload')
 async def upload_asset(request: Request, session_id: str = Query(...), as_name: str = Query('')):
     """上传资产进 buffer（multipart file 字段）。返回 {asset_id, path, url, name...}"""
@@ -1539,6 +1617,16 @@ TOOLS = [
     {'name': 'trends', 'help': '爬取实时热点（不选题，直接看热榜）',
      'params': [
          {'key': '--top', 'type': 'number', 'desc': '每源条数（默认 10）'},
+     ]},
+    {'name': 'rag', 'help': 'RAG 索引/检索/人物卡（独立测试入口，不生成视频）',
+     'params': [
+         {'key': 'action', 'type': 'choice', 'required': True,
+          'choices': ['add', 'search', 'status', 'context'], 'desc': '子动作'},
+         {'key': 'arg', 'type': 'text', 'desc': 'add 的路径 / search 的检索问题'},
+         {'key': '--novel', 'type': 'flag', 'desc': '小说路线（分章+人物卡）'},
+         {'key': '--key', 'type': 'text', 'desc': '限定文档（/rag status 里的 key）'},
+         {'key': '--k', 'type': 'number', 'desc': '检索条数（默认 5）'},
+         {'key': '--force', 'type': 'flag', 'desc': '强制重建索引'},
      ]},
     {'name': 'clean', 'help': '清理旧任务输出（默认保留最近 10 个，--keep 可改）',
      'params': [
@@ -1932,6 +2020,63 @@ def tool_dispatch(name: str, req: ToolRequest):
         top = int(flags.get('top', 10))
         topics = Crawler().fetch_hot_topics(top_per_source=top)
         return {'message': f'抓取到 {len(topics)} 条热点', 'topics': topics}
+    # ── rag：独立 RAG 测试/中间产物入口（M6-R-N，不生成视频）──
+    if name == 'rag':
+        from utils.rag import RagIndex
+        action = pos[0] if pos else 'status'
+        idx = RagIndex()
+        k = int(flags.get('k', 5))
+        doc_key = flags.get('key') or None
+        if action == 'add':
+            if len(pos) < 2:
+                raise HTTPException(status_code=400, detail='用法: /rag add <path> [--novel] [--force]')
+            path = pos[1]
+            if not os.path.isfile(path):
+                raise HTTPException(status_code=404, detail=f'文件不存在: {path}')
+            if 'novel' in flags:
+                r = idx.add_novel(path, force='force' in flags)
+                cards = r.get('cards') or []
+                return {'message': (
+                    f'小说已索引：{r.get("title") or os.path.basename(path)} · '
+                    f'{r["chapters"]} 章 / {r["chunks"]} 片段 · 人物卡 {len(cards)} 张'
+                    + ('（缓存）' if r.get('cached') else '')),
+                    'result': r, 'cards': cards}
+            r = idx.add_document(path, force='force' in flags)
+            return {'message': f'文档已索引：{r["file"]} · {r["chunks"]} 片段'
+                    + ('（缓存）' if r.get('cached') else ''), 'result': r}
+        if action == 'search':
+            if len(pos) < 2:
+                raise HTTPException(status_code=400, detail='用法: /rag search <问题> [--key doc_key] [--k 5]')
+            hits = idx.search_novel(pos[1], k=k, novel_key=doc_key) if doc_key \
+                else idx.search(pos[1], k=k, doc_keys=[doc_key] if doc_key else None)
+            if not hits:
+                return {'message': '未检索到相关内容（试试 /rag status 看有哪些文档）', 'hits': []}
+            lines = [f"[{h.get('score', 0):.3f}] " + (f"{h.get('chapter')} · " if h.get('chapter') else '')
+                     + str(h.get('text', h))[:80] for h in hits]
+            return {'message': f'检索到 {len(hits)} 片段', 'hits': hits, 'help_lines': lines}
+        if action == 'context':
+            if len(pos) < 2:
+                raise HTTPException(status_code=400, detail='用法: /rag context <问题> [--key doc_key] [--novel]')
+            key = doc_key or (idx.list_docs()[0]['key'] if idx.list_docs() else '')
+            if not key:
+                raise HTTPException(status_code=400, detail='索引为空，先 /rag add <path>')
+            hits = idx.search_novel(pos[1], k=k, novel_key=key)
+            cards = idx._load_cards(key)
+            ctx = RagIndex.format_novel_context(hits, cards) if 'novel' in flags or cards \
+                else RagIndex.format_context(hits)
+            return {'message': f'注入编剧的上下文（{len(ctx)} 字，{len(cards)} 人物卡）',
+                    'context': ctx, 'cards': cards, 'hits': hits}
+        # status（默认）
+        docs = idx.list_docs()
+        lines = []
+        for d in docs:
+            meta = idx._load_meta(os.path.join(idx.index_dir, f'doc-{d["key"]}.meta.json')) or {}
+            kind = meta.get('kind', 'doc')
+            ch = f" · {len(meta.get('chapters', []))} 章" if kind == 'novel' else ''
+            n_cards = len(idx._load_cards(d['key']) or [])
+            lines.append(f'{d["key"][:8]}  {d["file"]}  [{kind}] {d["chunks"]} 片段{ch}'
+                         + (f' · {n_cards} 人物卡' if n_cards else ''))
+        return {'message': f'已索引 {len(docs)} 个文档', 'docs': docs, 'help_lines': lines}
     if name == 'clean':
         keep = int(flags.get('keep', 10))
         import glob as _glob

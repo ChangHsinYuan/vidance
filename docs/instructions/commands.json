@@ -67,17 +67,36 @@
         {
           "key": "--no-rife / --no-color / --no-bgm",
           "desc": "禁用对应后处理"
+        },
+        {
+          "key": "--template",
+          "type": "text",
+          "desc": "五维模板/风格包（cinematic/documentary/anime90s/guofeng；M5a+M6-S5 风格锚点）"
+        },
+        {
+          "key": "--rag-doc",
+          "type": "text",
+          "desc": "参考资料文档路径（md/txt/pdf，可重复传；RAG 检索注入编剧，M5b）"
+        },
+        {
+          "key": "--rag-novel",
+          "type": "flag",
+          "desc": "--rag-doc 按小说路线：分章索引+人物卡抽取，人物卡=外观唯一来源（M6-R-N）"
         }
       ],
       "examples": [
-        "# 最简：一句概念全自动",
-        "/auto 一只猫在月球上跳舞",
-        "# 带角色 + 调色 + 配乐",
-        "/auto 深海探险 --character 蓝色水母 --character-mode flux --lut cool --bgm mysterious",
-        "# 长片（60s 动态镜头数）+ 慢动作 + 字幕",
-        "/auto 雪山日出：小狐狸的冒险 --character 红色小狐狸 --duration 60 --slowmo 2 --stt",
-        "# 禁用部分后处理（更快）",
-        "/auto 概念 --character 角色 --no-rife --no-color --no-bgm"
+        "/auto 一只猫在月球上跳舞 --character \"穿宇航服的白猫\"",
+        "/auto 深海探险 --character \"蓝色水母\" --character-mode flux --lut cool --bgm mysterious",
+        "/auto 深夜灯塔的故事 --duration 60 --character \"白发守塔老人\" --character-mode flux",
+        "/auto 雪山日出 --slowmo 2 --voice cosy-jieshuo1 --stt",
+        "/auto 城市霓虹夜雨 --template cinematic --duration 30",
+        "/auto 江南水乡晨雾 --template guofeng --character \"撑油纸伞的少女\"",
+        "/auto 童年夏日回忆 --template anime90s --character \"放学的小学生\" --voice cosy-meng1",
+        "/auto 纪录片风格：候鸟迁徙 --template documentary --no-bgm",
+        "/auto 守塔老人与神秘访客 --rag-doc /path/小说.txt --rag-novel --template anime90s --duration 20",
+        "/auto 产品故事 --rag-doc 资料.md --rag-doc 补充.pdf --template cinematic",
+        "/auto 概念 --resume auto_20261016_120000",
+        "/auto 概念 --task-id mytest --no-preflight"
       ]
     },
     {
@@ -621,7 +640,8 @@
       "detail": "列出 edge-*（微软在线）与 cosy-*（本地/克隆）全部可用音色及描述。",
       "params": [],
       "examples": [
-        "/voices"
+        "/voices",
+        "/voices --voice cosy-meng1 测试一下声音是否正常"
       ]
     },
     {
@@ -742,8 +762,9 @@
         }
       ],
       "examples": [
-        "/tasks -n 5",
-        "/tasks --status failed"
+        "/tasks",
+        "/tasks --status running",
+        "/tasks --status completed --limit 20"
       ]
     },
     {
@@ -1024,6 +1045,65 @@
         "/agent run post.lut --with {\"video\":\"in.mp4\",\"lut\":\"warm\",\"out_path\":\"out.mp4\"}",
         "/agent chain --steps {\"steps\":[{\"agent\":\"post.lut\",\"as\":\"c\",\"with\":{\"video\":\"in.mp4\",\"lut\":\"warm\",\"out_path\":\"/tmp/l.mp4\"}},{\"agent\":\"post.fx\",\"with\":{\"video\":\"${c.video}\",\"effect\":\"zoom\",\"out_path\":\"/tmp/f.mp4\"}}]}",
         "chain --steps {\"steps\":[{\"agent\":\"generator.svg\",\"as\":\"v\",\"with\":{\"concept\":\"柴犬宇航员\",\"voice\":\"edge-moe\"}},{\"agent\":\"post.fx\",\"as\":\"g\",\"with\":{\"video\":\"${v.video}\",\"effect\":\"glitch\"}},{\"agent\":\"post.pip\",\"with\":{\"video\":\"${v.video}\",\"overlay\":\"${g.video}\"}}]}"
+      ]
+    },
+    {
+      "name": "rag",
+      "version": "M5b+M6-R-N",
+      "brief": "RAG 索引/检索/人物卡（独立测试入口，不生成视频）",
+      "detail": "三步：add 建索引（md5 缓存，同文档秒回）→ search 检索片段（含相关度分与章节归属）→ status 看全部已索引文档与人物卡。--novel 走小说路线（分章+人物卡抽取）；--context 直接输出注入编剧的最终上下文（人物卡置顶+带章节段落），方便验证 RAG 到底给编剧喂了什么。",
+      "params": [
+        {
+          "key": "action",
+          "type": "text",
+          "required": true,
+          "desc": "add/search/status/context",
+          "choices": [
+            "add",
+            "search",
+            "status",
+            "context"
+          ]
+        },
+        {
+          "key": "path",
+          "type": "text",
+          "desc": "add 模式：文档路径（md/txt/pdf）"
+        },
+        {
+          "key": "query",
+          "type": "text",
+          "desc": "search/context 模式：检索问题"
+        },
+        {
+          "key": "--novel",
+          "type": "flag",
+          "desc": "按小说路线处理（分章索引+人物卡）"
+        },
+        {
+          "key": "--key",
+          "type": "text",
+          "desc": "search/context：限定某文档（/rag status 里看到的 key 前缀即可）"
+        },
+        {
+          "key": "--k",
+          "type": "text",
+          "desc": "检索条数（默认 5）"
+        },
+        {
+          "key": "--force",
+          "type": "flag",
+          "desc": "强制重建索引（忽略缓存）"
+        }
+      ],
+      "examples": [
+        "/rag add /path/小说.txt --novel",
+        "/rag add /path/资料.md",
+        "/rag status",
+        "/rag search 守塔人为什么留在灯塔 --k 3",
+        "/rag search 林晚的外貌 --key d34942ad",
+        "/rag context 灯塔的信任与告别 --novel",
+        "/rag add /path/重传.txt --force"
       ]
     }
   ],

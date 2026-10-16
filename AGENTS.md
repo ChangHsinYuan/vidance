@@ -440,6 +440,7 @@ curl -X POST http://127.0.0.1:8894/api/clone_voice \
 13. **LUT 调色**（v2）：6 种 3D LUT 程序生成（`gen_luts.py`），LLM 自动选风格，ffmpeg `lut3d` 滤镜，config `color.enabled`
 14. **BGM ducking**（v2）：5 种 BGM 程序合成（`music.py`），ffmpeg `sidechaincompress` 配音时自动降 BGM，config `bgm.enabled`
 15. **STT 字幕兜底**（v2）：faster-whisper large-v3-turbo 转写成片音频→SRT→重新烧录，`--stt` 开关，默认关闭（TTS 时间戳通常够用）
+16. **git 归用户**（2026-10-15 用户拍板）：未经用户明说，agent 不得执行任何 git 写操作（commit/mv/checkout/push 等）；提交时机与内容由用户决定
 
 ## Python 环境
 

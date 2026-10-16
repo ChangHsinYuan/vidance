@@ -24,8 +24,13 @@ import json
 import os
 import sys
 import base64
+import threading
 import urllib.request
 import urllib.error
+
+# CosyVoice 服务端并行推理不安全（fp16 采样 inf/nan → 0.6s 废音频，2026-10-15 E2E 实锤），
+# 客户端全局锁串行化所有 /tts 请求
+_TTS_LOCK = threading.Lock()
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), 'config', 'config.json')
 
@@ -55,7 +60,12 @@ class TTSClient:
     def synthesize(self, text: str, output_path: str = None,
                    voice: str = None, speed: float = 1.0,
                    prompt_wav: str = None, prompt_text: str = None) -> dict:
-        """合成语音，保存到 output_path，返回 {audio_path, duration, timestamps}"""
+        """合成语音，保存到 output_path，返回 {audio_path, duration, timestamps}
+
+        M6 修复：CosyVoice 服务端并行请求会采样崩坏（probability tensor inf/nan，
+        返回 200 但音频 0.6s 废片）——客户端全局串行 + 时长合理性校验，
+        过短（< max(0.5s, 期望时长×0.4)，中文≈4字/秒）自动重试一次。
+        """
         voice = voice or self.default_voice
         payload = {'text': text, 'voice': voice, 'speed': speed}
         if prompt_wav:
@@ -64,13 +74,22 @@ class TTSClient:
             payload['prompt_text'] = prompt_text
 
         data = json.dumps(payload).encode('utf-8')
-        req = urllib.request.Request(
-            f'{self.base_url}/tts',
-            data=data,
-            headers={'Content-Type': 'application/json'},
-        )
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            result = json.loads(resp.read())
+        expected = max(1.0, len(text) / 4.0)  # 中文≈4字/秒
+        result = {}
+        for attempt in (1, 2):
+            with _TTS_LOCK:
+                req = urllib.request.Request(
+                    f'{self.base_url}/tts',
+                    data=data,
+                    headers={'Content-Type': 'application/json'},
+                )
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    result = json.loads(resp.read())
+            dur = float(result.get('duration') or 0)
+            if dur >= min(0.5, expected) or dur >= expected * 0.4:
+                break
+            print(f'  [tts] 音频过短 ({dur:.2f}s < 期望~{expected:.1f}s)，'
+                  f'疑似 CosyVoice 并发采样崩坏，重试 {attempt}/1（串行）')
 
         if output_path:
             os.makedirs(os.path.dirname(output_path), exist_ok=True)

@@ -1,6 +1,6 @@
 # Vidance 已部署模型清单
 
-> 最后更新：2026-09-12
+> 最后更新：2026-10-16
 
 所有模型文件存 `/mnt/dataset/zxy/<Model>-ComfyUI/`（mergerFS 机械盘），通过 ComfyUI `extra_model_paths.yaml` 映射。代码/配置放 sdb 快盘，模型/产出放 mergerFS 机械盘。
 
@@ -132,7 +132,58 @@ Hunyuan3Dv2（与 Wan 共用 ComfyUI/models/）:
 
 ---
 
-## 4. LLM 模型（远程 API，不本地部署）
+## 4. 图像/视频编辑模型（v16，2026-10 部署）
+
+| 模型 | 能力 | 位置 | 大小 | 状态 |
+|------|------|------|------|------|
+| **SAM2.1 Hiera** | 分割/抠图/换底/打码/inpaint + 视频双向追踪 | `vidance/models/sam2/`（tiny+small） | 325M | 按需（`edit`） |
+| **YOLOv8s** | 自动检测→SAM 框提示（Grounded-SAM） | `vidance/models/yolo/yolov8s.pt` | 22M | 按需（`edit --yolo`） |
+| **FLUX.1-Fill-dev fp8** | mask 内生成式重绘/生成式换底 | FLUX-ComfyUI（8192 共实例） | 12G | 按需（`edit --engine flux`） |
+| **Wan2.1 VACE 1.3B fp16** | 参考图生视频 + 视频级生成式移除/替换 | Wan-ComfyUI（8189 共实例） | 4.1G | 按需（`vace`/`edit video`） |
+| **Qwen-Image-Edit 2509 fp8** | 指令式图像编辑（中文指令，无需 mask） | FLUX-ComfyUI（8192 共实例） | 20G | 按需（`edit instruct`） |
+
+### 用途说明
+
+- **SAM2.1**：`vidance.py edit` 七种图像模式（segment/cutout/replace_bg/mosaic/inpaint/visualize/instruct）+ `edit video` 双向传播追踪（彩色多物体每点独立追踪）。权重在仓内 `models/sam2/`（gitignore），代码源 `/mnt/disk_sdb/zxy/sam2-src`（pip -e 安装）。GPU 满卡时逐卡探测（同 v4 FunClip device='auto'），可回落 CPU。
+- **YOLOv8s**：`--yolo` 自动检测类别→SAM 框提示（Grounded-SAM，大物体比点提示准），免手动点选。
+- **FLUX Fill**：`edit inpaint/replace_bg --engine flux --prompt "..."`，mask 内 FLUX 生成式重绘（v16.x M5），可叠加 Union ControlNet canny 结构保持（M6，`--controlnet canny`）。
+- **Wan2.1 VACE**：`vidance.py vace ref.png "prompt"` 参考图生视频（480×832@16fps，M7）；`edit video` SAM2 追踪 + VACE 生成式视频 inpaint（op=remove/keep，物体移除/背景补全）。
+- **Qwen-Image-Edit 2509**：`edit instruct --prompt "把猫换成狗"` 指令式编辑（M8），中文指令原生可用，跑在 8192 与 FLUX 共实例。
+
+### 模型文件路径
+
+```
+/mnt/disk_sdb/zxy/vidance/models/
+├── sam2/sam2.1_hiera_tiny.pt    (149M)
+├── sam2/sam2.1_hiera_small.pt   (176M)
+└── yolo/yolov8s.pt              (22M)
+
+/mnt/dataset/zxy/FLUX-ComfyUI/diffusion_models/
+├── flux1-fill-dev-fp8.safetensors              (12G)
+└── qwen_image_edit_2509_fp8_e4m3fn.safetensors (20G)
+
+/mnt/dataset/zxy/Wan-ComfyUI/diffusion_models/
+└── wan2.1_vace_1.3B_fp16.safetensors           (4.1G)
+```
+
+---
+
+## 5. RAG 嵌入模型（M5b + M6-R-N）
+
+| 模型 | 能力 | 位置 | 大小 | 状态 |
+|------|------|------|------|------|
+| **BAAI/bge-small-zh-v1.5** | 中文文本嵌入（FAISS 向量检索） | `/mnt/dataset/zxy/hf_cache/bge-small-zh-v1.5/` | 92M | 按需（CPU 可跑） |
+
+### 用途说明
+
+- **bge-small-zh-v1.5**：RAG 检索底座。`/rag` 独立命令与 `auto --rag-doc/--rag-novel` 共用。transformers 直载（CLS 池化 + L2 归一化），CPU 可跑不需 GPU。
+- **普通文档路线**：add_document 分块索引 → FAISS 检索注入编剧。
+- **小说路线**（M6-R-N）：split_novel_chapters 分章索引 + 前 3 章抽人物卡（`novel-cards-{md5}.json`），人物卡=外观唯一来源注入编剧。
+- 下载备注：hf-mirror 对新 Xet CAS 401 时用 `curl ... /resolve/main/...` 直下。
+
+---
+
+## 6. LLM 模型（远程 API，不本地部署）
 
 | 模型 | 用途 | 延迟 | 状态 |
 |------|------|------|------|
@@ -144,7 +195,7 @@ Hunyuan3Dv2（与 Wan 共用 ComfyUI/models/）:
 
 ---
 
-## 5. 程序生成资产（非模型）
+## 7. 程序生成资产（非模型）
 
 | 资产 | 位置 | 大小 | 说明 |
 |------|------|------|------|
@@ -153,7 +204,7 @@ Hunyuan3Dv2（与 Wan 共用 ComfyUI/models/）:
 
 ---
 
-## 6. 已下载未使用
+## 8. 已下载未使用
 
 | 模型 | 位置 | 大小 | 说明 |
 |------|------|------|------|
@@ -162,7 +213,7 @@ Hunyuan3Dv2（与 Wan 共用 ComfyUI/models/）:
 
 ---
 
-## 7. GPU 与端口分配
+## 9. GPU 与端口分配
 
 | GPU | 显存 | 实例 | 端口 | 状态 |
 |-----|------|------|------|------|
@@ -180,21 +231,27 @@ Hunyuan3Dv2（与 Wan 共用 ComfyUI/models/）:
 
 ---
 
-## 8. 各子命令与服务依赖
+## 10. 各子命令与服务依赖
 
 | 子命令 | 需要的服务 | 端口 |
 |--------|-----------|------|
 | `auto`（无角色） | Wan T2V + TTS | 8189 + 9880 |
 | `auto --character-mode flux` | Wan I2V + FLUX + TTS | 8189 + 8192 + 9880 |
 | `auto --character-mode 3dgs/auto` | Wan I2V + FLUX + TripoSplat + TTS | 8189 + 8192 + 9880 |
+| `auto --rag-doc / --rag-novel` | + bge 嵌入（CPU） | 内嵌 |
 | `custom` | H3 ref2va | 8188 |
 | `quick` | Wan T2V + TTS | 8189 + 9880 |
 | 任意 `--stt` | + faster-whisper（GPU） | 内嵌 |
+| `edit`（分割系） | SAM2.1（+ YOLOv8s `--yolo`） | 本地权重（可 CPU） |
+| `edit --engine flux` | FLUX Fill（+ ControlNet） | 8192 |
+| `edit instruct` | Qwen-Image-Edit 2509 | 8192 |
+| `vace` / `edit video` | Wan2.1 VACE | 8189 |
+| `rag`（独立命令） | bge 嵌入（CPU，不生成视频） | 内嵌 |
 | v3 mesh 重建 | Hunyuan3Dv2（ComfyUI 8193） | 8193 |
 
 ---
 
-## 9. 部署记录
+## 11. 部署记录
 
 各模型部署细节见 `/mnt/disk_sdb/zxy/` 下：
 
@@ -207,5 +264,7 @@ Hunyuan3Dv2（与 Wan 共用 ComfyUI/models/）:
 | `FLUX-部署记录.md` | FLUX.1-dev fp8 + T5-XXL + VAE（含 TripoSplat 共实例配置） |
 
 > Hunyuan3Dv2 turbo 无独立部署记录文件，M1+M2 验证过程见 v3-design.md §13 完成详情。模型从 `tencent/Hunyuan3D-2` HuggingFace repo 下载（hf-mirror 镜像），DINOv2-giant 从 DiT checkpoint 提取。
+
+> v16 编辑模型（SAM2/YOLO/FLUX Fill/VACE/Qwen-Image-Edit）无独立部署记录文件，部署与验证过程见 v16-design.md（权重下载/环境固化三件套）。SAM2 代码源装在 `/mnt/disk_sdb/zxy/sam2-src`（pip -e）。
 
 > 模型文件统一存 `/mnt/dataset/zxy/<Model>-ComfyUI/`（mergerFS 机械盘），通过 `extra_model_paths.yaml` 映射到 ComfyUI。

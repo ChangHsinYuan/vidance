@@ -278,6 +278,14 @@ class LLMClient:
                 f'    "desc": "{character_desc}"\n'
                 f'  }},\n'
             )
+        else:
+            # M6-R-N：无 --character 时也必须产出主角色（小说路线：人物卡=外观唯一来源）
+            char_section = (
+                '  "character": {\n'
+                '    "desc": "主角外貌中文描述（具体可画：性别年龄体型/发色发型/五官特征/'
+                '肤色/常规着装/配饰）。若参考资料含人物卡，外貌必须严格按人物卡，不要重新发明",\n'
+                '  },\n'
+            )
         if target_duration:
             n_shots = max(2, round(target_duration / 4))
             shot_range = f'{max(2, n_shots - 2)}-{n_shots + 2}'
@@ -315,6 +323,7 @@ class LLMClient:
             '      "id": 1,\n'
             '      "scene_desc": "中文场景描述，详细描述画面内容（含角色动作）",\n'
             '      "narration": "中文旁白文本，字数与时长匹配（中文约4字/秒）",\n'
+            '      "speaker": "旁白 或 角色名（该句由谁说出；默认旁白，角色台词才标角色名）",\n'
             '      "background_desc": "中文背景描述，只描述环境不含角色",\n'
             '      "duration": 5,\n'
             '      "camera": {\n'
@@ -339,7 +348,12 @@ class LLMClient:
             '要求：\n'
             '- 每镜3-5秒（duration字段）\n'
             '- narration字数 = duration × 4（±20%），如5秒约20字\n'
-            '- scene_desc要具体，包含主体、动作、环境、光线\n'
+            '- 分镜铁律（优先级从高到低）：台词/旁白零删改语义 > 出场人物前后一致 > 只描述动作与状态（不写心理活动）\n'
+            '- 旁白超过20字时必须拆成多个镜头（每镜换视角/景别），不许一个镜头念长段\n'
+            '- 黄金6秒：第1镜必须3秒内出主体（不要空镜开场过久）\n'
+            '- scene_desc只写画面内容与动作，禁止写光影/色调词汇（光影由背景与风格统一承担，特殊光照写进five_dim.visual）；具体禁止：月光、阳光、灯光、烛光、阴影、逆光、霞光、辉光、明亮、昏暗等词——手持物（提灯/蜡烛）本身可以写\n'
+            '- 连续动作写"起始凝固态"（如"剑举至头顶即将劈下"而非"剑已劈落"），供首帧驱动\n'
+            '- scene_desc要具体，包含主体、动作、环境\n'
             '- background_desc只描述场景环境，不包含角色\n'
             '- camera.yaw是绕角色旋转的水平角度（0=正面，90=右侧，180=背面，270=左侧）\n'
             '- camera.pitch是俯仰角度（0=平视，正值俯视，负值仰视，范围-30到30）\n'
@@ -355,10 +369,115 @@ class LLMClient:
             {'role': 'system', 'content': system},
             {'role': 'user', 'content': f'概念：{concept}'},
         ]
-        return self.chat_json(messages, model=self.models['script'], temperature=0.7)
+        script = self.chat_json(messages, model=self.models['script'],
+                                temperature=0.7, timeout=480, retries=2)
+        # 结构校验：chat_json 只保证合法 JSON，不保证含 title/shots（E2E 实测缺字段崩 pipeline）
+        if not (script.get('title') and script.get('shots')):
+            try:
+                print('  [script] 缺 title/shots 字段，回喂重问一轮...')
+                messages = messages + [
+                    {'role': 'assistant', 'content': json.dumps(script, ensure_ascii=False)},
+                    {'role': 'user', 'content':
+                        '你的输出缺少必需字段 "title" 和/或 "shots"。'
+                        '请重新输出完整JSON：必须含 "title"（字符串）与 "shots"（分镜数组）。'},
+                ]
+                s2 = self.chat_json(messages, model=self.models['script'],
+                                    temperature=0.3, timeout=480, retries=1)
+                if s2.get('title') and s2.get('shots'):
+                    script = s2
+            except Exception:
+                pass
+        return self._scrub_scene_desc_lighting(script)
 
-    def optimize_prompt(self, scene_desc: str, style: str, five_dim: dict = None) -> str:
-        """中文场景描述→英文 video_prompt（M5a：五维提示词 [Visual]/[Motion]/[Camera] 融入）"""
+    # S4 分镜铁律：scene_desc 禁光影词。prompt 层约束对 flash 模型不稳（两轮验证
+    # 违例 2/9、3/9），改为代码层检测 + 一轮 LLM 定向修复（Toonflow fix-loop 模式）。
+    _SCENE_LIGHTING_WORDS = ('月光', '阳光', '灯光', '烛光', '阴影', '逆光', '霞光',
+                             '辉光', '光影', '明亮', '昏暗', 'light', 'shadow', 'glow')
+
+    def _scrub_scene_desc_lighting(self, script: dict) -> dict:
+        """检测 scene_desc 光影违例并 LLM 修复一轮；失败保留原文（非致命）。"""
+        shots = script.get('shots') or []
+        bad = [{'i': i, 'scene_desc': s.get('scene_desc') or ''}
+               for i, s in enumerate(shots)
+               if any(w in (s.get('scene_desc') or '') for w in self._SCENE_LIGHTING_WORDS)]
+        if not bad:
+            return script
+        try:
+            system = (
+                '你是分镜表审核员。把给定 scene_desc 中的光影/色调词汇全部去除，'
+                '只保留人物、动作、道具、环境事实；动作语义不许变；手持物（提灯/蜡烛等）保留。\n'
+                '输出严格JSON：{"fixed": [{"i": 序号, "scene_desc": "修改后"}]}'
+            )
+            messages = [
+                {'role': 'system', 'content': system},
+                {'role': 'user', 'content': json.dumps(bad, ensure_ascii=False)},
+            ]
+            r = self.chat_json(messages, model=self.models['script'],
+                               temperature=0.1, timeout=180, retries=1)
+            fixed = {f.get('i'): f.get('scene_desc', '') for f in (r.get('fixed') or [])
+                     if isinstance(f, dict) and f.get('scene_desc')}
+            n = 0
+            for i, desc in fixed.items():
+                if 0 <= i < len(shots) and not any(
+                        w in desc for w in self._SCENE_LIGHTING_WORDS):
+                    shots[i]['scene_desc'] = desc
+                    n += 1
+            if n:
+                print(f'  [s4-scrub] scene_desc 光影词修复 {n}/{len(bad)} 镜')
+        except Exception:
+            pass
+        return script
+
+    def consistency_anchors(self, script: dict) -> dict:
+        """剧本→全局一致性锚点（M6.1，BigBanana consistencyAnchors 精简版）
+
+        一次 LLM 调用产出全片统一的美术方向：style_anchor 是一段文字锚点，
+        后续每个镜头/场景提示词生成时强制注入——风格漂移从逐镜博弈变单点约束。
+        失败返回 {}（非致命，流水线继续）。
+        """
+        shots_summary = '\n'.join(
+            f"- shot{s.get('id')}: {str(s.get('scene_desc', ''))[:60]}"
+            for s in (script.get('shots') or [])[:10])
+        system = (
+            '你是美术指导。根据剧本设定全片统一的视觉方向，保证多镜头生成时风格不漂移。\n'
+            '输出严格JSON，不要加任何解释文字。\n'
+            'JSON schema:\n'
+            '{\n'
+            '  "style_anchor": "一段英文统一风格锚点（色调+质感+光影+画风的浓缩描述，'
+            '将被注入每个镜头的画面prompt，30词以内）",\n'
+            '  "color": "主色调与色彩约束（英文，含主色/辅色/禁止色）",\n'
+            '  "lighting": "光源方向与光质（英文，如 golden hour backlight, soft diffused）",\n'
+            '  "mood": "情绪基调关键词（英文，3-5个词）"\n'
+            '}\n'
+            '要求：锚点必须具体可执行（避免 vague 的 beautiful/high quality），'
+            '与剧本整体氛围一致'
+        )
+        messages = [
+            {'role': 'system', 'content': system},
+            {'role': 'user', 'content':
+                f'标题：{script.get("title", "")}\n'
+                f'整体风格：{script.get("style", "")}\n'
+                f'分镜概要：\n{shots_summary}'},
+        ]
+        try:
+            r = self.chat_json(messages, model=self.models['prompt_opt'], temperature=0.3)
+            return r if isinstance(r, dict) else {}
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _anchors_block(anchors: dict) -> str:
+        """一致性锚点→提示词注入段（M6.1 内部助手）"""
+        if not isinstance(anchors, dict) or not anchors:
+            return ''
+        lines = [f'- {k}: {str(v).strip()}' for k, v in anchors.items() if str(v or '').strip()]
+        if not lines:
+            return ''
+        return ('全片一致性锚点（必须融入，保证跨镜头风格统一）：\n' + '\n'.join(lines) + '\n')
+
+    def optimize_prompt(self, scene_desc: str, style: str, five_dim: dict = None,
+                        ref_frame: bool = False, anchors: dict = None) -> str:
+        """中文场景描述→英文 video_prompt（M5a 五维融入；M6.1 ref_frame 外观解耦+anchors）"""
         fd_block, fd_rule = '', ''
         if isinstance(five_dim, dict) and five_dim:
             parts = []
@@ -370,16 +489,27 @@ class LLMClient:
                 fd_block = '五维结构化提示：\n' + '\n'.join(parts) + '\n'
                 fd_rule = ('- 五维提示必须全部融入prompt：[Visual]=画面主体与环境，'
                            '[Motion]=动作与节奏，[Camera]=运镜语言（直接用其英文术语）\n')
+        ref_rule = ''
+        if ref_frame:
+            ref_rule = (
+                '- 首帧参考图已包含角色完整外观：prompt 中不要描述角色的服装/毛色/五官等'
+                '外观细节，用简短代称指代角色（如 the girl, the fox），只描述其动作、姿态、'
+                '表情倾向与和环境的互动\n')
+        anchors_block = self._anchors_block(anchors)
+        anchors_rule = ('- 一致性锚点必须融入风格词（保证跨镜头统一）\n' if anchors_block else '')
         system = (
             '你是视频生成prompt优化器。将中文场景描述翻译为英文的video generation prompt。\n'
             '要求：\n'
             '- 保留所有视觉细节（主体、动作、环境、光线）\n'
             '- 加入风格修饰词（来自style字段）\n'
             + fd_rule
+            + ref_rule
+            + anchors_rule
             + '- 英文，不超过100词\n'
             '- 不要加任何解释，只输出prompt文本'
         )
-        user = (f'{fd_block}场景描述：{scene_desc}\n风格：{style}' if fd_block
+        user = (f'{anchors_block}{fd_block}场景描述：{scene_desc}\n风格：{style}'
+                if (anchors_block or fd_block)
                 else f'场景描述：{scene_desc}\n风格：{style}')
         messages = [
             {'role': 'system', 'content': system},
@@ -438,40 +568,84 @@ class LLMClient:
                 'back': base.replace('front view', 'back view'),
             }
 
-    def optimize_scene_prompt(self, character_desc: str, scene_desc: str,
-                              style: str) -> str:
-        """中文角色描述+场景描述→英文 FLUX 场景图 prompt（角色自然融入场景，站立姿态）"""
+    def optimize_character_turnaround_prompt(self, character_desc: str) -> str:
+        """角色四视图设定图 prompt（M6-S3，Toonflow art_character.md 移植）。
+
+        单图承载 人像特写+正/侧/后视图 四格并排——比三张图省 2 次生图，
+        且单图内天然一致性（同一次生成）。FLUX 文字渲染弱，模板强调"图中不要文字"。
+        """
         system = (
-            '你是场景图生成prompt优化器。将中文角色描述和场景描述组合为英文的FLUX image generation prompt。\n'
+            '你是角色设计prompt优化器。将中文角色描述翻译为英文的FLUX image generation prompt，'
+            '生成角色四视图设定图（character turnaround sheet）。\n'
+            'Toonflow 式模板（方括号段按角色描述填充，其余固定）：\n'
+            '[性别/物种] character turnaround sheet, four-panel lineup on one image:\n'
+            'head-and-shoulders close-up + front view + side view + back view,\n'
+            '[五官/毛色特征，由角色描述自然推导]，[整体气质]，\n'
+            '[肤色/毛色]，[身高体型体态]，[发色发长/头部特征]，[常规着装，柔和低饱和色调]，\n'
+            'full body head to toe completely visible, no cropping, natural standing pose,\n'
+            'same character identical appearance across all four panels,\n'
+            'plain neutral light background, soft even lighting, no harsh shadows,\n'
+            'high detail, character design sheet, no text in image\n'
             '要求：\n'
-            '- 角色自然融入场景中（角色是画面主体之一，但场景环境完整呈现）\n'
-            '- 保留角色所有外观细节（物种、毛色/肤色、服装、配饰）\n'
-            '- 角色必须是自然姿态（如站立、行走、跳跃），与场景互动，绝不能躺倒或无故悬浮\n'
-            '- 保留场景所有环境细节（地形、天空、光线、建筑）\n'
-            '- 加入风格修饰词（来自style字段）\n'
-            '- 英文，不超过100词\n'
+            '- 保留角色所有外观细节（物种、毛色/肤色、服装、配饰、体型）\n'
+            '- 不预设五官（由角色描述推导）；着装为日常默认态\n'
+            '- 四格必须是同一角色（面部/发型/服装/配色完全一致）\n'
+            '- 英文，不超过110词，单段输出\n'
             '- 不要加任何解释，只输出prompt文本'
         )
         messages = [
             {'role': 'system', 'content': system},
-            {'role': 'user', 'content': f'角色描述：{character_desc}\n场景描述：{scene_desc}\n风格：{style}'},
+            {'role': 'user', 'content': f'角色描述：{character_desc}'},
+        ]
+        return self.chat(messages, model=self.models['prompt_opt'], temperature=0.4).strip()
+
+    def optimize_scene_prompt(self, character_desc: str, scene_desc: str,
+                              style: str, anchors: dict = None) -> str:
+        """角色+场景描述→英文 FLUX 场景图 prompt（角色自然融入场景，站立姿态）
+
+        M6.1：character_desc 应传角色 canonical 英文 prompt（唯一外观来源），
+        指令要求逐字保留其外观关键词不得自由发挥（Toonflow 防文字漂移）；
+        anchors 为全片一致性锚点（M6.1）。
+        """
+        anchors_block = self._anchors_block(anchors)
+        anchors_rule = ('- 一致性锚点必须融入（保证跨镜头风格统一）\n' if anchors_block else '')
+        system = (
+            '你是场景图生成prompt优化器。将角色描述和场景描述组合为英文的FLUX image generation prompt。\n'
+            '要求：\n'
+            '- 角色自然融入场景中（角色是画面主体之一，但场景环境完整呈现）\n'
+            '- 角色外观细节必须逐字保留自角色描述（它是唯一外观来源），不得改写、增删或自由发挥\n'
+            '- 角色必须是自然姿态（如站立、行走、跳跃），与场景互动，绝不能躺倒或无故悬浮\n'
+            '- 保留场景所有环境细节（地形、天空、光线、建筑）\n'
+            '- 加入风格修饰词（来自style字段）\n'
+            + anchors_rule
+            + '- 英文，不超过100词\n'
+            '- 不要加任何解释，只输出prompt文本'
+        )
+        messages = [
+            {'role': 'system', 'content': system},
+            {'role': 'user', 'content':
+                f'{anchors_block}角色描述：{character_desc}\n场景描述：{scene_desc}\n风格：{style}'},
         ]
         return self.chat(messages, model=self.models['prompt_opt'], temperature=0.5).strip()
 
-    def optimize_background_prompt(self, background_desc: str, style: str) -> str:
-        """中文背景描述→英文 FLUX background_prompt（无角色）"""
+    def optimize_background_prompt(self, background_desc: str, style: str,
+                                   anchors: dict = None) -> str:
+        """中文背景描述→英文 FLUX background_prompt（无角色；M6.1 anchors 注入）"""
+        anchors_block = self._anchors_block(anchors)
+        anchors_rule = ('- 一致性锚点必须融入（保证跨镜头风格统一）\n' if anchors_block else '')
         system = (
             '你是背景生成prompt优化器。将中文场景环境描述翻译为英文的FLUX image generation prompt。\n'
             '要求：\n'
             '- 只描述环境（地形、天空、建筑、植物、光线、天气），不包含任何角色或人物\n'
             '- 加入风格修饰词（来自style字段）\n'
-            '- 固定后缀：no character, no person, empty scene, cinematic\n'
+            + anchors_rule
+            + '- 固定后缀：no character, no person, empty scene, cinematic\n'
             '- 英文，不超过60词\n'
             '- 不要加任何解释，只输出prompt文本'
         )
         messages = [
             {'role': 'system', 'content': system},
-            {'role': 'user', 'content': f'背景描述：{background_desc}\n风格：{style}'},
+            {'role': 'user', 'content': f'{anchors_block}背景描述：{background_desc}\n风格：{style}'},
         ]
         return self.chat(messages, model=self.models['prompt_opt'], temperature=0.5).strip()
 

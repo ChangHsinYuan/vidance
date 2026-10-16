@@ -1,0 +1,22 @@
+# ── M6-S5 风格包：90 年代日式动画（Toonflow art_skills 移植）──
+# 用法: python core/vidance.py auto "概念" --character "角色" --template anime90s
+# style_pack.style_anchor 等四键直接覆盖 consistency_anchors（S1 确定生效），
+# character_sheet 追加到四视图设定图 prompt（S3）。
+
+name: anime90s
+display_name: 90年代日式动画风格包
+description: 手绘平涂+电影感光影+怀旧治愈——Toonflow 全局美学基因（风格锚点+四视图词汇+五维）
+
+five_dim_guide:
+  visual: 90年代赛璐璐平涂描述词（cel-shaded flat colors, hand-drawn linework, retro anime aesthetic, soft warm palette），光线写方向与情绪（warm sunset backlight, soft diffused indoor light）
+  motion: 动作简洁有顿挫感（snappy yet gentle movement），保留手绘中间帧的呼吸感，禁止超写实物理模拟
+  camera: 日式动画经典机位（slow pan, static establishing shot, over-the-shoulder, gentle zoom-out），避免炫技长镜头
+  audio: 温柔环境音（远处的蝉鸣、风铃、木地板脚步），配乐怀旧钢琴/弦乐铺底，留白呼吸
+  narrative: 治愈系叙事节奏——本镜是日常铺陈、情绪转折还是温暖收束，一句话点明
+
+style_pack:
+  style_anchor: retro 1990s Japanese anime, cel-shaded flat coloring, clean hand-drawn linework, soft warm palette, nostalgic atmosphere
+  color: primary warm cream and sunset orange, secondary teal accents, forbidden hyper-saturated neon colors
+  lighting: soft diffused ambient light, warm golden hour glow, gentle rim light on characters
+  mood: nostalgic, gentle, healing, wistful, heartfelt
+  character_sheet: retro 90s anime style character design sheet, cel-shaded flat colors, clean hand-drawn linework, soft warm color palette, nostalgic 1990s aesthetic

@@ -1338,6 +1338,8 @@ function sessionId() {
 async function uploadFiles(files) {
   for (const f of files) {
     if (f.size > 200 * 1024 * 1024) { addBot('⚠ ' + escapeHtml(f.name) + ' 超过 200MB 上限，已跳过'); continue; }
+    const isNovel = /\.(txt|md|pdf)$/i.test(f.name) && f.size > 300 * 1024; // >300KB 文档当小说建 RAG 索引
+    if (isNovel) { uploadNovel(f); continue; }
     const fd = new FormData();
     fd.append('file', f);
     const r = await fetch('/api/upload?session_id=' + sessionId(), { method: 'POST', body: fd });
@@ -1346,6 +1348,30 @@ async function uploadFiles(files) {
     pendingFiles.push(d);
   }
   renderChips();
+}
+
+/* M6 R-N：小说上传 → 分章索引 + 人物卡抽取（后台），完成后提示可直接用于出片 */
+async function uploadNovel(f) {
+  addBot('📖 ' + escapeHtml(f.name) + '（' + (f.size / 1024 / 1024).toFixed(1) + 'MB）识别为小说，后台建索引中…');
+  const fd = new FormData();
+  fd.append('file', f);
+  const r = await fetch('/api/rag/upload', { method: 'POST', body: fd });
+  const d = await r.json();
+  if (!r.ok) { addBot('<b>✗ 小说索引失败</b> ' + escapeHtml(d.detail || r.status)); return; }
+  pollNovelIndex(d.doc_key, f.name, 0);
+}
+
+async function pollNovelIndex(key, name, n) {
+  if (n > 120) { addBot('⚠ ' + escapeHtml(name) + ' 索引超时（可稍后重试上传）'); return; }
+  await new Promise(r => setTimeout(r, 2500));
+  const r = await fetch('/api/rag/status?doc_key=' + encodeURIComponent(key));
+  const d = await r.json();
+  if (!d.indexed) { pollNovelIndex(key, name, n + 1); return; }
+  const ch = (d.chapters || []).length;
+  const cards = (d.cards || []).map(c => '「' + c.name + '」').join(' ');
+  addBot('✅ <b>' + escapeHtml(d.title || name) + '</b> 索引完成：' + ch + ' 章 / ' + d.chunks + ' 片段'
+    + (cards ? '<br>人物卡：' + escapeHtml(cards) : '')
+    + '<br>出片时带 <code>--rag-doc</code> 或直接说"把这本小说拍成短剧"即可引用');
 }
 
 function renderChips() {
