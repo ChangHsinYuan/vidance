@@ -6,6 +6,7 @@
   custom  参考图 + 预写脚本 → H3 ref2va 生成 → 后处理
   quick   纯 T2V，无角色锚无后处理
   concat  多视频拼接（硬切 / RIFE 过渡 / 交叉淡化）
+  grid    画布网格合成：多视频 m×n 拼贴同放（matplotlib subplot 风格，同时播放/停止）
   compose v10 时间线拼接（JSON 时间线：特效/转场/画中画/文字/混音）
   svg     v13（原 v15）SVG 流水线（概念→LLM 生成 SVG→逐帧渲染→mp4，纯 CPU）
   make    v12（原 v17）统一入口：--director llm|manual|scout × --generator wan|fast|svg|h3 排列组合
@@ -227,6 +228,15 @@ def _concat_crossfade(clips, output_path, duration=0.5):
     for vc in video_clips:
         vc.close()
     return output_path
+
+
+def cmd_grid(args):
+    """grid 子命令：画布网格合成（多视频 m×n 同放）"""
+    from utils.grid import make_grid
+    make_grid(args.videos, output=args.output, rows=args.rows, cols=args.cols,
+              grid=args.grid, width=args.width, gap=args.gap, bg=args.bg,
+              audio=args.audio, fps=args.fps, fill=args.fill,
+              cell_ratio=args.cell_ratio)
 
 
 def cmd_concat(args):
@@ -1006,6 +1016,30 @@ def build_parser():
     p_concat.add_argument('--crossfade-duration', type=float, default=0.5,
                           help='交叉淡化时长（秒，仅 --transition crossfade 时生效）')
     p_concat.set_defaults(func=cmd_concat)
+
+    # ── grid 子命令（画布网格合成，matplotlib subplot 风格） ──
+    p_grid = sub.add_parser('grid', parents=[output_parent],
+                            help='画布网格合成：多视频 m×n 拼贴同放（同时播放/停止）')
+    p_grid.add_argument('videos', nargs='+',
+                        help='待拼贴的视频文件路径列表（按行优先填格）')
+    p_grid.add_argument('--grid', default=None,
+                        help='网格 MxN（如 2x3；不传则自动方阵）')
+    p_grid.add_argument('--rows', type=int, default=None,
+                        help='行数（与 --cols/--grid 三选一）')
+    p_grid.add_argument('--cols', type=int, default=None, help='列数')
+    p_grid.add_argument('--width', type=int, default=1920,
+                        help='画布总宽像素（默认 1920）')
+    p_grid.add_argument('--gap', type=int, default=8, help='格间距像素（默认 8）')
+    p_grid.add_argument('--bg', default='black',
+                        help='画布底色（ffmpeg color，如 black/0x202020）')
+    p_grid.add_argument('--audio', default='first', choices=['first', 'mix', 'none'],
+                        help='音频: first=第一个有声输入 / mix=全部混音 / none')
+    p_grid.add_argument('--fps', type=int, default=24, help='统一帧率（默认 24）')
+    p_grid.add_argument('--fill', default='hold', choices=['hold', 'loop'],
+                        help='短视频填格: hold=定格末帧(默认) / loop=循环')
+    p_grid.add_argument('--cell-ratio', type=float, default=None,
+                        help='单格宽高比 w/h（缺省取所有输入均值）')
+    p_grid.set_defaults(func=cmd_grid)
 
     # ── hot 子命令（爬热点→选题→出片，一步到位） ──
     p_hot = sub.add_parser('hot', parents=[output_parent],
