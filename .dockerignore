@@ -16,3 +16,5 @@ __pycache__/
 *.pyc
 start_services.sh
 deploy/
+# input materials stay on host (bind-mounted in compose)
+input/

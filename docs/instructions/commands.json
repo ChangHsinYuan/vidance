@@ -1105,6 +1105,65 @@
         "/rag context 灯塔的信任与告别 --novel",
         "/rag add /path/重传.txt --force"
       ]
+    },
+    {
+      "name": "grid",
+      "version": "v10.x",
+      "brief": "画布网格合成：多视频 m×n 拼贴同放（matplotlib subplot 风格）",
+      "detail": "把多个视频拼到一张 m×n 画布上同时播放、同时停止（单文件输出）。视频按输入顺序行优先填格（像 matplotlib subplot），空格子留底色；每格 contain 缩放不变形；短视频默认定格末帧对齐最长路（--fill loop 改循环）；输出总时长 = min(最长输入, --trim)。单条 ffmpeg 命令，纯 CPU，秒~分钟级。",
+      "params": [
+        {
+          "key": "videos",
+          "desc": "待拼贴视频列表（空格分隔，行优先填格）",
+          "required": true
+        },
+        {
+          "key": "--grid",
+          "desc": "网格 MxN（如 2x3；不传自动方阵）"
+        },
+        {
+          "key": "--rows",
+          "desc": "行数（与 --cols/--grid 三选一）"
+        },
+        {
+          "key": "--cols",
+          "desc": "列数"
+        },
+        {
+          "key": "--trim",
+          "desc": "每路统一只取前 N 秒（如 3 = 各播 0-3s）"
+        },
+        {
+          "key": "--width",
+          "desc": "画布总宽像素（默认 1920）"
+        },
+        {
+          "key": "--gap",
+          "desc": "格间距像素（默认 8）"
+        },
+        {
+          "key": "--audio",
+          "desc": "音频：first 第一个有声输入 / mix 混音 / none 静音",
+          "choices": [
+            "first",
+            "mix",
+            "none"
+          ]
+        },
+        {
+          "key": "--fill",
+          "desc": "短视频填格：hold 定格末帧（默认）/ loop 循环",
+          "choices": [
+            "hold",
+            "loop"
+          ]
+        }
+      ],
+      "examples": [
+        "/grid input/canvas_materials/5x5/*.mp4 --grid 5x5 --trim 3",
+        "/grid a.mp4 b.mp4 c.mp4 --grid 1x3 --trim 5 -o compare.mp4",
+        "/grid a.mp4 b.mp4 c.mp4 d.mp4 --audio mix --fill loop"
+      ]
     }
   ],
   "v10_effects": {

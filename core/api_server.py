@@ -1500,6 +1500,17 @@ TOOLS = [
          {'key': '--transition', 'type': 'choice', 'choices': ['cut', 'crossfade', 'rife'], 'desc': '转场方式'},
          {'key': '--crossfade-duration', 'type': 'number', 'desc': '交叉淡化时长（秒，默认 0.5）'},
      ]},
+    {'name': 'grid', 'help': '画布网格合成：多视频 m×n 拼贴同放（matplotlib subplot 风格，同时播放/停止）',
+     'params': [
+         {'key': 'videos', 'type': 'text', 'required': True, 'desc': '待拼贴视频路径（空格分隔，行优先填格）'},
+         {'key': '--grid', 'type': 'text', 'desc': '网格 MxN（如 2x3；不传自动方阵）'},
+         {'key': '--rows', 'type': 'number', 'desc': '行数（与 --cols/--grid 三选一）'},
+         {'key': '--cols', 'type': 'number', 'desc': '列数'},
+         {'key': '--trim', 'type': 'number', 'desc': '每路统一只取前 N 秒（如 3 = 各播 0-3s）'},
+         {'key': '--width', 'type': 'number', 'desc': '画布总宽像素（默认 1920）'},
+         {'key': '--audio', 'type': 'choice', 'choices': ['first', 'mix', 'none'], 'desc': '音频策略'},
+         {'key': '--fill', 'type': 'choice', 'choices': ['hold', 'loop'], 'desc': '短视频填格：hold 定格末帧 / loop 循环'},
+     ]},
     {'name': 'make', 'help': 'v12（原 v17）统一入口：--director llm|manual|scout × --generator wan|fast|svg|h3 排列组合',
      'params': [
          {'key': 'concept', 'type': 'text', 'required': True, 'desc': '概念（--director scout 时可省，自动选题）'},
@@ -2380,6 +2391,8 @@ def tool_dispatch(name: str, req: ToolRequest):
         if not out:
             out = os.path.join(load_config()['output_dir'],
                                'concat_' + datetime.now().strftime('%Y%m%d_%H%M%S') + '.mp4')
+        elif not os.path.isabs(out):
+            out = os.path.join(load_config()['output_dir'], out)
         cmd = [sys.executable, os.path.join(os.path.dirname(__file__), 'vidance.py'),
                'concat', *pos, '-o', out]
         if flags.get('transition'):
@@ -2392,6 +2405,32 @@ def tool_dispatch(name: str, req: ToolRequest):
             raise HTTPException(status_code=500,
                                 detail='concat 失败: ' + ((r.stderr or '') + (r.stdout or ''))[-400:])
         return {'message': '拼接完成', 'output': out, 'compose_output': out,
+                'video_url': _file_url(out)}
+
+    # ── grid（画布网格合成，同步子进程；matplotlib subplot 风格）──
+    if name == 'grid':
+        if len(pos) < 2:
+            raise HTTPException(status_code=400,
+                                detail='用法: /grid A.mp4 B.mp4 [...] [--grid 2x3] [--trim 3] -o out.mp4（至少 2 个视频）')
+        out = flags.get('o') or flags.get('output')
+        if not out:
+            out = os.path.join(load_config()['output_dir'],
+                               'grid_' + datetime.now().strftime('%Y%m%d_%H%M%S') + '.mp4')
+        elif not os.path.isabs(out):
+            out = os.path.join(load_config()['output_dir'], out)
+        cmd = [sys.executable, os.path.join(os.path.dirname(__file__), 'vidance.py'),
+               'grid', *pos, '-o', out]
+        for k in ('grid', 'rows', 'cols', 'trim', 'width', 'gap', 'audio', 'fill'):
+            if flags.get(k) not in (None, ''):
+                cmd += [f'--{k}', str(flags[k])]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=500, detail='grid 超时（30 min）')
+        if r.returncode != 0:
+            raise HTTPException(status_code=500,
+                                detail='grid 失败: ' + ((r.stderr or '') + (r.stdout or ''))[-400:])
+        return {'message': '画布合成完成', 'output': out, 'compose_output': out,
                 'video_url': _file_url(out)}
 
     # ── arch（架构总览：层/Agent/服务 数据驱动 + 端口在线探测）──

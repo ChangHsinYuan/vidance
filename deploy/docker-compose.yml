@@ -25,6 +25,8 @@ services:
       - ../output:/mnt/disk_sdb/zxy/vidance/output
       - ../bgm:/app/bgm
       - ../voices:/app/voices
+      # 素材目录直挂宿主（grid/编辑命令的相对路径即时可见，不烤进镜像）
+      - ../input:/app/input:ro
       - /tmp:/hostlogs/tmp:ro
       # UI 直挂宿主（改前端零重建）
       - ../ui:/app/ui:ro
