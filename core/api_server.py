@@ -209,6 +209,68 @@ def list_tasks(
     return {'tasks': tasks, 'count': len(tasks)}
 
 
+def _dismissed_names():
+    """左栏已清空的 ⚙ 运行记录名（output/tasks.sqlite dismissed_records 屏蔽表）。"""
+    import sqlite3
+    db = os.path.join(os.path.dirname(__file__), '..', 'output', 'tasks.sqlite')
+    try:
+        conn = sqlite3.connect(db, timeout=30)
+        try:
+            return {r[0] for r in conn.execute('SELECT name FROM dismissed_records')}
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return set()
+
+
+@app.delete('/api/agents/records')
+def delete_agent_records(task_id: str = Query(None)):
+    """清空/移除左栏 ⚙ 运行记录（来源：output 运行目录扫描，非数据库）。
+
+    记录名写入 dismissed_records 屏蔽表即从列表消失，运行目录与视频原样保留；
+    带 ?task_id= 仅移除单条。同时清 agent_runs 台账行，保持 /api/agents/board 一致。
+    """
+    import sqlite3
+    if task_id is not None and not re.fullmatch(r'[\w.\-]{1,120}', task_id):
+        raise HTTPException(status_code=400, detail='bad task_id')
+    if task_id:
+        names = [task_id]
+    else:  # 与 GET /api/agents/records 同源的目录扫描，取全部记录名
+        names = []
+        roots = [os.path.realpath(load_config().get('output_dir', 'output')),
+                 os.path.realpath(os.path.join(os.path.dirname(__file__), '..',
+                                               'output')),
+                 '/mnt/dataset/zxy/vidance/output']
+        for oroot in dict.fromkeys(roots):
+            if not os.path.isdir(oroot):
+                continue
+            for name in sorted(os.listdir(oroot)):
+                d = os.path.join(oroot, name)
+                if (os.path.isdir(d)
+                        and (os.path.isfile(os.path.join(d, 'agent.log'))
+                             or os.path.isfile(os.path.join(d, 'meta.json')))):
+                    names.append(name)
+    db = os.path.join(os.path.dirname(__file__), '..', 'output', 'tasks.sqlite')
+    conn = sqlite3.connect(db, timeout=30)
+    try:
+        conn.execute('CREATE TABLE IF NOT EXISTS dismissed_records '
+                     '(name TEXT PRIMARY KEY)')
+        conn.executemany('INSERT OR IGNORE INTO dismissed_records VALUES (?)',
+                         [(n,) for n in names])
+        try:
+            if task_id:
+                conn.execute('DELETE FROM agent_runs WHERE task_id=?', (task_id,))
+            else:
+                conn.execute('DELETE FROM agent_runs')
+        except sqlite3.OperationalError:
+            pass
+        conn.commit()
+    finally:
+        conn.close()
+    return {'message': '运行记录已清空（视频文件保留）' if not task_id else '已移除该记录',
+            'hidden': len(names)}
+
+
 @app.delete('/api/tasks/{task_id}')
 def delete_task(task_id: str):
     """删除历史记录：tasks 行 + agent_runs 台账行 + output 下同名目录。"""
@@ -3306,6 +3368,7 @@ def agent_records(limit: int = Query(40, ge=1, le=200)):
                 return {}
         return {}
 
+    dismissed = _dismissed_names()
     roots = [os.path.realpath(load_config().get('output_dir', 'output')),
              os.path.realpath(os.path.join(os.path.dirname(__file__), '..', 'output')),
              '/mnt/dataset/zxy/vidance/output']
@@ -3315,6 +3378,8 @@ def agent_records(limit: int = Query(40, ge=1, le=200)):
             continue
         for name in sorted(os.listdir(oroot)):
             if name in seen:
+                continue
+            if name in dismissed:
                 continue
             d = os.path.join(oroot, name)
             if not os.path.isdir(d):
@@ -3327,6 +3392,7 @@ def agent_records(limit: int = Query(40, ge=1, le=200)):
             ts_src = lp if os.path.isfile(lp) else os.path.join(d, 'meta.json')
             ts = int(os.path.getmtime(ts_src) * 1000)
             status, title, n_lines = 'done', name, 0
+            lines = []
             if os.path.isfile(lp):
                 try:
                     lines = [l.strip() for l in open(lp, encoding='utf-8', errors='ignore')

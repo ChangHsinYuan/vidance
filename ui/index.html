@@ -611,13 +611,15 @@ function showAgent(id) {
   startLogPoll();
 }
 function clearChats() {
-  if (!confirm('清空左侧全部历史？\n· 浏览器会话记录立即清除\n· 任务记录连同其 output 目录一并删除（不可恢复）')) return;
+  if (!confirm('清空左侧全部历史？\n· 浏览器会话记录立即清除\n· 任务记录连同其 output 目录删除（不可恢复）\n· agent 运行记录从列表移除（视频文件保留）')) return;
   ['vidance_chats', 'vidance_chat', 'vidance_chat_cur'].forEach(k => localStorage.removeItem(k));
   fetch('/api/tasks?limit=200').then(r => r.json()).then(d => {
     const ids = (d.tasks || []).map(t => t.task_id);
     return Promise.all(ids.map(id =>
       fetch('/api/tasks/' + id, { method: 'DELETE' }).catch(() => null)));
-  }).catch(() => null).finally(() => {
+  }).catch(() => null).then(() =>
+    fetch('/api/agents/records', { method: 'DELETE' }).catch(() => null)
+  ).finally(() => {
     chats = []; mkChat(); renderChat();
   });
 }
