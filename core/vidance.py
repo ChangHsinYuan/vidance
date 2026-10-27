@@ -236,7 +236,7 @@ def cmd_grid(args):
     make_grid(args.videos, output=args.output, rows=args.rows, cols=args.cols,
               grid=args.grid, width=args.width, gap=args.gap, bg=args.bg,
               audio=args.audio, fps=args.fps, fill=args.fill,
-              cell_ratio=args.cell_ratio)
+              cell_ratio=args.cell_ratio, trim=args.trim)
 
 
 def cmd_concat(args):
@@ -1039,6 +1039,8 @@ def build_parser():
                         help='短视频填格: hold=定格末帧(默认) / loop=循环')
     p_grid.add_argument('--cell-ratio', type=float, default=None,
                         help='单格宽高比 w/h（缺省取所有输入均值）')
+    p_grid.add_argument('--trim', type=float, default=None,
+                        help='每路统一只取前 N 秒（如 --trim 3 则各播 0-3s）')
     p_grid.set_defaults(func=cmd_grid)
 
     # ── hot 子命令（爬热点→选题→出片，一步到位） ──

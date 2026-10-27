@@ -117,6 +117,12 @@ def main():
         i1 = probe_video(out1)
         ok('1x1 单视频 none 静音', not i1['has_audio'] and abs(i1['duration'] - 2.0) < 0.25)
 
+        outt = make_grid(vids, output=os.path.join(tmp, 'g13_trim.mp4'),
+                         grid='1x3', width=480, audio='first', trim=1.5, quiet=True)
+        it = probe_video(outt)
+        ok('trim=1.5 总时长≈1.5s', abs(it['duration'] - 1.5) < 0.25)
+        ok('trim 1x3 画布≈480 宽(±6)', abs(it['width'] - 480) <= 6)
+
     print(f'\n{sum(1 for _, c in PASS if c)}/{len(PASS)} 通过')
     sys.exit(0 if all(c for _, c in PASS) else 1)
 

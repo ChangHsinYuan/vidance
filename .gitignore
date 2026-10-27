@@ -17,6 +17,9 @@ bgm/*.mp3
 # Assets videos (keep images, ignore demo mp4s)
 assets/*.mp4
 
+# Input materials (user-uploaded test videos, keep dirs, ignore videos)
+input/**/*.mp4
+
 # SKILL demo videos (big binaries, regenerate locally; yaml 进 git，demo 不进)
 SKILL/**/*.demo.mp4
 
