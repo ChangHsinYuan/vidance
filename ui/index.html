@@ -1172,6 +1172,26 @@ async function dispatchSlash(text) {
       + `<div class="ins-lib">${lines}${eff}</div>`);
     return;
   }
+  // rag：检索明细/文档列表/上下文卡片
+  if (name === 'rag') {
+    let html = '';
+    if (d.docs && d.docs.length) {  // status
+      html = `<div class="ins-lib">` + d.docs.map(x => {
+        const ch = x.chapters ? ` · ${x.chapters} 章` : '';
+        return `<div class="ins-line"><code>${escapeHtml((x.key||'').slice(0,8))}</code> ${escapeHtml(x.file||'')} · ${x.chunks||0} 片段${ch}</div>`;
+      }).join('') + `</div>`
+        + `<div class="ins-hint">检索示例：/rag search 问题 --key 前8位</div>`;
+    } else if ((d.hits && d.hits.length) || d.help_lines) {  // search
+      const lines = (d.help_lines || []).map(l =>
+        `<div class="ins-line">${escapeHtml(l)}</div>`).join('');
+      html = `<div class="ins-lib">${lines}</div>`
+        + (d.hits && d.hits.length ? `<div class="ins-hint">--key 限定文档 · --k N 控制条数</div>` : '');
+    } else if (d.context) {  // context
+      html = `<div class="ins-lib"><div class="ins-line" style="white-space:pre-wrap">${escapeHtml(d.context.slice(0, 600))}${d.context.length > 600 ? '…' : ''}</div></div>`;
+    }
+    addBot(`<b>${escapeHtml(d.message || '/rag')}</b>${html}`);
+    return;
+  }
   if (d.message) addBot('<b>' + escapeHtml(d.message) + '</b>');
 }
 
