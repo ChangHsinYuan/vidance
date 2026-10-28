@@ -2100,6 +2100,15 @@ def tool_dispatch(name: str, req: ToolRequest):
         idx = RagIndex()
         k = int(flags.get('k', 5))
         doc_key = flags.get('key') or None
+        if doc_key:
+            # 支持 8 位短前缀（/rag status 展示的就是短 key）：唯一命中→展开为完整 md5
+            all_keys = [d['key'] for d in idx.list_docs()]
+            hits_k = [x for x in all_keys if x.startswith(doc_key)]
+            if len(hits_k) == 1:
+                doc_key = hits_k[0]
+            elif len(hits_k) > 1:
+                raise HTTPException(status_code=400,
+                                    detail=f'doc_key 前缀歧义: {doc_key} 命中 {len(hits_k)} 个文档')
         if action == 'add':
             if len(pos) < 2:
                 raise HTTPException(status_code=400, detail='用法: /rag add <path> [--novel] [--force]')

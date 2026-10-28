@@ -1,0 +1,18 @@
+# RAG 档薄镜像：基于 vidance-api:latest 补齐 RAG 依赖（CPU torch + transformers + faiss）
+# + 叠代码（含 Dockerfile.update 的 COPY 语义）；bge 模型经 compose 只读挂载
+# /mnt/dataset/zxy/hf_cache/bge-small-zh-v1.5
+FROM vidance-api:latest
+WORKDIR /app
+
+# torch CPU 直装阿里云 wheel（--no-deps 防走不可达的 pypi.org），六个运行依赖从清华补
+RUN pip install --no-cache-dir --no-deps \
+      "https://mirrors.aliyun.com/pytorch-wheels/cpu/torch-2.6.0%2Bcpu-cp311-cp311-linux_x86_64.whl" \
+    && pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple \
+       typing-extensions sympy networkx jinja2 filelock fsspec \
+       transformers faiss-cpu
+
+COPY . /app
+ENV VIDANCE_TIER=none \
+    VIDANCE_PORT=8894
+EXPOSE 8894
+CMD ["python", "core/api_server.py"]

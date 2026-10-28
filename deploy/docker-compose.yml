@@ -27,6 +27,8 @@ services:
       - ../voices:/app/voices
       # 素材目录直挂宿主（grid/编辑命令的相对路径即时可见，不烤进镜像）
       - ../input:/app/input:ro
+      # RAG 嵌入模型直挂宿主（bge-small-zh，Dockerfile.rag 镜像用；缺了 RAG 降级报缺模型）
+      - /mnt/dataset/zxy/hf_cache/bge-small-zh-v1.5:/mnt/dataset/zxy/hf_cache/bge-small-zh-v1.5:ro
       - /tmp:/hostlogs/tmp:ro
       # UI 直挂宿主（改前端零重建）
       - ../ui:/app/ui:ro

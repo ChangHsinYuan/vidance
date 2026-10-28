@@ -1,0 +1,30 @@
+import sys
+sys.path.insert(0, '.')
+from utils.rag import RagIndex
+from agents.common.tools.llm import LLMClient
+
+KEY = '454eb1f2826b56685bf7ab155c6eb06e'
+idx = RagIndex()
+lc = LLMClient()
+
+QUESTIONS = [
+    '孔乙己喝的什么酒？他的长衫有什么特点？',
+    '阿Q最后因为什么被处决？画押时画了什么？',
+    '《药》里华老栓买的是什么药？给谁治病？',
+]
+
+for q in QUESTIONS:
+    hits = idx.search_novel(q, k=5, novel_key=KEY)
+    cards = idx._load_cards(KEY)
+    ctx = RagIndex.format_novel_context(hits, cards)
+    msgs = [
+        {'role': 'system', 'content':
+         '你是原著问答助手。只根据下面的小说原文片段回答，引用关键细节；'
+         '原文没有的信息就明说"原文未提及"。\n\n' + ctx},
+        {'role': 'user', 'content': q},
+    ]
+    r = lc.chat(msgs, temperature=0.2)
+    print('Q:', q)
+    print('A:', r.strip()[:400])
+    print('hits:', ['%.2f %s' % (h['score'], h.get('chapter', '?')) for h in hits])
+    print('─' * 60)
