@@ -62,6 +62,78 @@ def main():
     t3, ch3 = split_novel_chapters('')
     ok('empty text → no chapters', ch3 == [])
 
+    # ── 1b. 篇名式标题（短篇集，古登堡排版） ──
+    SHORT = """*** START OF THE PROJECT GUTENBERG EBOOK 呐喊 ***
+制作信息页若干……
+
+《呐喊》自序
+
+    有谁从小康人家而坠入困顿的么，我以为在这途路中，大概可以看见世人的真面目。
+
+ 一件小事
+
+    我从乡下跑到京城里，一转眼已经六年了。其间耳闻目睹的所谓国家大事，算起来也很不少。
+
+ 狂人日记
+
+    某君昆仲，今隐其名，皆余昔日在中学时良友；分隔多年，消息渐阙。日前偶然闻得。
+
+ 端午节
+
+    首先说到了政府，方玄绰道，现在的政府还不如从前的政府，官僚气很重。
+*** END OF THE PROJECT GUTENBERG EBOOK 呐喊 ***
+"""
+    st, sch = split_novel_chapters(SHORT)
+    names = [c['title'] for c in sch]
+    ok('gutenberg header/footer trimmed',
+       '制作信息' not in ''.join(c['text'] for c in sch)
+       and 'License' not in ''.join(c['text'] for c in sch))
+    ok('story-title chapters', '一件小事' in names and '狂人日记' in names
+       and '端午节' in names)
+    ok('自序 with 《》 prefix matched',
+       any(n.endswith('自序') for n in names))
+    ok('story bodies attach to own title',
+       '孔乙己' not in names)  # 本例无孔乙己，防串位
+    kong = """*** START OF THE PROJECT GUTENBERG EBOOK X ***
+
+ 孔乙己
+
+    鲁镇的酒店的格局，是和别处不同的：都是当街一个曲尺形的大柜台，柜里面预备着热水。
+
+ 药
+
+    秋天的后半夜，月亮下去了，太阳还没有出，剩下一片乌蓝的天。
+"""
+    kt, kch = split_novel_chapters(kong)
+    ok('indented-1 title lines', [c['title'] for c in kch] == ['孔乙己', '药'])
+    # 正文 4 空格缩进的短行不能被误当标题
+    body_short = """*** START OF THE PROJECT GUTENBERG EBOOK Y ***
+
+ 狂人日记
+
+    没有吃过人的孩子
+    或者还有
+    救救孩子
+
+ 药
+
+    秋天的后半夜，月亮下去了。
+"""
+    bt, bch = split_novel_chapters(body_short)
+    ok('indented-4 short lines not titles', [c['title'] for c in bch] == ['狂人日记', '药'])
+
+    # ── 1c. 人物卡采样：均匀覆盖首尾 ──
+    many = [{'title': f'第{i}篇', 'text': 'x' * i} for i in range(20)]
+    picks = RagIndex._pick_chapters_for_cards(many, max_n=8)
+    ok('sampling size', len(picks) == 8)
+    ok('sampling covers head/tail', picks[0]['title'] == '第0篇'
+       and picks[-1]['title'] == '第19篇')
+    ok('sampling even coverage',
+       [p['title'] for p in picks] == ['第0篇', '第3篇', '第5篇', '第8篇',
+                                       '第11篇', '第14篇', '第16篇', '第19篇'])
+    ok('sampling passthrough', RagIndex._pick_chapters_for_cards(many[:5]) is not None
+       and len(RagIndex._pick_chapters_for_cards(many[:5])) == 5)
+
     # ── 2. add_novel 全链（mock LLM 人物卡） ──
     tmpd = tempfile.mkdtemp(prefix='novel_test_')
     p = os.path.join(tmpd, 'lighthouse.txt')

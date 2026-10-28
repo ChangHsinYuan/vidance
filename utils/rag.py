@@ -39,18 +39,27 @@ def _md5(text: str) -> str:
 
 
 def read_document(path: str) -> str:
-    """读文档为纯文本（md/txt 直读，pdf 走 pypdf）。"""
+    """读文档为纯文本（md/txt 直读，pdf 走 pypdf）；古登堡头尾自动裁剪。"""
     if not path or not os.path.isfile(path):
         raise FileNotFoundError(f'文档不存在: {path}')
     ext = os.path.splitext(path)[1].lower()
     if ext == '.pdf':
         from pypdf import PdfReader
         reader = PdfReader(path)
-        return '\n\n'.join((p.extract_text() or '') for p in reader.pages)
-    if ext in ('.md', '.markdown', '.txt', '') or ext == '.text':
+        text = '\n\n'.join((p.extract_text() or '') for p in reader.pages)
+    elif ext in ('.md', '.markdown', '.txt', '') or ext == '.text':
         with open(path, 'r', encoding='utf-8', errors='replace') as f:
-            return f.read()
-    raise ValueError(f'不支持的文档类型: {ext}（支持 md/txt/pdf）')
+            text = f.read()
+    else:
+        raise ValueError(f'不支持的文档类型: {ext}（支持 md/txt/pdf）')
+    # Project Gutenberg 头（版权页/制作信息）尾（License）裁剪，只留正文
+    m = re.search(r'\*\*\*\s*START OF TH[EI]S? [^\n]*\*\*\*', text)
+    if m:
+        text = text[m.end():]
+    m = re.search(r'\*\*\*\s*END OF TH[EI]S? [^\n]*', text)
+    if m:
+        text = text[:m.start()]
+    return text
 
 
 def chunk_text(text: str, size: int = _CHUNK_SIZE, overlap: int = _CHUNK_OVERLAP) -> list:
@@ -93,10 +102,27 @@ def chunk_text(text: str, size: int = _CHUNK_SIZE, overlap: int = _CHUNK_OVERLAP
 
 _RE_CHAPTER = re.compile(r'^\s*(第[0-9〇零一二三四五六七八九十百千两]+[章回节卷][^\n]{0,40})\s*$',
                          re.MULTILINE)
+# 篇名式标题（短篇集：一行独立 CJK 短标题，如"孔乙己""一件小事"，可带《》书名号
+# 前缀的 自序/前言/後記）。正文段落通常 ≥4 空格缩进、目录条目带页码/更多缩进，天然不匹配
+_RE_TITLE = re.compile(
+    r'^ {0,2}((?:《[^》]{1,20}》)?(?:自序|前言|後記|譯序)|[\u3400-\u9fffＱ]{1,12}) *$',
+    re.MULTILINE)
+
+
+def _dedupe_marks(matches, span=2000):
+    """相邻重复标题去重：同一标题 span 字符内出现两次（目录行+正文标题）保留后者。"""
+    out = []
+    for m in matches:
+        t = m.group(1).strip()
+        if out and out[-1][0] == t and m.start() - out[-1][1] < span:
+            out[-1] = (t, m.start(), m.end())
+        else:
+            out.append((t, m.start(), m.end()))
+    return out
 
 
 def split_novel_chapters(text: str) -> tuple:
-    """小说分章：'第X章' 标题行优先；无标题行退化为按 ~3000 字空行块切。
+    """小说分章：篇名式标题（短篇集）> '第X章' 标题行 > 退化为 ~3000 字空行块。
 
     返回 (title, [{'title', 'text'}])；title 取首行非空文本（截 40 字）。
     """
@@ -105,17 +131,22 @@ def split_novel_chapters(text: str) -> tuple:
         return '', []
     lines = [l.strip() for l in text.splitlines() if l.strip()]
     title = lines[0][:40] if lines else '未命名'
-    marks = list(_RE_CHAPTER.finditer(text))
+    # 优先：篇名式标题（长篇第X章可作为章内小节，粒度以篇为单位更利于人物卡）
+    tmarks = _dedupe_marks(_RE_TITLE.finditer(text))
+    if len(tmarks) >= 2:
+        marks = tmarks
+    else:
+        marks = _dedupe_marks(_RE_CHAPTER.finditer(text))
     if len(marks) >= 2:
         chapters = []
-        pre = text[:marks[0].start()].strip()
+        pre = text[:marks[0][1]].strip()
         if len(pre) >= 200:  # 正文前的引子/简介太长也收一章
             chapters.append({'title': '序', 'text': pre})
-        for i, m in enumerate(marks):
-            end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
-            body = text[m.end():end].strip()
+        for i, (t, s, e) in enumerate(marks):
+            end = marks[i + 1][1] if i + 1 < len(marks) else len(text)
+            body = text[e:end].strip()
             if body:
-                chapters.append({'title': m.group(1).strip()[:40], 'text': body})
+                chapters.append({'title': t[:40], 'text': body})
         return title, chapters
     # 退化：超大段（>2000 字）切为伪章节
     paras = [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
@@ -268,9 +299,10 @@ class RagIndex:
                   extract_cards: bool = True) -> dict:
         """小说（txt/md/pdf）分章入索引 + 人物卡抽取（Toonflow 资产提取路线）。
 
-        - 章节切分：'第X章/回/节/卷' 标题行优先，退化为超大段（>2000 字空行块）
+        - 章节切分：篇名式标题（短篇集独立短标题行）> '第X章/回/节/卷' 行 >
+          退化为超大段（>2000 字空行块）；古登堡头尾自动裁剪
         - 每章 chunk 化入 FAISS，meta 记 chapter 归属
-        - 人物卡：llm.py 从前 3 章 + 高频名字抽取 {name, appearance, personality,
+        - 人物卡：llm.py 全篇均匀采样（≤8 章）抽取 {name, appearance, personality,
           relations}，存 novel-cards-{md5}.json（LLM 失败跳过，非致命）
         返回 {'key', 'chapters', 'chunks', 'cards', 'cached', 'title'}
         """
@@ -330,18 +362,31 @@ class RagIndex:
                 return []
         return []
 
+    @staticmethod
+    def _pick_chapters_for_cards(chapters: list, max_n: int = 8) -> list:
+        """人物卡采样：≤max_n 章全取；更多则均匀取 max_n 章（首尾必含）。"""
+        n = len(chapters)
+        if n <= max_n:
+            return list(chapters)
+        idxs = {round(i * (n - 1) / (max_n - 1)) for i in range(max_n)}
+        return [chapters[i] for i in sorted(idxs)]
+
     def _extract_cards(self, title: str, chapters: list, key: str) -> list:
-        """LLM 人物卡抽取（前 3 章即可定位主要人物；失败返回 [] 非致命）。"""
+        """LLM 人物卡抽取（全篇均匀采样，短篇集每篇主角都能覆盖；失败返回 [] 非致命）。"""
         try:
             from agents.common.tools.llm import LLMClient
             lc = LLMClient()
-        except Exception:
+        except Exception as e:
+            print(f'[rag] 人物卡抽取跳过（LLM 客户端初始化失败）: {e}', file=sys.stderr)
             return []
         sample = '\n\n'.join(
-            f'【{c["title"]}】\n{c["text"][:800]}' for c in chapters[:3])
+            f'【{c["title"]}】\n{c["text"][:600]}' for c in
+            self._pick_chapters_for_cards(chapters, max_n=8))
         system = (
-            '你是小说改编助手。从小说开头章节提取主要人物设定卡，供后续分集编剧保持'
+            '你是小说改编助手。从小说片段提取主要人物设定卡，供后续分集编剧保持'
             '人物外貌/性格一致（人物卡是唯一外观来源，之后每集不再重新描述）。\n'
+            '片段可能来自长篇的若干章，也可能覆盖短篇集的多篇——每篇的主人公'
+            '都算主要人物，都要提取。\n'
             '输出严格JSON，不要任何解释。\n'
             'JSON schema:\n'
             '{"cards": [{"name": "姓名", "appearance": "外貌描述（年龄/发型/服装/体型，'
@@ -355,11 +400,13 @@ class RagIndex:
             {'role': 'user', 'content': f'小说：{title}\n\n{sample}'},
         ]
         try:
+            # 大 prompt+长输出，端点慢时 300s 默认不够，放宽到 600s
             r = lc.chat_json(messages, model=lc.models.get('script'),
-                             temperature=0.3, retries=1)
+                             temperature=0.3, retries=1, timeout=600)
             cards = [c for c in (r.get('cards') or []) if isinstance(c, dict)
                      and c.get('name')][:8]
-        except Exception:
+        except Exception as e:
+            print(f'[rag] 人物卡抽取失败（LLM 调用/解析）: {e}', file=sys.stderr)
             return []
         if not cards:
             return []
