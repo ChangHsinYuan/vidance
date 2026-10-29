@@ -186,17 +186,19 @@ class LLMClient:
                                 max_tokens=max_tokens, timeout=timeout)
 
     def chat_json(self, messages: list, model: str = None,
-                  temperature: float = 0.7, timeout: int = 300, retries: int = 0) -> dict:
+                  temperature: float = 0.7, timeout: int = 300, retries: int = 0,
+                  max_tokens: int = 16384) -> dict:
         """调用 LLM 并解析 JSON 结果（提取 ```json 代码块或直接解析）
 
         v17 M4：解析失败时带报错重试（把畸形输出+错误信息回喂 LLM 让其自修），默认 2 次。
+        max_tokens 默认 16384：推理模型 reasoning+完整 JSON 易超 4096，截断→content None。
         """
         last_err = None
         last_text = ''
         for i in range(retries + 1 + 2):  # 用户 retries + 解析重试 2 次
             text = (last_text if i and last_text else
                     self.chat(messages, model=model, temperature=temperature,
-                              timeout=timeout, retries=retries))
+                              timeout=timeout, retries=retries, max_tokens=max_tokens))
             try:
                 return self._extract_json(text)
             except (json.JSONDecodeError, ValueError) as e:

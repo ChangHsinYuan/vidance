@@ -415,7 +415,13 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v17 — 整合已有开源仓库（原 v12）（🎯 待开发）
+### v17 — 整合已有开源仓库（原 v12）（🔄 M5 RAG+M6 原型已完成，见下；M1-M4/M7 待开发）
+
+**M6 原型验证 ✅（2026-10-29，《孔乙己》端到端）**：
+- **拆解**（档1 纯 LLM）：`input/rag_test/m6_breakdown_test.py` — RAG 人物卡注入（按正文人名过滤）→ chat_json → 角色6/场景14/道具8/分镜36（223s），schema 校验全过；产物 `output/m6/breakdown_孔乙己.json`
+- **渲染**（档3 全链路）：`input/rag_test/m6_render_test.py` — FLUX 定妆照（人物卡 appearance）→ 8 关键镜 Wan T2V/I2V（主角镜用定妆照首帧保一致）→ Narrator 配音（cosy-jieshuo1）→ tpad 冻结尾帧对齐旁白→concat；成片 `output/m6/kongyiji_proto.mp4`（72s/1280x704，幂等可续跑）
+- **踩坑**：①`chat_json` 默认 max_tokens=4096 对推理模型太小（reasoning 挤占额度→content None），已改默认 16384；②非流式调用在长 reasoning 期零字节→read timeout 必死（600s/900s 均超时），流式调用（chat_stream，1800s）稳过——**M6 正式实现必须走流式**；③《藥》章含阿Q正传 36k 字（阿Q无独立篇名行的已知切分限制），长文本拆解需按字数分段或选短章
+- **待办**：接 M1 buffer（拆解 JSON/定妆照/分镜视频应归档会话缓冲区）；36 镜全量渲染约 2h（GPU 单卡排队）；TTS 首字杂音护栏 16 次触发（长旁白按句切分可缓解）
 
 **目标**：吸收成熟开源项目的工程能力，不重复造轮子；并补上系统一直缺的"会话资产层"——上传素材/中间产物有统一缓冲区管理（生命周期跟会话走），前端支持类 ChatGPT 附件交互，指令用 @引用 替代自然语言指代。
 
