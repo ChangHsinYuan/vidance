@@ -1,7 +1,7 @@
 # Vidance 总览与路线图
 
 > 视频生成 agent 系统：opencode 当"制片人"编排本地生图/生视频/生3D/语音引擎，从一句概念产出有声短片。
-> 原始规划稿见 `archive/roadmap_origin.md`。**已实现**：v0-v10 + t2c + v11 多智能体（原 v13）+ v12 三排正交 M1-M2（原 v17）+ v13 轻量化无模型四线：营销号/SVG/PPT/Blender 3D（原 v15）+ v15 LLM 生成 PPT（原 v20）；**待开发**：v14 社交媒体（原 v11，🔗 已移交队友）/ v16 视频处理编辑（原 v19）/ v17 开源整合（原 v12）/ v18 长视频质量（原 v14）/ v19 二创（原 v16）/ v20 生成中审核（原 v21）/ v21 交付形态（原 v18）。（2026-09-26 重排：已完成块前移，未完成块后移；2026-09-30 新增 v19-v21；2026-10-01 二次重排：PPT/视频编辑前移至 v14 后、生成中审核插至交付形态前；2026-10-01 晚三调：v13/v15 关版 ✅（v15 条目移入已实现区，待开发条目前移）、v14 移交队友——括号内为原号，v12/v14/v16 指最初编号，v18-v21 指 2026-09-30 编号，方便对照 commit）
+> 原始规划稿见 `archive/roadmap_origin.md`。**已实现**：v0-v10 + t2c + v11 多智能体（原 v13）+ v12 三排正交 M1-M2（原 v17）+ v13 轻量化无模型四线：营销号/SVG/PPT/Blender 3D（原 v15）+ v15 LLM 生成 PPT（原 v20）；**待开发**：v14 社交媒体（原 v11，🔗 已移交队友）/ v16 视频处理编辑（原 v19）/ v17 开源整合（原 v12）/ v18 长视频质量（原 v14）/ v19 二创（原 v16）/ v20 生成中审核（原 v21）/ v21 交付形态（原 v18）。（2026-09-26 重排：已完成块前移，未完成块后移；2026-09-30 新增 v19-v21；2026-10-01 二次重排：PPT/视频编辑前移至 v14 后、生成中审核插至交付形态前；2026-10-01 晚三调：v13/v15 关版 ✅（v15 条目移入已实现区，待开发条目前移）、v14 移交队友——括号内为原号，v12/v14/v16 指最初编号，v18-v21 指 2026-09-30 编号，方便对照 commit；2026-10-30 四调：v17 开源整合关版 ✅（M1-M7 全绿，条目就地标记））
 
 ## 1. 定位
 
@@ -415,13 +415,33 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v17 — 整合已有开源仓库（原 v12）（🔄 M5 RAG+M6 原型已完成，见下；M1-M4/M7 待开发）
+### v17 — 整合已有开源仓库（原 v12）（✅ 全部里程碑完成，2026-10-30 关版）
 
-**M6 原型验证 ✅（2026-10-29，《孔乙己》端到端）**：
-- **拆解**（档1 纯 LLM）：`input/rag_test/m6_breakdown_test.py` — RAG 人物卡注入（按正文人名过滤）→ chat_json → 角色6/场景14/道具8/分镜36（223s），schema 校验全过；产物 `output/m6/breakdown_孔乙己.json`
-- **渲染**（档3 全链路）：`input/rag_test/m6_render_test.py` — FLUX 定妆照（人物卡 appearance）→ 8 关键镜 Wan T2V/I2V（主角镜用定妆照首帧保一致）→ Narrator 配音（cosy-jieshuo1）→ tpad 冻结尾帧对齐旁白→concat；成片 `output/m6/kongyiji_proto.mp4`（72s/1280x704，幂等可续跑）
-- **踩坑**：①`chat_json` 默认 max_tokens=4096 对推理模型太小（reasoning 挤占额度→content None），已改默认 16384；②非流式调用在长 reasoning 期零字节→read timeout 必死（600s/900s 均超时），流式调用（chat_stream，1800s）稳过——**M6 正式实现必须走流式**；③《藥》章含阿Q正传 36k 字（阿Q无独立篇名行的已知切分限制），长文本拆解需按字数分段或选短章
-- **待办**：接 M1 buffer（拆解 JSON/定妆照/分镜视频应归档会话缓冲区）；36 镜全量渲染约 2h（GPU 单卡排队）；TTS 首字杂音护栏 16 次触发（长旁白按句切分可缓解）
+**M1-M3 会话资产层 ✅（2026-10-30 前完成，8894 线上验证）**：
+- **M1**：`utils/buffer.py`（BufferManager：uploads 真文件+archive 引用记录+refs.json 原子写+sha256 revision 409 ESTALE+basename 净化+路径围栏+200MB 上限+TTL 7 天守护线程+孤儿回收）+ `/api/upload` `/api/assets` `/api/assets/{id}`(DELETE) `/api/assets/{id}/ref` `/api/assets/archive` `/api/session/{id}`(DELETE)；单测 `tests/test_buffer.py` 19/19
+- **M2**：UI 📎 按钮+拖拽/粘贴上传→chip（缩略图/✕/@N 序号），产物卡「📥 存入 buffer（@ 引用）」按钮（`archiveToBuffer`）
+- **M3**：`@N` 引用（`_resolve_attachments`：args 中 @N→第 N 个附件的 buffer 绝对路径，服务端 refs.json 取值防注入）；chat 请求带 attachments 清单注入 LLM 上下文（知道可用 @1/@2）；chip 发送后灰显保留可复用
+- **端到端冒烟**：上传 PNG→成片 archive 引用（不拷贝）→/api/tool/clip `@1` 替换跑通→删会话 uploads 真删+引用记录清理+**output/ 成片原样安全**
+
+**M4 断点续跑+JSON 容错 ✅（2026-10-30）**：
+- **checkpoint**：`core/pipeline.py` `_save_ckpt/_load_ckpt`（MPT 式原子写：fsync+os.replace，坏 JSON 半文件自动重建）+ `--resume {task_id}`（CLI `auto`；跳过编剧/prompts/角色缓存阶段；`done_clips` 逐镜复用）；产物 sha256 指纹（`_fingerprint_clip`：final_video+audio 双键，resume 时校验不符/缺失即重做，旧 checkpoint 无指纹字段向后兼容）；终态 `done` 标记落 ckpt
+- **黑板挂载**：各阶段落 ckpt 时同步写 agent_runs 步进记录（`_board_log` → v11 AgentBoard `m4:script/prompts/character/clip:N/done`，失败静默不阻塞流水线）
+- **JSON 容错**：`utils/llm.py` 统一出口（markdown 栅栏剥离/尾逗号/单引号容错）+ 失败回喂重问 + max_tokens 16384（M6 踩坑修复）
+- 单测 `tests/test_checkpoint_m4.py` 17/17
+
+**M5 五维提示词模板+RAG ✅**：
+- **模板资产化**：`SKILL/templates/{cinematic,documentary,anime90s,guofeng}.yaml`（五维词汇域约束+style_pack 风格包），`core/vidance.py auto --template` 经 SkillManager 加载注入编剧；`core/pipeline.py` five_dim_guide/style_pack 全链贯通（M6-S5 风格包锚点覆盖）
+- **RAG**：`utils/rag.py` 全链（切章规则+人物卡+bge-small-zh 嵌入+FAISS）+ `/rag` CLI/UI 三态渲染 + `--rag-doc`/`--rag-novel` 编剧上下文注入；《呐喊》索引实测（见下）
+
+**M6 剧本拆解+一致性资产 ✅（2026-10-29/30，《孔乙己》端到端三版迭代）**：
+- **拆解**（档1 纯 LLM）：`input/rag_test/m6_breakdown_test.py` — RAG 人物卡注入（按正文人名过滤）→ chat_json（流式）→ 角色6/场景14/道具8/分镜36（223s），schema 校验全过；产物 `output/m6/breakdown_孔乙己.json`；拆解幂等（已有 JSON 跳过 LLM，--force 重拆）+ >8000 字防呆
+- **渲染 v3 定型**（档3 全链路）：`input/rag_test/m6_render_v3.py` — LLM 中译英每镜 prompt（FLUX 英文理解弱根因修复）→ FLUX 关键帧 → Wan I2V（禁裸 T2V）→ cosy-default TTS（克隆音色幻听黑名单）→ 慢放≤2x/Ken Burns/xfade 拼装 → SRT 烧录 → **yuv420p Windows 兼容终拼**；成片 `output/m6/v3/kongyiji_v3.mp4`（73.7s，ffprobe 实证 High/yuv420p）；prompts.md 全量落盘可追溯
+- **skill 沉淀**：`SKILL/commands/novel2video/`（yaml+脚本+nahan.txt+README 八条硬约束+复现三档 A/B/C）+ `.opencode/skills/novel_to_video/SKILL.md`
+- **buffer 归档 + 全量渲染 ✅（2026-10-30）**：`m6_archive_buffer.py` 产物引用式归档（幂等 name+sha 去重）；`M6_ALL=1` 全量 36 镜渲染实测通过（翻译增量合并/拼贴图动态网格改造），成片 349.2s（h264 High/yuv420p/aac，ffprobe 实证），已归档 `output/buffer/m6_kongyiji_v3/`
+
+**M7 嵌入+重试标准化 ✅（2026-10-30）**：
+- **重试**：tenacity 9.2.1 + `utils/retry.py`（`retry_net('llm'/'tts'/'comfy')` 三策略：指数退避 3 次/固定 2s×3/10s×2；is_retryable=5xx/429/网络类，4xx 直抛）；单测 13/13
+- **嵌入**：MiniLM-L6-v2 qint8 ONNX（23MB，hf-mirror 直下，无外网可复现）+ `utils/embed_index.py`（EmbedIndex：ONNX CPU 推理/mean-pool+L2/暴力余弦/npz 持久化+增量 add，模型缺失延迟报错不阻塞 import）；单测 13/13；中文语义仍走 bge/RagIndex，MiniLM 面向 buffer 资产检索复用
 
 **目标**：吸收成熟开源项目的工程能力，不重复造轮子；并补上系统一直缺的"会话资产层"——上传素材/中间产物有统一缓冲区管理（生命周期跟会话走），前端支持类 ChatGPT 附件交互，指令用 @引用 替代自然语言指代。
 
@@ -442,7 +462,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 - 重试标准化：tenacity 统一 API 重试
 - 候选整合对象：**MoneyPrinterTurbo（本机可深读：task_dir 归拢/原子写 JSON/TTL 缓存清理/上传安全）、ViMax（会话复用+渲染 checkpoint）、Toonflow（@ mention 资产系统+路径围栏+sha256 revision）、BigBanana（Script-to-Asset-to-Keyframe+一致性三重保障）**——借鉴细节见 v17-design.md §1
 
-**里程碑**：M1 buffer 目录+上传 API+会话联动删除+TTL 清理 → M2 前端附件（拖拽/粘贴/chip/产物归档）→ M3 @ 引用（后端替换+LLM 意图规整+t2c 语料）→ M4 断点续跑+JSON 容错 → M5 五维提示词模板+RAG → M6 剧本拆解 → M7 嵌入+重试标准化
+**里程碑**：M1 buffer 目录+上传 API+会话联动删除+TTL 清理 ✅ → M2 前端附件（拖拽/粘贴/chip/产物归档）✅ → M3 @ 引用（后端替换+LLM 意图规整+t2c 语料）✅ → M4 断点续跑+JSON 容错 ✅ → M5 五维提示词模板+RAG ✅ → M6 剧本拆解 ✅ → M7 嵌入+重试标准化 ✅（2026-10-30 全绿关版）
 
 **参考**：MoneyPrinterTurbo（本机 `/mnt/disk_sdb/zxy/MoneyPrinterTurbo/`，源码级）、Toonflow（已克隆，源码级）、ViMax、BigBanana（README 级）；四项目借鉴映射与会话资产层专项设计见 [v17-design.md](./v17-design.md)。
 

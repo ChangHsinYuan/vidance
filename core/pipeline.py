@@ -69,6 +69,7 @@ class Pipeline:
         self._light_reviews = {}
         self.post = PostProcessor(self.config, llm=self.llm)
         self._rife_client = None
+        self._board = None  # v11 黑板（M4 步进记录挂载点，懒加载）
 
     def _get_rife_client(self):
         """Lazy-init RIFE client for slowmo."""
@@ -111,6 +112,38 @@ class Pipeline:
             return {}
         with open(path, encoding='utf-8') as f:
             return json.load(f)
+
+    @staticmethod
+    def _sha256_file(path: str, chunk: int = 1 << 20) -> str:
+        import hashlib
+        h = hashlib.sha256()
+        with open(path, 'rb') as f:
+            for blk in iter(lambda: f.read(chunk), b''):
+                h.update(blk)
+        return h.hexdigest()
+
+    @staticmethod
+    def _fingerprint_clip(clip_info: dict) -> dict:
+        """产物指纹：final_video + audio 的 sha256（文件缺失则跳过该键）"""
+        fp = {}
+        paths = {'final_video': clip_info.get('final_video'),
+                 'audio_path': (clip_info.get('audio') or {}).get('audio_path')}
+        for key, p in paths.items():
+            if p and os.path.isfile(p):
+                fp[key] = Pipeline._sha256_file(p)
+        return fp
+
+    def _board_log(self, task_id: str, stage: str, ok: bool = True,
+                   artifacts: dict = None, error: str = None):
+        """v17 M4：黑板挂载（agent_runs 步进记录），失败不阻塞流水线"""
+        try:
+            from agents.blackboard import AgentBoard
+            if self._board is None:
+                self._board = AgentBoard()
+            self._board.log(task_id, 'pipeline', 'm4:%s' % stage, ok, None,
+                            artifacts or {}, error, 0.0)
+        except Exception:
+            pass
 
     def run(self, concept: str, output_path: str = None,
             character_desc: str = None, voice: str = None,
@@ -231,6 +264,7 @@ class Pipeline:
         self._save_ckpt(task_dir, {'concept': concept, 'character_desc': character_desc,
                                    'target_duration': target_duration, 'script': script,
                                    'anchors': anchors})
+        self._board_log(task_id, 'script', True, {'shots': len(script['shots'])})
         print(f'  title: {script["title"]}')
         print(f'  shots: {len(script["shots"])}')
         self._log('▸ [1] 编剧完成: %s · %d 镜 · review=%s' % (
@@ -271,6 +305,7 @@ class Pipeline:
                 print(f'  shot {shot["id"]}: video={shot["video_prompt"][:50]}...')
                 print(f'           bg={shot["background_prompt"][:50]}...')
             self._save_ckpt(task_dir, {'prompts_done': True, 'script': script})
+            self._board_log(task_id, 'prompts', True, {'shots': len(script['shots'])})
 
         # ── 3. 角色锚阶段 ──
         character = None
@@ -289,6 +324,7 @@ class Pipeline:
             character['prompt_en'] = character_prompt
             meta['character'] = character
             self._save_ckpt(task_dir, {'character': character})
+            self._board_log(task_id, 'character', True, {'mode': character.get('mode')})
 
             if character['mode'] in ('3dgs', 'mesh') and not character.get('review', {}).get('pass', False):
                 if character_mode == 'auto':
@@ -317,12 +353,23 @@ class Pipeline:
             for ci in ckpt.get('clips', []):
                 fv = ci.get('final_video')
                 ap = (ci.get('audio') or {}).get('audio_path')
-                if fv and os.path.isfile(fv) and ap and os.path.isfile(ap):
-                    done_clips[ci['shot_id']] = ci
-                else:
+                if not (fv and os.path.isfile(fv) and ap and os.path.isfile(ap)):
                     print(f'  [resume] clip shot {ci.get("shot_id")} 文件缺失，将重做')
+                    continue
+                # 产物指纹校验（旧 checkpoint 无 sha256 字段则跳过，向后兼容）
+                fp = ci.get('sha256') or {}
+                mismatch = [k for k, want in fp.items()
+                            if want and self._sha256_file(fv if k == 'final_video' else ap) != want]
+                if mismatch:
+                    print(f'  [resume] clip shot {ci.get("shot_id")} 指纹不符({",".join(mismatch)})，将重做')
+                    continue
+                done_clips[ci['shot_id']] = ci
             if done_clips:
                 print(f'  [resume] 复用 {len(done_clips)} 个已完成镜头')
+            self._board_log(task_id, 'resume', True, {
+                'reused_clips': len(done_clips),
+                'stages': [k for k in ('script', 'prompts', 'character') if ckpt.get(k)],
+            })
 
         to_prefetch = [s for s in script['shots'] if s['id'] not in done_clips]
         prefetched = self._prefetch_shots(
@@ -343,6 +390,9 @@ class Pipeline:
                     prefetched=prefetched.get(sid),
                     slowmo_override=slowmo_override,
                 )
+                clip_info['sha256'] = self._fingerprint_clip(clip_info)
+                self._board_log(task_id, 'clip:%s' % sid, True,
+                                {'final_video': clip_info.get('final_video')})
                 self._save_ckpt(task_dir, {'clips': self._load_ckpt(task_dir).get('clips', []) + [clip_info]})
             meta['clips'].append(clip_info)
             all_clips.append(clip_info['final_video'])
@@ -437,6 +487,10 @@ class Pipeline:
         meta['lut'] = lut_path
         meta['bgm'] = bgm_path
         meta['status'] = 'completed'
+
+        # v17 M4：终态落盘（幂等重入标记）+ 黑板 done 记录
+        self._save_ckpt(task_dir, {'done': True, 'output': output_path})
+        self._board_log(task_id, 'done', True, {'output': output_path})
 
         meta_path = os.path.join(task_dir, 'meta.json')
         with open(meta_path, 'w', encoding='utf-8') as f:

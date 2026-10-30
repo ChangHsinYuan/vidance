@@ -1,51 +1,81 @@
-# RAG 小说问答测试材料
+# novel2video — 小说成片技能
+
+小说章节 → 结构化拆解 → 关键帧 → I2V → 配音 → 字幕成片（M6 原型定型版，v17 正式化前手动链路）。
 
 ## 文件
-- `nahan.txt` — 鲁迅《吶喊》全文（Project Gutenberg #27166，公版，繁体，281KB）
-- `rag_qa_test.py` — 自动化端到端测试脚本（检索→组上下文→LLM 问答）
 
-## 快速开始（三种姿势）
+| 文件 | 作用 |
+|---|---|
+| `novel2video.yaml` | 技能参数（doc_key/风格/运镜/默认值） |
+| `m6_breakdown_test.py` | 步骤①②：RAG 人物卡注入 → LLM 结构化拆解（角色/场景/道具/分镜 JSON） |
+| `m6_render_v3.py` | 步骤③④⑤⑥：英文 prompt 关键帧 → I2V → 配音 → 拼装烧字幕（`M6_ALL=1` 全量镜头，默认 8 关键镜） |
+| `m6_archive_buffer.py` | 步骤⑦：产物引用式归档 buffer（幂等，按 name+sha 去重） |
+| `nahan.txt` | 《呐喊》古登堡原文（复现样片用，doc_key=454eb1f2…） |
+| 流程规范（六步+踩坑）：`.opencode/skills/novel_to_video/SKILL.md` | |
 
-### 姿势一：网页 UI（最直观）
-1. 打开 http://127.0.0.1:8894/ui
-2. 输入框输入：`/rag search 孔乙己的长衫 --key 454eb1f2`
-3. 或直接问：`孔乙己为什么"站着喝酒而穿长衫"？`（聊天链路自动检索注入）
-4. 容器端口换成 http://127.0.0.1:9401/ui 同样可用
+## 用法
 
-### 姿势二：命令行直测
+### A. 复现样片（孔乙己，全部素材本目录自带）
+
 ```bash
-cd /mnt/disk_sdb/zxy/vidance
+# 前置①：GPU 服务 UP（h3/wan/flux/tts/api）
+cd /mnt/disk_sdb/zxy/vidance && ./start_services.sh start && sleep 120
 
-# 1. 上传建索引（一次性，~2 分钟：embedding 237 chunk CPU + LLM 抽人物卡）
-curl -F "file=@input/rag_test/nahan.txt" http://127.0.0.1:8894/api/rag/upload
-# 返回 {"doc_key": "…", "indexing": true} —— 记下 doc_key
+# 前置②：建 RAG 索引（本目录 nahan.txt → doc_key 454eb1f2…）
+PY=/home/zxy/.conda/envs/comfyui/bin/python
+$PY SKILL/commands/novel2video/m6_breakdown_test.py 孔乙己   # 首次运行自动建索引+拆解
 
-# 2. 轮询直到 indexed:true（人物卡最后完成）
-curl -s "http://127.0.0.1:8894/api/rag/status?doc_key=<你的doc_key>"
+# 渲染（幂等可续跑；M6_ALL=1 渲染拆解里全部镜头）
+$PY SKILL/commands/novel2video/m6_render_v3.py
+# M6_ALL=1 $PY SKILL/commands/novel2video/m6_render_v3.py   # 全量 36 镜（~2h，后台化跑）
 
-# 3. 检索测试
-curl -s "http://127.0.0.1:8894/api/rag/search?q=华老栓买的什么药&k=3&doc_key=<你的doc_key>"
-
-# 4. 自动化问答（3 道题，编辑脚本里的 KEY 换成你的 doc_key）
-python input/rag_test/rag_qa_test.py
+# 产物归档 buffer（引用式不拷贝，幂等）
+$PY SKILL/commands/novel2video/m6_archive_buffer.py m6_kongyiji_v3
 ```
 
-### 姿势三：跑现成自动化测试
-```bash
-# 本材料的端到端问答（需改脚本内 KEY）
-python input/rag_test/rag_qa_test.py
+产物在 `output/m6/v3/`（同 doc_key 时与历史样片共享缓存，重跑秒过）。
 
-# 代码级单测（46 项，不连 LLM）
-python tests/test_rag.py        # 基础 21 项
-python tests/test_rag_novel.py  # 小说 25 项（含篇名切分/人物卡采样）
+### B. 换一本小说
+
+```bash
+# 1. 上传建索引（得到新 doc_key，8 位短前缀即可用）
+$PY -c "
+import sys; sys.path.insert(0,'.')
+from utils.rag import RagIndex
+print(RagIndex().add_novel('你的小说.txt')['key'])"
+# 或 UI: /rag add /path/to/小说.txt --novel
+
+# 2. 拆解目标章节（章节名要与 /rag status 的章列表一致）
+$PY SKILL/commands/novel2video/m6_breakdown_test.py 章节名
+#    ⚠ m6_breakdown_test.py 里 KEY/SRC 是《呐喊》硬编码，换书需改文件头两行：
+#    KEY='新doc_key'；SRC=你的小说路径
+
+# 3. 渲染：m6_render_v3.py 头部 BD/SHOTS 改成新拆解 JSON 路径和镜头子集
+#    STYLE_EN/MOTION_EN 在 yaml（novel2video.yaml）里，换题材同步改写
 ```
 
-## 当前已建好的索引
-- doc_key: `454eb1f2826b56685bf7ab155c6eb06e`（就是 nahan.txt 的 md5）
-- 14 篇章 / 195 chunks / 8 张人物卡（孔乙己/华老栓/狂人/N先生/方玄绰/陈士成等）
-- 查看全部索引：`curl -s http://127.0.0.1:8894/api/rag/status`
+产物（`output/m6/v3/`）：`kongyiji_v3.mp4` 成片（yuv420p/烧字幕，Windows 可放）、
+`subs.srt`、`prompts.md`（全部 prompt 清单）、`kf_contact.jpg`（关键帧速查）、
+`kf/`（关键帧）、`clips/`（分镜视频+配音）。
 
-## 概念说明
-- **doc_key**：文档在本地索引库的档案号（内容 md5），不是 API key
-- **API key**：你的 LLM 服务密钥，在 config/config.json 的 llm.api_key
-- 同一文件重复上传不会重建索引（md5 命中缓存直接返回）
+## 六步流程
+
+```
+小说 ─① RAG 索引（切章+人物卡）
+   ─② LLM 拆解（shot.visual/narration 分列 JSON）
+   ─③ LLM 中译英 prompt → FLUX 关键帧（全局 STYLE 统一）
+   ─④ Wan I2V（关键帧做首帧，禁裸 T2V）
+   ─⑤ CosyVoice 配音（旁白=字幕同源）
+   ─⑥ 慢放≤2x+Ken Burns 尾推+xfade 拼接+烧字幕+yuv420p
+```
+
+## 硬约束（踩坑结晶，违反必翻车）
+
+1. **FLUX 只吃英文**：中文 prompt → 风格漂移/内容跑偏；必须 LLM 中译英（景别开头+本镜人物状态优先）
+2. **一律 I2V**：裸 T2V 是镜头间风格漂移源头
+3. **音色黑名单**：克隆音色 prompt_text 会被零样本续写（jieshuo1 句首泄漏"街道的街道…"）；新音色先单句 A/B，安全默认 cosy-default
+4. **Windows 兼容**：每个 ffmpeg 输出环节显式 `-pix_fmt yuv420p`（RGB 关键帧经 xfade 链变 4:4:4 → Windows 放不了）
+5. **禁长死帧**：时长差用慢放 ≤2x 消化，残余用 Ken Burns 缓推（zoompan 1.0→1.14）
+6. **LLM 长任务必须流式**：非流式长 reasoning 零字节 → read timeout 必死；chat_json max_tokens 默认已提 16384
+7. **超长章先分段**：>8000 字拆解会超时/降质（《藥》=36k 字，含无篇名并入的阿Q正传）
+8. **耗时预算**：拆解 5-15min + 关键帧 5min + I2V 3.5min/镜 + 拼装 2min；一律后台化跑

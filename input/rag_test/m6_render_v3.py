@@ -22,7 +22,9 @@ from agents.generator.tools.comfy_api import ComfyClient
 from core.narration import Narrator
 
 BD = 'output/m6/breakdown_孔乙己.json'
-SHOTS = [1, 9, 11, 21, 24, 30, 34, 36]
+# M6_ALL=1 → 全量渲染（拆解里全部镜头）；默认 8 关键镜子集
+SHOTS = ([1, 9, 11, 21, 24, 30, 34, 36] if not os.environ.get('M6_ALL')
+         else None)  # by_shot 加载后回填
 VOICE = 'cosy-default'
 STYLE_EN = ('1910s rural Zhejiang China, vintage black and white documentary photo, '
             'grainy film texture, soft natural window light, photorealistic, '
@@ -41,6 +43,8 @@ SIZE_EN = {'远景': 'wide establishing shot', '全景': 'full shot', '中景': 
 
 bd = json.load(open(BD))
 by_shot = {s['shot']: s for s in bd['storyboard']}
+if SHOTS is None:
+    SHOTS = sorted(by_shot)  # M6_ALL=1：全量镜头
 protagonist = bd['characters'][0]
 flux = ComfyClient(instance='flux')
 wan = ComfyClient(instance='wan')
@@ -57,16 +61,19 @@ def probe_dur(path):
     return float(r.stdout.strip())
 
 
-# ── A) LLM 翻译：中文 visual → 英文 FLUX prompt ──
+# ── A) LLM 翻译：中文 visual → 英文 FLUX prompt（增量：缓存命中跳过，缺的镜补翻译）──
 PROMPTS_EN = os.path.join(KF, 'prompts_en.json')
+en_map = {}
 if os.path.isfile(PROMPTS_EN):
-    en_map = json.load(open(PROMPTS_EN))
-    print(f'[翻译] 已存在 {PROMPTS_EN}，跳过', flush=True)
+    en_map = {int(k): v for k, v in json.load(open(PROMPTS_EN)).items()}  # JSON 键是字符串
+missing = [n for n in SHOTS if n not in en_map]
+if not missing:
+    print(f'[翻译] 缓存齐全（{len(en_map)} 镜），跳过', flush=True)
 else:
     from agents.common.tools.llm import LLMClient
     lc = LLMClient()
     items = []
-    for n in SHOTS:
+    for n in missing:
         s = by_shot[n]
         items.append({'shot': n, 'size': SIZE_EN.get(s.get('size', ''), 'medium shot'),
                       'visual': s['visual']})
@@ -83,21 +90,22 @@ else:
                      ensure_ascii=False, indent=1)
     msgs = [{'role': 'system', 'content': sys_p},
             {'role': 'user', 'content': usr}]
-    print(f'[翻译] {len(items)} 镜英文 prompt 生成中（流式）…', flush=True)
+    print(f'[翻译] {len(missing)}/{len(SHOTS)} 镜需补翻译（流式）…', flush=True)
     for attempt in range(3):
         try:
             text = lc.chat_stream(msgs, model=lc.models['script'], temperature=0.2,
                                   max_tokens=8192, timeout=1800)
             r = lc._extract_json(text)
-            en_map = {p['shot']: p['prompt'] for p in r['prompts']}
-            assert set(en_map) == set(SHOTS), f'镜头号不齐: {sorted(en_map)}'
+            new_map = {int(p['shot']): p['prompt'] for p in r['prompts']}
+            assert set(new_map) == set(missing), f'镜头号不齐: 缺{sorted(set(missing)-set(new_map))} 多{sorted(set(new_map)-set(missing))}'
+            en_map.update(new_map)
             break
         except Exception as e:
             print(f'[翻译] 第 {attempt + 1} 次失败: {e}', flush=True)
             if attempt == 2:
                 raise
     json.dump(en_map, open(PROMPTS_EN, 'w'), ensure_ascii=False, indent=1)
-    print(f'[翻译] ✓ {PROMPTS_EN}', flush=True)
+    print(f'[翻译] ✓ {PROMPTS_EN}（共 {len(en_map)} 镜）', flush=True)
 
 # ── B) 关键帧（英文 prompt + STYLE_EN）──
 kf_prompts = {}
@@ -118,7 +126,8 @@ if not os.path.isfile(contact):
     try:
         from PIL import Image, ImageDraw
         tw, th = 640, 352
-        sheet = Image.new('RGB', (tw * 2, th * 4), 'black')
+        rows = (len(SHOTS) + 1) // 2  # 动态行数（每行 2 镜）
+        sheet = Image.new('RGB', (tw * 2, th * rows), 'black')
         dr = ImageDraw.Draw(sheet)
         for i, n in enumerate(SHOTS):
             im = Image.open(os.path.join(KF, f'kf_{n:02d}.png')).resize((tw, th))

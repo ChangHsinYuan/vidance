@@ -8,7 +8,8 @@
 |---|---|
 | `novel2video.yaml` | 技能参数（doc_key/风格/运镜/默认值） |
 | `m6_breakdown_test.py` | 步骤①②：RAG 人物卡注入 → LLM 结构化拆解（角色/场景/道具/分镜 JSON） |
-| `m6_render_v3.py` | 步骤③④⑤⑥：英文 prompt 关键帧 → I2V → 配音 → 拼装烧字幕 |
+| `m6_render_v3.py` | 步骤③④⑤⑥：英文 prompt 关键帧 → I2V → 配音 → 拼装烧字幕（`M6_ALL=1` 全量镜头，默认 8 关键镜） |
+| `m6_archive_buffer.py` | 步骤⑦：产物引用式归档 buffer（幂等，按 name+sha 去重） |
 | `nahan.txt` | 《呐喊》古登堡原文（复现样片用，doc_key=454eb1f2…） |
 | 流程规范（六步+踩坑）：`.opencode/skills/novel_to_video/SKILL.md` | |
 
@@ -24,8 +25,12 @@ cd /mnt/disk_sdb/zxy/vidance && ./start_services.sh start && sleep 120
 PY=/home/zxy/.conda/envs/comfyui/bin/python
 $PY SKILL/commands/novel2video/m6_breakdown_test.py 孔乙己   # 首次运行自动建索引+拆解
 
-# 渲染（幂等可续跑）
+# 渲染（幂等可续跑；M6_ALL=1 渲染拆解里全部镜头）
 $PY SKILL/commands/novel2video/m6_render_v3.py
+# M6_ALL=1 $PY SKILL/commands/novel2video/m6_render_v3.py   # 全量 36 镜（~2h，后台化跑）
+
+# 产物归档 buffer（引用式不拷贝，幂等）
+$PY SKILL/commands/novel2video/m6_archive_buffer.py m6_kongyiji_v3
 ```
 
 产物在 `output/m6/v3/`（同 doc_key 时与历史样片共享缓存，重跑秒过）。
