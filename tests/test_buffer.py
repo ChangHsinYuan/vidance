@@ -121,6 +121,36 @@ def main():
             ok('size limit enforced', False)
         except ValueError:
             ok('size limit enforced', True)
+
+        # ── v17 缺口①：@文件名 模糊搜索 + 游标分页（Toonflow MentionQuery 对齐）──
+        sid5 = 'searchtest'
+        bm.add_upload(sid5, '角色参考图.png', b'x' * 100)
+        bm.add_upload(sid5, '参考视频.mp4', b'y' * 200)
+        bm.add_upload(sid5, '场景图.jpg', b'z' * 50)
+        r = bm.search_assets(sid5, query='参考', limit=1)
+        ok('search fuzzy hit (total=3, 2 match, page1)', r['total'] == 3 and len(r['items']) == 1)
+        r2 = bm.search_assets(sid5, query='参考', cursor=r['next_cursor'], limit=1)
+        ok('search cursor page2', len(r2['items']) == 1
+           and r2['items'][0]['name'] != r['items'][0]['name'])
+        r3 = bm.search_assets(sid5, query='参考', cursor=r2['next_cursor'], limit=1)
+        ok('search cursor exhausted (no next)', 'next_cursor' not in r3 and len(r3['items']) == 0)
+        try:
+            bm.search_assets(sid5, cursor='["wrong-rev", "参考", 0]')
+            ok('search stale cursor raises', False)
+        except ValueError as e:
+            ok('search stale cursor raises', '分页已失效' in str(e))
+        try:
+            bm.search_assets(sid5, cursor='not-json')
+            ok('search bad cursor raises', False)
+        except ValueError:
+            ok('search bad cursor raises', True)
+        ok('search empty query lists all', bm.search_assets(sid5, query='')['total'] == 3)
+        bm.add_upload(sid5, '参考新图.png', b'w' * 10)  # revision 变化
+        try:
+            bm.search_assets(sid5, query='参考', cursor=r['next_cursor'])
+            ok('search cursor invalidated by revision', False)
+        except ValueError:
+            ok('search cursor invalidated by revision', True)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

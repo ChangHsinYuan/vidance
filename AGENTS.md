@@ -8,9 +8,9 @@ Vidance 是一个基于 opencode agent 编排的本地视频生成系统。核�
 
 **统一入口**：`python core/vidance.py make`（v12（原 v17）：`--director llm|manual|scout × --generator wan|fast|svg|h3` 排列组合）或直用子命令 `{auto|custom|quick|fast|hot|svg|compose|concat|h3shot}` — auto 模式走 LLM 编剧+Wan/FLUX 生成，custom 模式走参考图+预写脚本+H3 ref2va 生成，quick 模式纯 T2V 无后处理。后处理（RIFE/LUT/BGM/STT）由 `core/postprocess.py` 共享模块提供。
 
-**当前状态：v0-v7 全部实现 + v10 时间线拼接（M1-M8）+ svg 有声流水线（S1-S5）+ t2c 自然语言→命令 + v12 make 统一入口（M1-M2，原 v17）+ v11 多智能体（M0-M4 + v11.1 前端可视化，原 v13，agents/ 目录，docs/design/v11-design.md）+ v15 PPT 流水线（M1-M4，原 v20：ppt_llm plan_deck/模板/svg_chart + ppt_pipeline PptLine 多形态 deck.html/PDF/PNG/mp4 + CLI ppt + generator.ppt agent + /api/tool/ppt）+ v13 blender 3D 简单版（blender_llm plan_scene/模板 title3d+shapes+bars3d + blender_pipeline bpy EEVEE + BlenderLine + CLI blender3d + generator.blender3d agent + /api/tool/blender3d）+ v13 轻量化收口（无模型四线全具备：营销号/SVG/PPT/Blender）+ v16 SAM2 编辑 + 生成式编辑增强 ✅（sam_edit segment/cutout/replace_bg/mosaic/inpaint/visualize/instruct + YOLO 自动 Grounded-SAM/框提示 + video 双向传播追踪 + v16.x M5 FLUX Fill 生成式重绘/M6 Union ControlNet canny 联动/M7 Wan2.1 VACE 参考图生视频/M8 Qwen-Image-Edit 2509 指令式编辑（中文可用）+ CLI edit --engine flux|vace|instruct + post.edit agent + /api/tool/edit|vace + deploy 环境固化三件套；docs/design/v16-design.md）**（v2 长视频 + v2.1 backlog + v3 M0-M7 + v4 M1-M6 + v5 M1-M4 + v6 M1-M4 + v7 前端 M1-M4 + v10 + t2c），**待开发**：v14 社交媒体（原 v11，🔗 已移交队友）/ v17 开源整合（原 v12）/ v18 长视频质量（原 v14）/ v19 二创（原 v16）/ v20 生成中审核（原 v21）/ v21 交付形态（原 v18）（2026-09-26 重排 + 2026-09-30 新增 v19-v21 + 2026-10-01 二次重排 + v13/v15 关版、v14 移交队友 + 2026-10-02 v16 M0-M4：括号内为原号）。
+**当前状态：v0-v7 全部实现 + v10 时间线拼接（M1-M8）+ svg 有声流水线（S1-S5）+ t2c 自然语言→命令 + v12 make 统一入口（M1-M2，原 v17）+ v11 多智能体（M0-M4 + v11.1 前端可视化，原 v13，agents/ 目录，docs/design/v11-design.md）+ v15 PPT 流水线（M1-M4，原 v20：ppt_llm plan_deck/模板/svg_chart + ppt_pipeline PptLine 多形态 deck.html/PDF/PNG/mp4 + CLI ppt + generator.ppt agent + /api/tool/ppt）+ v13 blender 3D 简单版（blender_llm plan_scene/模板 title3d+shapes+bars3d + blender_pipeline bpy EEVEE + BlenderLine + CLI blender3d + generator.blender3d agent + /api/tool/blender3d）+ v13 轻量化收口（无模型四线全具备：营销号/SVG/PPT/Blender）+ v16 SAM2 编辑 + 生成式编辑增强 ✅（sam_edit segment/cutout/replace_bg/mosaic/inpaint/visualize/instruct + YOLO 自动 Grounded-SAM/框提示 + video 双向传播追踪 + v16.x M5 FLUX Fill 生成式重绘/M6 Union ControlNet canny 联动/M7 Wan2.1 VACE 参考图生视频/M8 Qwen-Image-Edit 2509 指令式编辑（中文可用）+ CLI edit --engine flux|vace|instruct + post.edit agent + /api/tool/edit|vace + deploy 环境固化三件套；docs/design/v16-design.md）+ **v17 开源整合（原 v12）✅（M1-M7 全绿，2026-10-30 关版：M1-M3 buffer 会话资产层/前端附件/@引用（@N+@文件名 q 搜索+游标 410）/M4 断点续跑 sha256 指纹+JSON 容错/M5 五维模板+RAG/M6 剧本拆解 novel2video（含衣橱系统）/M7 嵌入+重试；对照演示页 docs/v17-benchmark.html；docs/usage/usage-v17.md）**（v2 长视频 + v2.1 backlog + v3 M0-M7 + v4 M1-M6 + v5 M1-M4 + v6 M1-M4 + v7 前端 M1-M4 + v10 + t2c），**待开发**：v14 社交媒体（原 v11，🔗 已移交队友）/ v18 长视频质量（原 v14）/ v19 二创（原 v16）/ v20 生成中审核（原 v21）/ v21 交付形态（原 v18）（2026-09-26 重排 + 2026-09-30 新增 v19-v21 + 2026-10-01 二次重排 + v13/v15 关版、v14 移交队友 + 2026-10-02 v16 M0-M4：括号内为原号）。
 
-**版本路线**：v4 营销号流水线（fast/hot 爬图出片）→ v5 剪辑特效 → v6 prompt 多轮核实（ask + dialog API）→ v7 前端 agent WebUI（:8894/ui）→ **v8 前端增强**（资产库/分镜预览/进度可视化/时间线展示）→ **v9 API 标准化**（多 Vendor 适配/能力发现/用量限流/OpenAPI）→ **v10 拼接与特效**（OpenCut 时间线思路，后端 CLI 可被 LLM 调用）→ **v11 多智能体**（三层 Agent 解耦，原 v13）→ **v12 三排正交**（make 统一入口，原 v17）→ **v13 轻量化 ✅**（无模型四线：营销号/SVG/PPT/Blender 3D；模型加速按需后续，原 v15）→ **v14 接入社交媒体**（发布渠道 + IM 机器人网关，🔗 已移交队友，原 v11）→ **v15 LLM 生成 PPT ✅**（HTML 幻灯片→渲染 mp4/PDF，原 v20）→ **v16 视频处理编辑 ✅**（SAM2 分割/抠图/打码/inpaint/彩色多物体/YOLO 自动 Grounded-SAM/框提示 + 视频双向追踪 + v16.x 生成式编辑：M5 FLUX Fill 重绘/M6 Union ControlNet canny/M7 Wan2.1 VACE 参考图生视频/M8 Qwen-Image-Edit 指令式编辑，原 v19）→ **v17 整合开源仓库**（断点续跑/JSON 容错/RAG/五维提示词，原 v12）→ **v18 长视频质量**（关键帧驱动/一镜到底/层级一致性，原 v14）→ **v19 二创**（视频链接二创，原 v16）→ **v20 生成中审核**（tensor 边生边审，原 v21）→ **v21 交付形态**（部署分档/一键安装，原 v18）。详见 docs/roadmap.md。
+**版本路线**：v4 营销号流水线（fast/hot 爬图出片）→ v5 剪辑特效 → v6 prompt 多轮核实（ask + dialog API）→ v7 前端 agent WebUI（:8894/ui）→ **v8 前端增强**（资产库/分镜预览/进度可视化/时间线展示）→ **v9 API 标准化**（多 Vendor 适配/能力发现/用量限流/OpenAPI）→ **v10 拼接与特效**（OpenCut 时间线思路，后端 CLI 可被 LLM 调用）→ **v11 多智能体**（三层 Agent 解耦，原 v13）→ **v12 三排正交**（make 统一入口，原 v17）→ **v13 轻量化 ✅**（无模型四线：营销号/SVG/PPT/Blender 3D；模型加速按需后续，原 v15）→ **v14 接入社交媒体**（发布渠道 + IM 机器人网关，🔗 已移交队友，原 v11）→ **v15 LLM 生成 PPT ✅**（HTML 幻灯片→渲染 mp4/PDF，原 v20）→ **v16 视频处理编辑 ✅**（SAM2 分割/抠图/打码/inpaint/彩色多物体/YOLO 自动 Grounded-SAM/框提示 + 视频双向追踪 + v16.x 生成式编辑：M5 FLUX Fill 重绘/M6 Union ControlNet canny/M7 Wan2.1 VACE 参考图生视频/M8 Qwen-Image-Edit 指令式编辑，原 v19）→ **v17 整合开源仓库 ✅**（buffer 会话资产层/@引用/断点续跑 sha256 指纹/JSON 容错/RAG/五维提示词/剧本拆解 novel2video/嵌入/重试，原 v12，2026-10-30 关版）→ **v18 长视频质量**（关键帧驱动/一镜到底/层级一致性，原 v14）→ **v19 二创**（视频链接二创，原 v16）→ **v20 生成中审核**（tensor 边生边审，原 v21）→ **v21 交付形态**（部署分档/一键安装，原 v18）。详见 docs/roadmap.md。
 
 v1 角色锚流程：FLUX 生角色图 → TripoSplat 重建 3DGS → 每镜 RenderSplat 按角度渲染参考帧 → Wan I2V 生成。
 
@@ -90,6 +90,7 @@ vidance/
 │   ├── custom_gen.py          # custom 模式 H3 ref2va 生成（内部模块）
 │   ├── postprocess.py         # 共享后处理（RIFE/LUT/BGM/STT）
 │   ├── narration.py           # v12（原 v17）配音/字幕单一实现（Narrator：TTS 三级降级+静音兜底+SRT）
+│   ├── preflight.py           # v17（原 v12）任务预检（硬依赖拦截/可降级警示；5 子命令 --no-preflight；6/6 测试）
 │   ├── scheduler.py           # v4 异步任务队列（TaskQueue SQLite + Scheduler 线程轮询）
 │   ├── api_server.py          # v4 FastAPI 服务（:8894，任务提交/查询/仪表盘/选题/克隆/裁剪）
 │   └── dashboard.py           # v4 HTML 仪表盘生成（队列统计+缩略图+选题批次）
@@ -115,6 +116,11 @@ vidance/
 │   ├── effects.py             # v5 剪辑特效（8 种镜头内特效 + xfade 链式转场，M1-M4 已实现）
 │   ├── dialog.py              # v6 prompt 多轮核实状态机（DialogManager，SQLite，M1-M4 已实现）
 │   ├── compose.py             # v10 时间线拼接与特效（OpenCut 思路，后端 CLI；M1-M8 已实现：关键帧/掩码/贴纸轨/split）
+│   ├── buffer.py              # v17（原 v12）M1 会话缓冲区 BufferManager（sanitize/围栏/搜索游标/TTL 清理；26/26）
+│   ├── retry.py               # v17（原 v12）M7 tenacity 重试三策略（llm/tts/comfy；4xx 直抛；13/13）
+│   ├── embed_index.py         # v17（原 v12）M7 MiniLM ONNX 本地嵌入 EmbedIndex（暴力余弦+npz 持久化；13/13）
+│   ├── subtitle_correct.py    # v17（原 v12）MPT 借鉴字幕 Levenshtein 纠正（幻觉丢弃，接 run_stt；20/20）
+│   ├── material_cache.py      # v17（原 v12）MPT 借鉴素材 URL-md5 缓存+搜索 24h TTL（接 asset_crawler；20/20）
 │   ├── t2c_server.py          # t2c 推理封装（translate(text)→command，进程内单例/可选 HTTP）
 │   ├── svg_llm.py             # v13（原 v15）概念→LLM→动效 SVG（S1）
 │   ├── svg_pipeline.py        # v13（原 v15）SVG→mp4（无头浏览器逐帧渲染，纯 CPU；S2 单帧/S3 抽帧/S4 成片）
@@ -152,7 +158,10 @@ vidance/
 ├── bgm/                       # v2 自定义 BGM 素材目录（放 {mood}.wav 自动使用）
 ├── .opencode/
 │   ├── agents/{director,reviewer,asset,scout}.md
-│   └── skills/{scriptwriting,review,topic_scouting}/SKILL.md
+│   └── skills/{scriptwriting,review,topic_scouting,novel_to_video}/SKILL.md
+├── SKILL/                     # v17（原 v12）技能资产（双位置之一，命令层）
+│   ├── templates/             # M5 五维提示词模板（cinematic/documentary/anime90s/guofeng .yaml，落盘即被发现）
+│   └── commands/novel2video/  # M6 小说→成片管线脚本（m6_breakdown_test/m6_render_v3/m6_archive_buffer/m6_wardrobe_test + README）
 ├── docs/                      # 文档（roadmap + reports；usage/ 使用指南 + design/ 设计文档 + research/ 调研 + instructions/ 命令库与部署 + example/ 示例 + archive/ 历史稿）
 │   ├── usage/                 # 使用指南（usage.md 主入口 + usage-v0/v1/v2/v3/v4/v6/v7/v10/v-svg.md 分版本小工具）
 │   ├── design/                # 设计文档（v0-v18 design + v12-modules + hierarchy + v-t2c + v-svg-pipeline）
@@ -550,9 +559,19 @@ curl http://127.0.0.1:8894/api/options                   # 音色/LUT/BGM/特效
 curl -X POST http://127.0.0.1:8894/api/tool/fast -H 'Content-Type: application/json' -d '{"args":"概念 -n 3 --effects auto"}'
 curl http://127.0.0.1:8894/api/video/{task_id} -o final.mp4   # 成片视频流
 
+# ── v17 开源整合（原 v12，✅ 2026-10-30 关版）——完整命令见 docs/usage/usage-v17.md ──
+# buffer：POST /api/upload?session_id=s 上传 / GET /api/assets?session_id=s&q=关键词（@文件名搜索，游标翻页失效 410）
+#         POST /api/assets/archive 归档 / DELETE /api/session/{s} 整会话删除
+# 断点续跑：python core/vidance.py auto --resume {task_id}（阶段跳过+逐镜复用+sha256 指纹拦截篡改产物）
+# 五维模板：python core/vidance.py auto "概念" --template cinematic|documentary|anime90s|guofeng
+# RAG：python core/vidance.py rag add 文档.md --novel / rag search "问题" / rag ask "问题"
+# novel2video：SKILL/commands/novel2video/{m6_breakdown_test,m6_render_v3,m6_archive_buffer,m6_wardrobe_test}.py
+# 衣橱：python input/rag_test/m6_wardrobe_test.py [--gen]（Base Look 锁脸多套服装 prompt+FLUX 出图）
+# 测试：python tests/test_{buffer,checkpoint_m4,retry,embed_index,subtitle_correct,material_cache,preflight}.py
+
 # ── 已规划（🎯 待实现，见 docs/roadmap.md §4）──
 # v14 接入社交媒体（原 v11）
-# v15 LLM 生成 PPT（原 v20）→ v16 视频处理编辑（原 v19）/ v17 整合开源（原 v12）/ v18 长视频质量含一镜到底（原 v14）/ v13 轻量化（原 v15，已完成）
+# v15 LLM 生成 PPT（原 v20）→ v16 视频处理编辑（原 v19）/ v18 长视频质量含一镜到底（原 v14）/ v13 轻量化（原 v15，已完成）/ v17 整合开源（原 v12，✅ 2026-10-30 关版，见 usage-v17.md）
 # v10 拼接命令示例（规划）：
 # python core/vidance.py compose timeline.json -o final.mp4
 # v18（原 v14）一镜到底（规划）：

@@ -536,6 +536,31 @@ class LLMClient:
         ]
         return self.chat(messages, model=self.models['prompt_opt'], temperature=0.5).strip()
 
+    def optimize_costume_prompts(self, base_look: str, costumes: list) -> list:
+        """衣橱系统（BigBanana 借鉴）：Base Look 锁脸/体型，N 套服装只变穿着。
+
+        costumes: [{'name': '出场长衫', 'desc': '中文服装描述'}, ...]
+        返回 [{'name', 'prompt'}]——Base Look 特征全保留，仅替换服装段（换衣不换脸）。
+        """
+        system = (
+            '你是角色服装设计prompt优化器。给定角色的 Base Look（锁定脸型/发式/体型/种族等'
+            '不可变特征）和多套服装描述，为每套服装生成英文 FLUX prompt。\n'
+            '规则：\n'
+            '1. 每条 prompt 必须完整复述 Base Look 的不可变特征（脸型/胡须/发型/体型/年龄感），'
+            '确保跨服装角色同一张脸（换衣不换脸）\n'
+            '2. 只替换服装/配饰/状态段为对应 costume 描述\n'
+            '3. 固定后缀：standing upright on the ground, full body, front view, '
+            'plain white background, high detail, character reference sheet\n'
+            '4. 英文，每条不超过 90 词\n'
+            f'输出 JSON: {{"outfits": [{{"name": "服装名", "prompt": "..."}}, ...]}}，只输出 JSON')
+        msgs = [{'role': 'system', 'content': system},
+                {'role': 'user', 'content': json.dumps(
+                    {'base_look': base_look, 'costumes': costumes}, ensure_ascii=False)}]
+        r = self.chat_json(msgs, model=self.models['prompt_opt'], temperature=0.3)
+        outfits = r.get('outfits') or []
+        assert len(outfits) == len(costumes), f'衣橱条数不齐: {len(outfits)}/{len(costumes)}'
+        return outfits
+
     def optimize_character_multiview_prompts(self, character_desc: str) -> dict:
         """中文角色描述→英文 FLUX 三视图 prompt（正面/侧面/背面）
 

@@ -1,6 +1,6 @@
 # v17（原 v12）整合开源仓库 + 会话资产层 — 设计
 
-> 状态：🎯 计划稿（2026-10-12，未执行）。roadmap 总览见 `docs/roadmap.md` §v17。
+> 状态：✅ 已关版（2026-10-30，M1-M7 全绿；本文为设计原稿，实现状态以 [roadmap.md](../roadmap.md) §v17 与 [usage-v17.md](../usage/usage-v17.md) 为准）。
 > v17 两条主线：①**会话资产层**（buffer + 前端附件 + @ 引用，M1-M3）；②工程能力整合（断点续跑/JSON 容错/RAG/剧本拆解，M4-M7）。
 > 参考项目：**MoneyPrinterTurbo、ViMax、Toonflow、BigBanana** 四个同类开源项目——借鉴它们已验证的工程做法，不重复造轮子。
 
@@ -69,7 +69,7 @@ Director/Screenwriter/Producer/Video Generator 一体化 agent 流水线。借�
 | 它的做法 | 我们借鉴到 |
 |---------|-----------|
 | **四阶段流水线**：叙事规划→一致性资产（角色/场景/道具）→镜头制作（关键帧）→成片交付 | M6 剧本拆解的阶段划分直接对齐（结构化剧本→资产→镜头） |
-| **角色一致性三重保障**：①定妆照系统（全片视觉锚点）②衣橱系统（多套造型基于 Base Look，换衣不换脸）③上下文感知生成（镜头自动读取当前场景图+服装+道具参考） | ①我们 v1 角色锚已有雏形；②③升级项记入 M6：剧本拆解输出结构化到"角色(定妆照/衣橱)/场景/道具"，生成镜头时自动注入对应资产（联动 v3 资产库 asset_registry） |
+| **角色一致性三重保障**：①定妆照系统（全片视觉锚点）②衣橱系统（多套造型基于 Base Look，换衣不换脸）③上下文感知生成（镜头自动读取当前场景图+服装+道具参考） | ①我们 v1 角色锚已有雏形；②prompt 级已实现（`optimize_costume_prompts` Base Look 锁脸 + `m6_wardrobe_test.py` 孔乙己 3 造型实测，2026-10-30）；③拆解 schema 正式接入（角色卡 costume 列表→镜头自动注入对应资产）归 v18 |
 | **关键帧驱动**：先生成首尾帧（受资产约束）再插值 | 原本 v18 一镜到底/关键帧驱动的主参考（记录，不在 v17 实现） |
 | **提示词管理面板**：prompt 资产化、可复用 | M5 五维提示词模板的管理形态参考（模板存成可复用资产而非散在代码） |
 
@@ -182,7 +182,7 @@ output/
 - 非结构化文本（小说/新闻）→ LLM 拆 **四阶段对齐的结构**：角色(定妆照描述/衣橱)/场景(时间/地点)/道具/事件线 → 喂 auto 流水线
 - **一致性三重保障的落地**（BigBanana 核心）：
   - 定妆照 = 我们 v1 角色锚（已有，复用）
-  - 衣橱 = 角色多套造型基于同一 Base Look 生成（记入升级项）
+  - 衣橱 = 角色多套造型基于同一 Base Look 生成（prompt 级已实现：`agents/common/tools/llm.py optimize_costume_prompts` + `input/rag_test/m6_wardrobe_test.py`；拆解 schema 正式接入归 v18）
   - 上下文感知生成 = 每镜生成时自动注入当前场景图+角色服装+道具参考（联动 v3 资产库 asset_registry，M6 实现）
 - 输出 schema 复用 asset_registry 便于角色/场景跨集复用
 
@@ -197,13 +197,13 @@ output/
 
 | 里程碑 | 内容 | 主参考 | 依赖 |
 |--------|------|--------|------|
-| M1 | buffer 目录+上传 API+会话联动删除+TTL 清理 | MPT（task_dir/原子写/TTL/安全）+ Toonflow（围栏/revision） | 无 |
-| M2 | 前端附件（拖拽/粘贴/chip/产物存入） | ViMax Web UI + Toonflow MentionAsset 形状 | M1 |
-| M3 | @ 引用（后端替换+LLM 意图规整+t2c 语料格式） | Toonflow mentionSources（简化特例） | M1 |
-| M4 | 断点续跑 + JSON 容错 | ViMax checkpoint + MPT 原子清单 | v11 黑板 |
-| M5 | 五维提示词 + RAG（索引源=buffer 文档） | BigBanana 提示词面板 | M1 |
-| M6 | 剧本结构化拆解 + 一致性资产（定妆照/衣橱/上下文注入） | BigBanana 四阶段+三重保障 | M4/M5 + v3 资产库 |
-| M7 | 嵌入检索 + tenacity 重试标准化 | ViMax 重试强化 | M1 |
+| M1 ✅ | buffer 目录+上传 API+会话联动删除+TTL 清理 | MPT（task_dir/原子写/TTL/安全）+ Toonflow（围栏/revision） | 无 |
+| M2 ✅ | 前端附件（拖拽/粘贴/chip/产物存入） | ViMax Web UI + Toonflow MentionAsset 形状 | M1 |
+| M3 ✅ | @ 引用（后端替换+LLM 意图规整+t2c 语料格式） | Toonflow mentionSources（简化特例） | M1 |
+| M4 ✅ | 断点续跑 + JSON 容错 | ViMax checkpoint + MPT 原子清单 | v11 黑板 |
+| M5 ✅ | 五维提示词 + RAG（索引源=buffer 文档） | BigBanana 提示词面板 | M1 |
+| M6 ✅ | 剧本结构化拆解 + 一致性资产（定妆照/衣橱/上下文注入） | BigBanana 四阶段+三重保障 | M4/M5 + v3 资产库 |
+| M7 ✅ | 嵌入检索 + tenacity 重试标准化 | ViMax 重试强化 | M1 |
 
 建议执行顺序：M1→M2→M3（资产层先立，用户体验见效快）→ M4 → M5 → M6/M7。
 

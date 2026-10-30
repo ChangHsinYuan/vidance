@@ -225,6 +225,51 @@ class BufferManager:
                         'url': '/api/file?path=' + quote(os.path.abspath(url_path).replace(os.sep, '/'), safe='')})
         return out
 
+    # ── v17 缺口①：@文件名 模糊搜索（Toonflow MentionQuery 对齐）──
+
+    def encode_cursor(self, session_id: str, query: str, offset: int) -> str:
+        """游标 = [revision, query, offset] JSON 串（revision 变化即分页失效）。"""
+        import json as _json
+        return _json.dumps([self.revision_of(session_id), query, offset])
+
+    def search_assets(self, session_id: str, query: str = '',
+                      cursor: str = '', limit: int = 20) -> dict:
+        """名称/路径模糊搜索 + 游标分页（照 Toonflow mentionSources.ts 形状）。
+
+        返回 {items, next_cursor, total}；query 空 = 列全部。
+        cursor 不匹配当前 revision/query 时抛 ValueError（前端提示重搜）。
+        """
+        import json as _json
+        revision = self.revision_of(session_id)
+        query = (query or '').strip().lower()
+        limit = max(1, min(50, limit))
+        offset = 0
+        if cursor:
+            try:
+                cur = _json.loads(cursor)
+            except Exception:
+                raise ValueError('分页已失效，请重新搜索')
+            if (not isinstance(cur, list) or len(cur) != 3 or cur[0] != revision
+                    or cur[1] != query or not isinstance(cur[2], int) or cur[2] < 0):
+                raise ValueError('分页已失效，请重新搜索')
+            offset = cur[2]
+        all_assets = self.list_assets(session_id)  # 已带 exists/url
+        items = []
+        end = min(len(all_assets), offset + 2000)
+        i = offset
+        while i < end and len(items) < limit:
+            a = all_assets[i]
+            i += 1
+            if query and query not in f"{a.get('id', '')} {a.get('name', '')} {a.get('path', '')}".lower():
+                continue
+            items.append({'id': a.get('id'), 'name': a.get('name'),
+                          'kind': a.get('kind'), 'exists': a.get('exists'),
+                          'url': a.get('url'), 'path': a.get('path'),
+                          'size': a.get('size'), 'is_ref': a.get('is_ref')})
+        return {'items': items, 'total': len(all_assets),
+                **({'next_cursor': self.encode_cursor(session_id, query, i)}
+                   if i < len(all_assets) else {})}
+
     def _abs_asset(self, session_id: str, asset: dict) -> str:
         """返回资产绝对路径：is_ref 记录的是 buffer 外原路径。"""
         d = self._session_dir(session_id)

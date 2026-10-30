@@ -8,7 +8,7 @@
 
 | # | 机制 | MPT 实现（源码位置） | Vidance 落地（2026-10-13） |
 |---|------|---------------------|------------------|
-| 1 | **字幕智能纠正** ✅ | `app/services/subtitle.py:209 correct()` | `utils/subtitle_correct.py`（Levenshtein 对齐+剧本文本替换+幻觉丢弃）；run_stt 三链路接线；13/13 测试 |
+| 1 | **字幕智能纠正** ✅ | `app/services/subtitle.py:209 correct()` | `utils/subtitle_correct.py`（Levenshtein 对齐+剧本文本替换+幻觉丢弃）；run_stt 三链路接线；20/20 测试 |
 | 2 | **preflight 预检** ✅ | `app/services/task.py:1295-1392` | `core/preflight.py`（硬依赖拦/可降级警示的改良版）+ 5 子命令 `--no-preflight`；6/6 测试 + 实网拦截验证 |
 | 3 | **素材下载验证 + 全局去重缓存** ✅ | `app/services/material.py:1007 save_video()` | `utils/material_cache.py`（URL md5 `img-{md5}` + PIL 验证 + 原子写）；asset_crawler 接线；20/20 测试 + E2E 二次 0.0s |
 | 4 | **搜索结果 24h TTL 缓存** ✅ | `app/services/material_cache.py` | 同上模块 `search_get/put`（空结果不缓存）+ 白名单 TTL 清理 |

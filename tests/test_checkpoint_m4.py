@@ -78,6 +78,14 @@ def main():
     ok('旧 checkpoint 无 sha256 字段向后兼容',
        _verify({'shot_id': 9, 'final_video': f1, 'audio': {'audio_path': a1}}) == [])
 
+    # 6b. resume 重做镜替换旧条目（append 会留含旧 sha 的重复项——破坏实验揪出的真 bug）
+    clips_old = [dict(ci_rec, shot_id=1), dict(ci_rec, shot_id=3),
+                 dict(ci_rec, shot_id=3, note='STALE')]  # 模拟旧 checkpoint 的重复
+    sid = 3
+    clips_new = [c for c in clips_old if c.get('shot_id') != sid] + [dict(ci_rec, shot_id=sid)]
+    ok('重做镜替换不留重复', len(clips_new) == 2 and all(
+        c['shot_id'] != 3 or 'note' not in c for c in clips_new))
+
     # 7. 黑板挂载：agent_runs 写入 + 回查（tmp 库隔离）
     from agents.blackboard import AgentBoard
     tmp_db = os.path.join(d, 'tasks.sqlite')

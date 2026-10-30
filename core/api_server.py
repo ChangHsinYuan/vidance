@@ -1366,11 +1366,17 @@ async def upload_asset(request: Request, session_id: str = Query(...), as_name: 
 
 
 @app.get('/api/assets')
-def list_assets(session_id: str = Query(...)):
+def list_assets(session_id: str = Query(...), q: str = Query(''),
+                cursor: str = Query(''), limit: int = Query(20)):
     try:
-        return {'session_id': session_id, 'assets': _buffer().list_assets(session_id)}
+        bm = _buffer()
+        if q or cursor:
+            # v17 缺口①：@文件名 模糊搜索 + 游标分页（Toonflow MentionQuery 对齐）
+            r = bm.search_assets(session_id, query=q, cursor=cursor, limit=limit)
+            return {'session_id': session_id, **r}
+        return {'session_id': session_id, 'assets': bm.list_assets(session_id)}
     except ValueError as ex:
-        raise HTTPException(status_code=400, detail=str(ex))
+        raise HTTPException(status_code=410, detail=str(ex))  # 游标失效 410 Gone
 
 
 @app.delete('/api/assets/{asset_id}')

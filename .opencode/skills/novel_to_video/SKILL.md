@@ -20,6 +20,7 @@ description: "Use when converting a novel/text chapter into a narrated short vid
 - `input/rag_test/m6_breakdown_test.py <章节名>` — 步骤 1-2
 - `input/rag_test/m6_render_v3.py` — 步骤 3-6（v3 为定型版；`M6_ALL=1` 渲染全部镜头，默认 8 关键镜）
 - `input/rag_test/m6_archive_buffer.py <session_id>` — 步骤 7：产物引用式归档 buffer（幂等）
+- `input/rag_test/m6_wardrobe_test.py [--gen]` — 衣橱系统（BigBanana 借鉴）：Base Look 锁脸多套服装，`--gen` FLUX 出图（输出 output/m6/wardrobe/）
 - 样片：`output/m6/v3/kongyiji_v3.mp4`（349.2s/36 镜全量，2026-10-30；8 镜子集版已被覆盖）
 
 ## 步骤要点

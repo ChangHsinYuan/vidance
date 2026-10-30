@@ -37,6 +37,19 @@ curl -X POST http://127.0.0.1:8894/api/tool/clip \
   -d '{"args":"用 @1 生成视频"}'   # @1 → 第 1 个附件
 ```
 
+### @文件名模糊搜索（Toonflow MentionQuery 对齐）
+
+```bash
+# q 关键词（中英文均可，子串匹配 name）+ 游标翻页（limit 1-50 默认 20）
+curl "http://127.0.0.1:8894/api/assets?session_id=demo&q=孔乙己"
+# → {items:[{id,name,kind,exists,url,path,size,is_ref}], total, next_cursor}
+curl "http://127.0.0.1:8894/api/assets?session_id=demo&q=孔乙己&cursor={next_cursor}&limit=10"
+
+# 会话变更（上传/删除/归档）后旧游标失效 → HTTP 410 Gone（提示重新搜索）
+```
+
+复验：`python tests/test_buffer.py`（26/26，含搜索游标 7 用例）。
+
 ### M6 产物归档（novel2video 管线配套）
 
 ```bash
@@ -124,6 +137,10 @@ python SKILL/commands/novel2video/m6_breakdown_test.py
 python SKILL/commands/novel2video/m6_render_v3.py                # 8 关键镜子集
 M6_ALL=1 python SKILL/commands/novel2video/m6_render_v3.py       # 全量镜头（M6_ALL=1）
 
+# 衣橱系统（BigBanana 借鉴：Base Look 锁脸，多套服装同角色）
+python input/rag_test/m6_wardrobe_test.py          # 仅生成 prompt（LLM，Base Look 前 120 字符逐字复述）
+python input/rag_test/m6_wardrobe_test.py --gen    # FLUX 真出图 + 拼贴 output/m6/wardrobe/contact.jpg
+
 # 产物归档 buffer
 python SKILL/commands/novel2video/m6_archive_buffer.py {session_id}
 ```
@@ -131,3 +148,17 @@ python SKILL/commands/novel2video/m6_archive_buffer.py {session_id}
 硬约束（详见 SKILL/commands/novel2video/README.md）：FLUX 只吃英文 prompt（LLM 中译英）；
 一律 I2V 禁裸 T2V；TTS 用 cosy-default（克隆音色有幻听风险）；每环节显式
 `-pix_fmt yuv420p -profile:v high`；成片必须烧字幕；prompts.md 落盘可追溯。
+
+## MPT 借鉴能力（字幕纠正 / 素材缓存，均已接线）
+
+```python
+# 字幕智能纠正：STT 结果与剧本文本 Levenshtein 对齐，同音/近音字回替、幻觉行丢弃
+# 已接 core/postprocess.py run_stt 三链路，auto/custom/fast 出片字幕自动受益，无独立命令
+from utils.subtitle_correct import correct_srt
+fixed = correct_srt(stt_srt_text, script_text)   # 复验：python tests/test_subtitle_correct.py（20/20）
+
+# 素材 URL-md5 全局缓存 + 搜索结果 24h TTL：同 URL 二次下载 0.0s（file 验证+原子写）
+# 已接 agents/common/tools/asset_crawler.py，refs/bgm 子命令自动受益
+from utils.material_cache import MaterialCache
+cache = MaterialCache()                          # 复验：python tests/test_material_cache.py（20/20）
+```

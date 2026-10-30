@@ -393,7 +393,10 @@ class Pipeline:
                 clip_info['sha256'] = self._fingerprint_clip(clip_info)
                 self._board_log(task_id, 'clip:%s' % sid, True,
                                 {'final_video': clip_info.get('final_video')})
-                self._save_ckpt(task_dir, {'clips': self._load_ckpt(task_dir).get('clips', []) + [clip_info]})
+                # 替换同 shot 旧条目（防 resume 重做后 checkpoint 留含旧 sha 的重复项）
+                clips = [c for c in self._load_ckpt(task_dir).get('clips', [])
+                         if c.get('shot_id') != sid]
+                self._save_ckpt(task_dir, {'clips': clips + [clip_info]})
             meta['clips'].append(clip_info)
             all_clips.append(clip_info['final_video'])
             all_audios.append(clip_info['audio']['audio_path'])

@@ -415,7 +415,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v17 — 整合已有开源仓库（原 v12）（✅ 全部里程碑完成，2026-10-30 关版）
+### v17 — 整合已有开源仓库（原 v12）（✅ 全部里程碑完成，2026-10-30 关版；能力对照与实测证据见 [v17-benchmark.html](./v17-benchmark.html)）
 
 **M1-M3 会话资产层 ✅（2026-10-30 前完成，8894 线上验证）**：
 - **M1**：`utils/buffer.py`（BufferManager：uploads 真文件+archive 引用记录+refs.json 原子写+sha256 revision 409 ESTALE+basename 净化+路径围栏+200MB 上限+TTL 7 天守护线程+孤儿回收）+ `/api/upload` `/api/assets` `/api/assets/{id}`(DELETE) `/api/assets/{id}/ref` `/api/assets/archive` `/api/session/{id}`(DELETE)；单测 `tests/test_buffer.py` 19/19
@@ -427,7 +427,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 - **checkpoint**：`core/pipeline.py` `_save_ckpt/_load_ckpt`（MPT 式原子写：fsync+os.replace，坏 JSON 半文件自动重建）+ `--resume {task_id}`（CLI `auto`；跳过编剧/prompts/角色缓存阶段；`done_clips` 逐镜复用）；产物 sha256 指纹（`_fingerprint_clip`：final_video+audio 双键，resume 时校验不符/缺失即重做，旧 checkpoint 无指纹字段向后兼容）；终态 `done` 标记落 ckpt
 - **黑板挂载**：各阶段落 ckpt 时同步写 agent_runs 步进记录（`_board_log` → v11 AgentBoard `m4:script/prompts/character/clip:N/done`，失败静默不阻塞流水线）
 - **JSON 容错**：`utils/llm.py` 统一出口（markdown 栅栏剥离/尾逗号/单引号容错）+ 失败回喂重问 + max_tokens 16384（M6 踩坑修复）
-- 单测 `tests/test_checkpoint_m4.py` 17/17
+- 单测 `tests/test_checkpoint_m4.py` 18/18（含重做镜替换防回归）
 
 **M5 五维提示词模板+RAG ✅**：
 - **模板资产化**：`SKILL/templates/{cinematic,documentary,anime90s,guofeng}.yaml`（五维词汇域约束+style_pack 风格包），`core/vidance.py auto --template` 经 SkillManager 加载注入编剧；`core/pipeline.py` five_dim_guide/style_pack 全链贯通（M6-S5 风格包锚点覆盖）
@@ -438,6 +438,8 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 - **渲染 v3 定型**（档3 全链路）：`input/rag_test/m6_render_v3.py` — LLM 中译英每镜 prompt（FLUX 英文理解弱根因修复）→ FLUX 关键帧 → Wan I2V（禁裸 T2V）→ cosy-default TTS（克隆音色幻听黑名单）→ 慢放≤2x/Ken Burns/xfade 拼装 → SRT 烧录 → **yuv420p Windows 兼容终拼**；成片 `output/m6/v3/kongyiji_v3.mp4`（73.7s，ffprobe 实证 High/yuv420p）；prompts.md 全量落盘可追溯
 - **skill 沉淀**：`SKILL/commands/novel2video/`（yaml+脚本+nahan.txt+README 八条硬约束+复现三档 A/B/C）+ `.opencode/skills/novel_to_video/SKILL.md`
 - **buffer 归档 + 全量渲染 ✅（2026-10-30）**：`m6_archive_buffer.py` 产物引用式归档（幂等 name+sha 去重）；`M6_ALL=1` 全量 36 镜渲染实测通过（翻译增量合并/拼贴图动态网格改造），成片 349.2s（h264 High/yuv420p/aac，ffprobe 实证），已归档 `output/buffer/m6_kongyiji_v3/`
+
+**对照演示页缺口收口 ✅（2026-10-30 晚）**：v17-benchmark.html §五 五项缺口逐项核验——①@文件名搜索已补齐（search_assets 游标分页 + /api/assets?q= + 410 Gone，26/26）；②MPT 字幕 Levenshtein 纠正、③素材 URL-md5 缓存+24h TTL 经盘点确认**早已实现**（subtitle_correct 20/20 + material_cache 20/20 + 接线在位，此前页面误列为缺口）；④BigBanana 衣橱系统已补齐（`optimize_costume_prompts` Base Look 锁脸，孔乙己 3 造型三 prompt 前 120 字符程序断言全同 + FLUX 出图 `output/m6/wardrobe/`，正式化拆解 schema 接入归 v18）；⑤演示页 §三/§四.5/§五/§六 全面更新（能力总表 MPT 3→5 行、BigBanana 2→3 行，测试底座补 subtitle_correct/material_cache 计数）。剩"明确不引入"2 项（关键帧插值/无限画布）+ "评估后不做"1 项（ViMax 上下文压缩），均有归因。
 
 **M7 嵌入+重试标准化 ✅（2026-10-30）**：
 - **重试**：tenacity 9.2.1 + `utils/retry.py`（`retry_net('llm'/'tts'/'comfy')` 三策略：指数退避 3 次/固定 2s×3/10s×2；is_retryable=5xx/429/网络类，4xx 直抛）；单测 13/13
