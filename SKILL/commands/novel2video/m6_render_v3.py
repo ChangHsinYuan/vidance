@@ -98,6 +98,7 @@ else:
                 raise
     json.dump(en_map, open(PROMPTS_EN, 'w'), ensure_ascii=False, indent=1)
     print(f'[翻译] ✓ {PROMPTS_EN}', flush=True)
+en_map = {int(k): v for k, v in en_map.items()}  # JSON 键是字符串
 
 # ── B) 关键帧（英文 prompt + STYLE_EN）──
 kf_prompts = {}

@@ -9,19 +9,44 @@
 | `novel2video.yaml` | 技能参数（doc_key/风格/运镜/默认值） |
 | `m6_breakdown_test.py` | 步骤①②：RAG 人物卡注入 → LLM 结构化拆解（角色/场景/道具/分镜 JSON） |
 | `m6_render_v3.py` | 步骤③④⑤⑥：英文 prompt 关键帧 → I2V → 配音 → 拼装烧字幕 |
+| `nahan.txt` | 《呐喊》古登堡原文（复现样片用，doc_key=454eb1f2…） |
 | 流程规范（六步+踩坑）：`.opencode/skills/novel_to_video/SKILL.md` | |
 
 ## 用法
 
+### A. 复现样片（孔乙己，全部素材本目录自带）
+
 ```bash
-# 前置：服务 UP（./start_services.sh start）+ 小说已索引（/rag add <path> --novel）
+# 前置①：GPU 服务 UP（h3/wan/flux/tts/api）
+cd /mnt/disk_sdb/zxy/vidance && ./start_services.sh start && sleep 120
+
+# 前置②：建 RAG 索引（本目录 nahan.txt → doc_key 454eb1f2…）
 PY=/home/zxy/.conda/envs/comfyui/bin/python
+$PY SKILL/commands/novel2video/m6_breakdown_test.py 孔乙己   # 首次运行自动建索引+拆解
 
-# ① 拆解（默认《呐喊》·孔乙己；换书改 yaml doc_key + 传章节名）
-$PY SKILL/commands/novel2video/m6_breakdown_test.py 孔乙己
-
-# ②③ 渲染（幂等可续跑；默认 yaml 里 8 关键镜）
+# 渲染（幂等可续跑）
 $PY SKILL/commands/novel2video/m6_render_v3.py
+```
+
+产物在 `output/m6/v3/`（同 doc_key 时与历史样片共享缓存，重跑秒过）。
+
+### B. 换一本小说
+
+```bash
+# 1. 上传建索引（得到新 doc_key，8 位短前缀即可用）
+$PY -c "
+import sys; sys.path.insert(0,'.')
+from utils.rag import RagIndex
+print(RagIndex().add_novel('你的小说.txt')['key'])"
+# 或 UI: /rag add /path/to/小说.txt --novel
+
+# 2. 拆解目标章节（章节名要与 /rag status 的章列表一致）
+$PY SKILL/commands/novel2video/m6_breakdown_test.py 章节名
+#    ⚠ m6_breakdown_test.py 里 KEY/SRC 是《呐喊》硬编码，换书需改文件头两行：
+#    KEY='新doc_key'；SRC=你的小说路径
+
+# 3. 渲染：m6_render_v3.py 头部 BD/SHOTS 改成新拆解 JSON 路径和镜头子集
+#    STYLE_EN/MOTION_EN 在 yaml（novel2video.yaml）里，换题材同步改写
 ```
 
 产物（`output/m6/v3/`）：`kongyiji_v3.mp4` 成片（yuv420p/烧字幕，Windows 可放）、
