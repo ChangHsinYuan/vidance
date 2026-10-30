@@ -1,0 +1,31 @@
+# ── 管线技能：小说成片（RAG 拆解 → 关键帧 → I2V → 配音 → 成片） ──────────
+# 用法（M6 原型定型版，v17 正式化前的手动链路）:
+#   /home/zxy/.conda/envs/comfyui/bin/python SKILL/commands/novel2video/m6_breakdown_test.py 孔乙己
+#   /home/zxy/.conda/envs/comfyui/bin/python SKILL/commands/novel2video/m6_render_v3.py
+# 依赖: RAG 索引（/rag add <novel> --novel）、h3/wan/flux/tts 服务 UP
+
+name: novel2video
+display_name: 小说成片
+description: 小说章节 → 结构化拆解 → FLUX 关键帧 → Wan I2V → CosyVoice 配音 → 字幕成片（全链路约 45min/8 镜）
+
+defaults:
+  doc_key: '454eb1f2826b56685bf7ab155c6eb06e'   # 《呐喊》索引（短前缀 454eb1f2）
+  chapter: 孔乙己
+  shots: [1, 9, 11, 21, 24, 30, 34, 36]          # 关键镜头子集；省略=全量
+  voice: cosy-default                            # 唯一实测零幻听音色（见 README 黑名单机制）
+  width: 1280
+  height: 704
+  fps: 24
+  fade_v: 0.5                                    # 片间 xfade
+  fade_a: 0.25                                   # acrossfade
+
+# 关键帧全局风格（全镜统一注入 → 风格 DNA 一致的关键）
+style_en: >-
+  1910s rural Zhejiang China, vintage black and white documentary photo,
+  grainy film texture, soft natural window light, photorealistic,
+  early republican era Chinese tavern interior, realistic period detail
+
+motion_en: very subtle slow camera drift, minimal natural human motion, calm pacing
+
+test_cases:
+  - 孔乙己（8 关键镜 73.7s 成片：output/m6/v3/kongyiji_v3.mp4）
