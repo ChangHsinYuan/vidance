@@ -254,6 +254,37 @@ class RagIndex:
 
     # ── 检索 ──
 
+    def add_chunks(self, name: str, chunks: list) -> dict:
+        """显式分块入索引（结构化卡片：事件线每弧一块 / 人物卡每卡一块）。
+
+        与 add_document（chunk_text 自动聚合）不同：调用方完全控制分块粒度，
+        避免卡片被聚合稀释。key='doc-' + md5(标记+拼接内容)，同内容缓存复用。
+        返回 {'key', 'chunks', 'cached', 'file'}。
+        """
+        import faiss
+        import numpy as np
+        chunks = [c.strip() for c in (chunks or []) if len(c.strip()) >= 10]
+        if not chunks:
+            return {'key': '', 'chunks': 0, 'cached': False, 'file': name}
+        key = _md5(f'custom-cards:{name}\n' + '\n'.join(chunks))
+        faiss_path = os.path.join(self.index_dir, f'doc-{key}.faiss')
+        meta_path = os.path.join(self.index_dir, f'doc-{key}.meta.json')
+        if os.path.isfile(faiss_path) and os.path.isfile(meta_path):
+            return {'key': key, 'chunks': len(chunks), 'cached': True, 'file': name}
+        vecs = np.array(_Embedder().encode(chunks), dtype='float32')
+        index = faiss.IndexFlatIP(vecs.shape[1])
+        index.add(vecs)
+        faiss.write_index(index, faiss_path + '.tmp')
+        os.replace(faiss_path + '.tmp', faiss_path)
+        meta = {'file': name, 'key': key, 'chunks': chunks,
+                'ts': time.time(), 'dim': int(vecs.shape[1])}
+        with open(meta_path + '.tmp', 'w', encoding='utf-8') as f:
+            json.dump(meta, f, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(meta_path + '.tmp', meta_path)
+        return {'key': key, 'chunks': len(chunks), 'cached': False, 'file': name}
+
     def _load_meta(self, meta_path: str) -> dict:
         try:
             with open(meta_path, 'r', encoding='utf-8') as f:

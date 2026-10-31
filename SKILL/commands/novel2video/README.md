@@ -31,7 +31,7 @@ $PY SKILL/commands/novel2video/m6_breakdown_test.py 孔乙己   # 首次运行�
 # 渲染（幂等可续跑；M6_ALL=1 渲染拆解里全部镜头）
 $PY SKILL/commands/novel2video/m6_render_v3.py
 # M6_ALL=1 $PY SKILL/commands/novel2video/m6_render_v3.py   # 全量 36 镜（~2h，后台化跑）
-# M6_FLF=1 M6_OUT=v5 $PY SKILL/commands/novel2video/m6_render_v3.py  # v18 M2：VACE 首尾帧驱动（镜间连贯性 +20.6%）
+# M6_FLF=1 M6_OUT=v5 $PY SKILL/commands/novel2video/m6_render_v3.py  # v18 M2：VACE 首尾帧驱动（镜间边界 clip 级 -87%/part 级 -72.6%）
 # 旧拆解迁移 v18 schema：$PY SKILL/commands/novel2video/m6_upgrade_breakdown.py output/m6/breakdown_孔乙己.json --apply
 
 # 产物归档 buffer（引用式不拷贝，幂等）

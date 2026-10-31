@@ -49,7 +49,7 @@ description: "Use when converting a novel/text chapter into a narrated short vid
 - **一律 I2V**（关键帧做首帧），不裸 T2V——T2V 是镜头间风格漂移的源头
 - 1280x704 / 24fps / length=97 / steps=20；每镜约 3.5 分钟（单卡）
 - prompt=原文 visual + 运镜词（`very subtle slow camera drift, minimal natural human motion`）
-- v18 M2 镜间连贯升级：`M6_FLF=1` 用 VACE flf2v（首帧=本镜关键帧、尾帧=下镜关键帧，832x480@16fps 组装段自适配）——镜间边界 MAE 0.199→0.158（-20.6%）；代价：单镜分辨率降档+时长 81 帧（组装段慢放消化）
+- v18 M2 镜间连贯升级：`M6_FLF=1` 用 VACE flf2v（首帧=本镜关键帧、尾帧=下镜关键帧，832x480@16fps 组装段自适配）——clip 级边界 MAE 0.198→0.026（-87%）、part 级 0.199→0.054（-72.6%）；FLF 模式下尾部 Ken Burns 自动收敛 1.06（尾帧已对齐下镜，1.14 缩放破坏对齐）；代价：单镜分辨率降档+时长 81 帧（组装段慢放消化）
 
 ### 5. 配音（CosyVoice）
 - **音色黑名单机制**：零样本克隆音色的 prompt_text 是幻听源——CosyVoice 把参考文本当上文续写，句首泄漏参考音频内容（`jieshuo1` 50 字参考文本 → 每句开头"街道的街道都在一夜之间"）。新音色先 A/B 单句试听再上片

@@ -46,7 +46,8 @@ M6_OUT=v5 M6_FLF=1 python input/rag_test/m6_render_v3.py
 
 - 原理：control.mp4 = 首帧定帧 2s → xfade 1.2s → 尾帧定帧（ffmpeg）→ `WanVaceToVideo` 的 `control_video` 序列口，零新模型
 - 冒烟：`m6_flf_smoke.py`（首/尾帧 MAE 0.019/0.015，自身首尾差 0.154 = 真运动）
-- **同题对照**：镜间边界 MAE（part_N 尾帧 vs part_N+1 首帧）v4 I2V 0.199 → v5 FLF **0.158（-20.6%）**；代价：单镜降档 832x480/81 帧（组装段慢放消化）
+- **同题对照（两级口径）**：镜间边界 MAE（part 尾帧 vs 下镜首帧，160x88 灰度）——clip 级（纯生成产物）**0.198→0.026（-87%，5 对全改善）**；part 级（成片段）**0.199→0.054（-72.6%）**。FLF 模式下组装缓推自动收敛到 1.06（尾帧已对齐下镜，1.14 大幅缩放会破坏对齐）
+- 代价：单镜分辨率降档 832x480/81 帧（组装段慢放消化）
 - 注意：控制视频须直拷 `/mnt/disk_sdb/zxy/ComfyUI/input/`（LoadVideo 只认 input 目录，脚本已自动处理）
 
 ## M3 一镜到底（oneshot）
@@ -75,7 +76,7 @@ python utils/oneshot.py "穿越隧道的光" --duration 30 --character "金色�
 |---|---|
 | `output/m6/v3/` | v17 证据成片（349.2s/36 镜，勿覆盖） |
 | `output/m6/v4/` | v18 M1 对照成片（73.7s/8 镜，场景锚+衣橱+过渡选型） |
-| `output/m6/v5/` | v18 M2 FLF 对照成片（74.1s/8 镜，镜间连贯 +20.6%） |
+| `output/m6/v5/` | v18 M2 FLF 对照成片（74.1s/8 镜，镜间边界 clip 级 -87%/part 级 -72.6%） |
 | `output/m6/breakdown_孔乙己.json` | v18 schema 拆解（world/costumes/anchor_en 全量） |
 | `output/m6/world_孔乙己.json` | 世界观注册表（style_en 英译缓存） |
 | `output/m6/events_孔乙己.json` | 事件线摘要卡（10 弧） |

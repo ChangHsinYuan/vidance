@@ -65,13 +65,16 @@ v18 关键帧 prompt 三层叠加：<b>景别 + 场景锚（同场景逐字复�
 （VACE control_video 序列口，零新模型），下镜开场直接落在"该出现的地方"。</figcaption>
 </figure>
 <table>
-<tr><th>指标（5 对镜间边界，part 尾帧 vs 下镜首帧，160x88 灰度 MAE）</th><th>v4 I2V</th><th>v5 FLF</th></tr>
-<tr><td>镜间边界 MAE 均值</td><td>0.199</td><td class="ok"><b>0.158（-20.6%）</b></td></tr>
-<tr><td>逐对：1→9 / 9→11 / 21→24 / 24→30 / 30→34</td><td>0.247 / 0.197 / 0.163 / 0.196 / 0.189</td>
-<td>0.207 / <span class="ok">0.036</span> / <span class="gap">0.200</span> / 0.181 / 0.164</td></tr>
+<tr><th>指标（5 对镜间边界，尾帧 vs 下镜首帧，160x88 灰度 MAE）</th><th>v4 I2V</th><th>v5 FLF</th></tr>
+<tr><td>clip 级（纯生成产物，生成质量）</td><td>0.198</td><td class="ok"><b>0.026（-87%，5 对全改善）</b></td></tr>
+<tr><td>part 级（成片段，含组装配饰）</td><td>0.199</td><td class="ok"><b>0.054（-72.6%）</b></td></tr>
+<tr><td>part 级逐对：1→9 / 9→11 / 21→24 / 24→30 / 30→34</td><td>0.247 / 0.197 / 0.163 / 0.196 / 0.189</td>
+<td class="ok">0.039 / 0.023 / 0.118 / 0.043 / 0.049</td></tr>
 <tr><td>成片规格</td><td colspan="2">两者同为 h264/yuv420p/烧字幕；FLF 单镜 832x480@16fps（VACE 原生档），组装段 scale+pad 自适配、慢放消化</td></tr>
 </table>
-<p><b>诚实记录</b>：5 对中 4 对改善、镜 21→24 略升（0.163→0.200）——VACE 对尾帧的服从度受首尾帧语义距离影响，未逐一挑选"好看的对照"。</p>
+<p><b>归因与修正实录</b>：首版 part 级仅 -20.6% 且镜 21→24 略升（0.163→0.200）。逐层归因发现 clip 级 FLF 已达 0.026（-87%）、
+镜 21→24 生成级 0.037 优于 I2V 的 0.181——"略升"是组装层 Ken Burns 缓推（1.14x）破坏了"尾帧=下镜关键帧"的对齐
+（v5#21 part 尾帧 vs clip 尾帧 MAE 0.111 实证）。修正：FLF 模式缓推幅度收敛 1.14→1.06（保"禁长死帧"规则），重拼后 part 级 5 对全改善。</p>
 
 <h2>三、一镜到底（M3 · utils/oneshot.py + auto --oneshot）</h2>
 <figure>
@@ -104,8 +107,8 @@ v18 关键帧 prompt 三层叠加：<b>景别 + 场景锚（同场景逐字复�
 <tr><td>图像级一致性（背景+角色贴回）</td><td class="gap">prompt 级约束</td>
 <td>FLUX 无图像条件输入；图像级合成依赖 inpaint/Fill 组合，标增强项（设计稿 §4 风险边界）</td></tr>
 <tr><td>FLF 分辨率</td><td class="gap">832x480</td><td>VACE 1.3B 原生档；高分辨率 FLF 依赖模型升级，组装段已自适配不阻塞成片</td></tr>
-<tr><td>镜 21→24 边界</td><td class="ok">已如实记录</td><td>4/5 对改善、1 对略升；改善机制对"尾帧与下镜语义距离"敏感</td></tr>
-<tr><td>事件线检索接入 RAG 索引</td><td class="gap">JSON 产物 + prompts.md</td><td>当前量级 JSON 注册表够用（不引入清单：向量世界观库）；入索引归后续按需</td></tr>
+<tr><td>镜 21→24 边界</td><td class="ok">已归因消除</td><td>生成级 0.037 优于 I2V 0.181；part 级首版略升系 zoompan 装配噪声，缓推收敛 1.06 后 5 对全改善（见 §二归因实录）</td></tr>
+<tr><td>事件线检索</td><td class="ok">✅ 已接入 RAG 索引（每弧一块）</td><td><span class="cmd">RagIndex.add_chunks</span> 显式分块（每弧一卡，key=32b60cbc，10 卡）——首版 add_document 聚合到 ~500 字把 10 弧并成 3 块稀释，已改；程序断言 4 查询命中 3/4（断腿卡 top-2 微差 0.60 vs 0.61，MiniLM 中文细粒度极限，诚实记录）；JSON 注册表仍为事实源（不引入向量世界观库）</td></tr>
 </table>
 
 <h2>六、复验命令</h2>

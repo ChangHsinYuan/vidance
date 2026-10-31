@@ -377,7 +377,7 @@ for n in SHOTS:
                  '-frames:v', '1', last])
             frames = max(int(rem * FPS) + 1, 2)
             run(['ffmpeg', '-y', '-loop', '1', '-i', last, '-t', f'{rem:.3f}', '-vf',
-                 f"zoompan=z='min(1+0.0011*on,1.14)':d={frames}:"
+                 f"zoompan=z='min(1+{0.0005 if FLF else 0.0011}*on,{1.06 if FLF else 1.14})':d={frames}:"
                  f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={W}x{H}:fps={FPS}",
                  '-r', str(FPS), '-c:v', 'libx264', '-preset', 'fast', '-crf', '20',
                  '-pix_fmt', 'yuv420p', still])
@@ -494,6 +494,26 @@ if not os.path.isfile(EVENTS_JSON):
 else:
     events = json.load(open(EVENTS_JSON))
     print(f'[事件线] 缓存 {len(events.get("arcs", []))} 弧（{EVENTS_JSON}）', flush=True)
+
+# 事件线摘要卡 → markdown 落盘 + RAG 索引（best-effort：挂了不阻塞渲染；md5 缓存幂等）
+EVENTS_MD = EVENTS_JSON.replace('.json', '.md')
+if not os.path.isfile(EVENTS_MD):
+    lines = [f'# 事件线摘要卡（{os.path.basename(BD).replace("breakdown_", "").replace(".json", "")}）', '']
+    for a in events.get('arcs', []):
+        lines += [f'## {a["arc"]}（镜 {a["shots"][0]}-{a["shots"][-1]}）',
+                  a.get('summary', ''), f'出场：{"/".join(a.get("characters", []))}', '']
+    open(EVENTS_MD, 'w').write('\n'.join(lines))
+    print(f'[事件线] ✓ 摘要卡 markdown {EVENTS_MD}', flush=True)
+try:
+    from utils.rag import RagIndex
+    cards = [f'{a["arc"]}（镜 {a["shots"][0]}-{a["shots"][-1]}）：{a.get("summary", "")}'
+             f'出场：{"/".join(a.get("characters", []))}'
+             for a in events.get('arcs', [])]
+    r = RagIndex().add_chunks(f'events_{os.path.basename(BD).replace("breakdown_", "").replace(".json", "")}', cards)
+    print(f'[事件线] RAG 索引（每弧一块，add_chunks）'
+          f'{"缓存命中" if r.get("cached") else "新建"}（key={r["key"][:8]}，{r["chunks"]} 卡）', flush=True)
+except Exception as e:
+    print(f'[事件线] ⚠ RAG 索引失败（忽略，JSON 产物仍可用）: {e}', flush=True)
 
 # ── I) prompt 清单落盘 ──
 md = ['# 孔乙己 v3 渲染 prompt 清单', '',
