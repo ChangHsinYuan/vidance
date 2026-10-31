@@ -145,7 +145,7 @@ BigBanana 用人工调分镜保长篇一致性，我们用 prompt 工程+人物�
 <tr><td>Toonflow @文件名 模糊搜索</td><td class="ok">✅ 已补齐：search_assets 游标分页 + /api/assets?q=（410 Gone 语义）+ 26/26 单测 + 中文搜索端点实测</td><td>缩略图 chip 留 UI 迭代</td></tr>
 <tr><td>MPT 字幕 Levenshtein 纠正</td><td class="ok">✅ 已有（前版页面误列为缺口）：utils/subtitle_correct.py 20/20 + run_stt 接线</td><td>属"已完成未上页"的盘点偏差，非功能缺失</td></tr>
 <tr><td>MPT 素材 URL-md5 缓存 + 搜索 24h TTL</td><td class="ok">✅ 已有（同上）：utils/material_cache.py 20/20 + asset_crawler 接线</td><td>同上</td></tr>
-<tr><td>BigBanana 衣橱系统</td><td class="ok">✅ 已补齐：optimize_costume_prompts + 孔乙己 3 造型实测（§四.5）</td><td>接入 M6 正式化拆解 schema（角色卡加 costume 列表）待 v18</td></tr>
+<tr><td>BigBanana 衣橱系统</td><td class="ok">✅ 已补齐：optimize_costume_prompts + 孔乙己 3 造型实测（§四.5）</td><td class="ok">v18 已接入拆解 schema（costumes/stages/anchor_en + 组装器区间命中），见 docs/v18-benchmark.html</td></tr>
 <tr><td>BigBanana 首尾关键帧插值 / Toonflow 无限画布</td><td class="gap">明确不引入</td><td>关键帧驱动归 v18；画布/MCP 记远期思路</td></tr>
 <tr><td>ViMax 上下文压缩</td><td class="gap">未做</td><td>v11 黑板 + 会话记录已够当前规模，量级上来再评估</td></tr>
 </table>

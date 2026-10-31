@@ -17,11 +17,15 @@ description: "Use when converting a novel/text chapter into a narrated short vid
 ```
 
 参考实现（幂等，可断点续跑）：
-- `input/rag_test/m6_breakdown_test.py <章节名>` — 步骤 1-2
-- `input/rag_test/m6_render_v3.py` — 步骤 3-6（v3 为定型版；`M6_ALL=1` 渲染全部镜头，默认 8 关键镜）
+- `input/rag_test/m6_breakdown_test.py <章节名>` — 步骤 1-2（v18 schema：world/costumes/anchor_en/costume/transition_out）
+- `input/rag_test/m6_upgrade_breakdown.py <json> --apply` — 旧拆解迁移 v18 字段（dry-run 预览；防改动断言+.v17.bak 备份）
+- `input/rag_test/m6_render_v3.py` — 步骤 3-6（v3 为定型版；`M6_ALL=1` 渲染全部镜头，默认 8 关键镜；
+  v18：场景锚+衣橱组装器（SCENE_ANCHOR/WARDROBE/costume_for）+ xfade 过渡选型；`M6_FLF=1` 走 VACE 首尾帧驱动 832x480@16fps）
+- `input/rag_test/m6_flf_smoke.py` — VACE flf2v 单镜冒烟（control.mp4=首帧定帧→xfade→尾帧定帧；首/尾帧 MAE 0.019/0.015）
 - `input/rag_test/m6_archive_buffer.py <session_id>` — 步骤 7：产物引用式归档 buffer（幂等）
 - `input/rag_test/m6_wardrobe_test.py [--gen]` — 衣橱系统（BigBanana 借鉴）：Base Look 锁脸多套服装，`--gen` FLUX 出图（输出 output/m6/wardrobe/）
-- 样片：`output/m6/v3/kongyiji_v3.mp4`（349.2s/36 镜全量，2026-10-30；8 镜子集版已被覆盖）
+- 样片：`output/m6/v3/kongyiji_v3.mp4`（349.2s/36 镜全量，2026-10-30；8 镜子集版已被覆盖）；
+  v18 对照：`output/m6/v4/`（I2V，8 镜 73.7s）vs `output/m6/v5/`（FLF 首尾帧驱动，8 镜 74.1s，镜间边界 MAE 0.199→0.158）
 
 ## 步骤要点
 
@@ -45,6 +49,7 @@ description: "Use when converting a novel/text chapter into a narrated short vid
 - **一律 I2V**（关键帧做首帧），不裸 T2V——T2V 是镜头间风格漂移的源头
 - 1280x704 / 24fps / length=97 / steps=20；每镜约 3.5 分钟（单卡）
 - prompt=原文 visual + 运镜词（`very subtle slow camera drift, minimal natural human motion`）
+- v18 M2 镜间连贯升级：`M6_FLF=1` 用 VACE flf2v（首帧=本镜关键帧、尾帧=下镜关键帧，832x480@16fps 组装段自适配）——镜间边界 MAE 0.199→0.158（-20.6%）；代价：单镜分辨率降档+时长 81 帧（组装段慢放消化）
 
 ### 5. 配音（CosyVoice）
 - **音色黑名单机制**：零样本克隆音色的 prompt_text 是幻听源——CosyVoice 把参考文本当上文续写，句首泄漏参考音频内容（`jieshuo1` 50 字参考文本 → 每句开头"街道的街道都在一夜之间"）。新音色先 A/B 单句试听再上片

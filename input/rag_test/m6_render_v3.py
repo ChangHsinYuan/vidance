@@ -13,6 +13,7 @@ v2→v3 变更：
 """
 import json
 import os
+import random
 import shutil
 import subprocess
 import sys
@@ -30,7 +31,9 @@ STYLE_EN = ('1910s rural Zhejiang China, vintage black and white documentary pho
             'grainy film texture, soft natural window light, photorealistic, '
             'early republican era Chinese tavern interior, realistic period detail')
 MOTION_EN = 'very subtle slow camera drift, minimal natural human motion, calm pacing'
-OUT = 'output/m6/v3'
+# M6_OUT=v4 可覆盖输出目录（v18 对照渲染不覆盖 v17 证据）；裸名视为 output/m6/ 下的子目录
+_m6_out = os.environ.get('M6_OUT', 'output/m6/v3')
+OUT = _m6_out if '/' in _m6_out else f'output/m6/{_m6_out}'
 KF, CLIPS, PARTS = (os.path.join(OUT, d) for d in ('kf', 'clips', 'part'))
 FINAL = os.path.join(OUT, 'kongyiji_v3.mp4')
 SRT = os.path.join(OUT, 'subs.srt')
@@ -45,6 +48,30 @@ bd = json.load(open(BD))
 by_shot = {s['shot']: s for s in bd['storyboard']}
 if SHOTS is None:
     SHOTS = sorted(by_shot)  # M6_ALL=1：全量镜头
+
+# ── M4) 世界观注入：world.style → 英译缓存 → STYLE_EN 叠加；taboos 打印+落盘 ──
+WORLD_JSON = BD.replace('breakdown_', 'world_')
+world = bd.get('world') or {}
+if world:
+    if os.path.isfile(WORLD_JSON):
+        world_en = json.load(open(WORLD_JSON))
+    else:
+        from agents.common.tools.llm import LLMClient
+        wc = LLMClient()
+        world_en = wc.chat_json(
+            [{'role': 'system', 'content':
+                '你是美术指导。把中文世界观设定译成英文 FLUX 风格短语（style 字段，逗号分隔的'
+                '具象名词短语，含时代/地域/色调/质感）+ 全局禁则译成英文负面提示短语列表'
+                '（taboos_en，每条一串逗号短语）。只输出 JSON：{"style_en":..., "taboos_en":[...]}。'},
+             {'role': 'user', 'content': json.dumps(world, ensure_ascii=False)}],
+            temperature=0.3)
+        json.dump(world_en, open(WORLD_JSON, 'w'), ensure_ascii=False, indent=1)
+        print(f'[world] ✓ 注册表落盘 {WORLD_JSON}', flush=True)
+    STYLE_EN = f'{STYLE_EN}, {world_en["style_en"]}'
+    print(f'[world] STYLE_EN += {world_en["style_en"][:80]}…', flush=True)
+    for t in world.get('taboos', []):
+        print(f'[world] 禁则: {t}', flush=True)
+
 protagonist = bd['characters'][0]
 flux = ComfyClient(instance='flux')
 wan = ComfyClient(instance='wan')
@@ -59,6 +86,132 @@ def probe_dur(path):
     r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
                         '-of', 'csv=p=0', path], capture_output=True, text=True)
     return float(r.stdout.strip())
+
+
+def flf_generate(out_clip, first_png, last_png, ctrl_mp4, prompt):
+    """v18 M2：VACE 首尾帧驱动（control_video 序列=首帧→xfade→尾帧），832x480@16fps。"""
+    comfy_input = '/mnt/disk_sdb/zxy/ComfyUI/input'
+    os.makedirs(comfy_input, exist_ok=True)
+    ctrl_name = os.path.basename(ctrl_mp4)
+    shutil.copy(ctrl_mp4, os.path.join(comfy_input, ctrl_name))
+    wf = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": "wan2.1_vace_1.3B_fp16.safetensors", "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors", "type": "wan"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": "wan_2.1_vae.safetensors"}},
+        "4": {"class_type": "ModelSamplingSD3", "inputs": {"model": ["1", 0], "shift": 8.0}},
+        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["2", 0]}},
+        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": NEG_EN, "clip": ["2", 0]}},
+        "20": {"class_type": "LoadVideo", "inputs": {"file": ctrl_name}},
+        "21": {"class_type": "GetVideoComponents", "inputs": {"video": ["20", 0]}},
+        "8": {"class_type": "WanVaceToVideo", "inputs": {"positive": ["5", 0], "negative": ["6", 0],
+                                                         "vae": ["3", 0], "width": FLF_W, "height": FLF_H,
+                                                         "length": FLF_LEN, "batch_size": 1, "strength": 1.0,
+                                                         "control_video": ["21", 0]}},
+        "11": {"class_type": "KSampler", "inputs": {"model": ["4", 0], "seed": random.randint(0, 2**31), "steps": 25, "cfg": 5.0,
+                                                    "sampler_name": "uni_pc", "scheduler": "simple",
+                                                    "positive": ["8", 0], "negative": ["8", 1],
+                                                    "latent_image": ["8", 2], "denoise": 1.0}},
+        "12": {"class_type": "VAEDecode", "inputs": {"samples": ["11", 0], "vae": ["3", 0]}},
+        "13": {"class_type": "CreateVideo", "inputs": {"images": ["12", 0], "fps": FLF_FPS}},
+        "14": {"class_type": "SaveVideo", "inputs": {"video": ["13", 0], "filename_prefix": "vidance/m6_flf",
+                                                     "format": "mp4", "codec": "auto"}},
+    }
+    if not wan.wait_ready(timeout=60):
+        raise RuntimeError('ComfyUI wan not ready')
+    pid = wan.queue_prompt(wf)
+    outs = wan.wait_result(pid)
+    info = (outs.get('14', {}).get('videos') or outs.get('14', {}).get('images', [{}]))[0]
+    if not info or not info.get('filename'):
+        raise RuntimeError(f'FLF 无视频产出: {outs}')
+    wan.download_file(info['filename'], info.get('subfolder', ''), info.get('type', 'output'), out_clip)
+
+
+# ── A0) v18 一致性资产：场景锚段 + 衣橱段 + 镜头 prompt 组装器 ──
+# 场景段：同场景跨镜逐字复用 anchor_en（v18 拆解）；旧拆解无该字段 → 回退空段（行为同 v17）
+SCENE_ANCHOR = {s['id']: s.get('anchor_en') for s in bd.get('scenes', []) if s.get('anchor_en')}
+# 衣橱：角色 → [(name, desc, stages)]；stages 归一为区间列表（兼容 [起,止] 与 [[起,止],…] 两种 LLM 形态）
+def _norm_stages(st, n_shots):
+    if not isinstance(st, list) or not st:
+        return [(0, 10 ** 6)]
+    # 嵌套形态 [[8,28],[30,34]] 或混合
+    if isinstance(st[0], list):
+        out = []
+        for iv in st:
+            if isinstance(iv, list) and len(iv) == 2 and all(isinstance(x, int) for x in iv):
+                out.append((iv[0], iv[1]))
+        return out or [(0, 10 ** 6)]
+    # 扁平形态 [8,28]
+    if len(st) == 2 and all(isinstance(x, int) for x in st):
+        return [(st[0], st[1])]
+    # 事件标签（字符串）或畸形 → 全区间兜底
+    return [(0, 10 ** 6)]
+
+
+WARDROBE = {}
+for _c in bd.get('characters', []):
+    _lst = []
+    for _co in (_c.get('costumes') or []):
+        _lst.append((_co.get('name', ''), _co.get('desc', ''),
+                     _norm_stages(_co.get('stages'), len(by_shot))))
+    WARDROBE[_c.get('name', '')] = _lst
+
+
+def costume_for(shot_n, char_name):
+    """镜头 n 时角色的当前造型（区间命中；多个命中取镜号上限最大者=最新状态）。"""
+    hit = None
+    for name, desc, ivs in WARDROBE.get(char_name, []):
+        if any(lo <= shot_n <= hi for lo, hi in ivs):
+            # 命中多个造型时取区间最窄者（最具体），并列取后者
+            span = min(hi - lo for lo, hi in ivs if lo <= shot_n <= hi)
+            if hit is None or span <= hit[0]:
+                hit = (span, (name, desc))
+    return hit[1] if hit else None
+
+
+def build_shot_prompt(shot_n):
+    """v18 prompt 组装：景别 + 场景锚段（逐字复用）+ 服装段 + 翻译增量。
+
+    旧拆解（无 anchor_en/costumes）→ 两段为空，输出与 v17 翻译产物一致（向后兼容）。
+    服装段英文走 KF/costumes_en.json 缓存（键=造型名），重跑零 LLM 调用。
+    """
+    s = by_shot[shot_n]
+    parts = [SIZE_EN.get(s.get('size', ''), 'medium shot')]
+    anchor = SCENE_ANCHOR.get(s.get('scene'))
+    if anchor:
+        parts.append(anchor)
+    co = costume_for(shot_n, protagonist.get('name', ''))
+    if co:
+        co_en = _costume_en(co)
+        if co_en:
+            parts.append(co_en)
+    parts.append(en_map[shot_n])
+    return ', '.join(p for p in parts if p)
+
+
+_COSTUME_EN_FILE = os.path.join(KF, 'costumes_en.json')
+_COSTUME_EN = {}
+if os.path.isfile(_COSTUME_EN_FILE):
+    _COSTUME_EN = json.load(open(_COSTUME_EN_FILE))
+
+
+def _costume_en(co):
+    """造型 (name, desc) → 英文服装段（缓存命中零调用；LLM 失败回退中文原文不阻塞）。"""
+    name, desc = co
+    if name in _COSTUME_EN:
+        return _COSTUME_EN[name]
+    try:
+        from agents.common.tools.llm import LLMClient
+        en = LLMClient().optimize_character_prompt(desc)
+        en = en.replace('standing upright on the ground, full body, front view, '
+                        'plain white background, high detail, character reference sheet',
+                        '').strip().rstrip(',')
+        _COSTUME_EN[name] = en
+        json.dump(_COSTUME_EN, open(_COSTUME_EN_FILE, 'w'), ensure_ascii=False, indent=1)
+        print(f'[衣橱] 造型英译缓存 {name}: {en[:60]}…', flush=True)
+        return en
+    except Exception as e:
+        print(f'[衣橱] ⚠ 造型 {name} 英译失败（{e}），回退中文描述', flush=True)
+        return desc
 
 
 # ── A) LLM 翻译：中文 visual → 英文 FLUX prompt（增量：缓存命中跳过，缺的镜补翻译）──
@@ -107,11 +260,12 @@ else:
     json.dump(en_map, open(PROMPTS_EN, 'w'), ensure_ascii=False, indent=1)
     print(f'[翻译] ✓ {PROMPTS_EN}（共 {len(en_map)} 镜）', flush=True)
 
-# ── B) 关键帧（英文 prompt + STYLE_EN）──
+# ── B) 关键帧（英文 prompt + STYLE_EN；v18=组装器产物，旧拆解回退纯翻译）──
 kf_prompts = {}
 for n in SHOTS:
     kf = os.path.join(KF, f'kf_{n:02d}.png')
-    p = f"{en_map[n]}, {STYLE_EN}"
+    p = build_shot_prompt(n) if SCENE_ANCHOR or WARDROBE.get(protagonist.get('name', '')) \
+        else f"{en_map[n]}, {STYLE_EN}"
     kf_prompts[n] = p
     if os.path.isfile(kf):
         print(f'[关键帧] #{n} 已存在，跳过', flush=True)
@@ -154,7 +308,11 @@ for n in SHOTS:
             print(f'[TTS] #{n} ✓ 新合成', flush=True)
     wavs[n] = wav
 
-# ── E) 分镜 I2V（新关键帧）──
+# ── E) 分镜 I2V（新关键帧）；M6_FLF=1 走 VACE 首尾帧驱动（v18 M2，832x480@16fps 组装段自适配）──
+FLF = bool(os.environ.get('M6_FLF'))
+FLF_FPS, FLF_LEN, FLF_W, FLF_H, FLF_XFADE = 16, 81, 832, 480, 1.2
+NEG_EN = ('blurry, low quality, distorted, extra limbs, text, watermark, '
+          'static image, no motion')
 i2v_prompts = {}
 for n in SHOTS:
     clip = os.path.join(CLIPS, f'shot_{n:02d}.mp4')
@@ -163,6 +321,27 @@ for n in SHOTS:
         print(f'[视频] #{n} 已存在，跳过', flush=True)
         continue
     kf = os.path.join(KF, f'kf_{n:02d}.png')
+    if FLF:
+        nxt = SHOTS[SHOTS.index(n) + 1] if SHOTS.index(n) + 1 < len(SHOTS) else n
+        kf_last = os.path.join(KF, f'kf_{nxt:02d}.png')
+        ctrl = os.path.join(PARTS, f'ctrl_{n:02d}.mp4')
+        if not os.path.isfile(ctrl):
+            run(['ffmpeg', '-y', '-loglevel', 'error',
+                 '-loop', '1', '-t', '2.0', '-i', kf,
+                 '-loop', '1', '-t', '3.1', '-i', kf_last,
+                 '-filter_complex',
+                 f'[0:v]scale={FLF_W}:{FLF_H}:force_original_aspect_ratio=increase,'
+                 f'crop={FLF_W}:{FLF_H},setsar=1,fps={FLF_FPS}[a];'
+                 f'[1:v]scale={FLF_W}:{FLF_H}:force_original_aspect_ratio=increase,'
+                 f'crop={FLF_W}:{FLF_H},setsar=1,fps={FLF_FPS}[b];'
+                 f'[a][b]xfade=transition=fade:duration={FLF_XFADE}:offset=1.9,'
+                 f'trim=duration={FLF_LEN / FLF_FPS:.3f}[v]',
+                 '-map', '[v]', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', ctrl])
+        last_png = kf_last if nxt != n else kf
+        print(f'[视频] #{n} FLF(VACE 首帧#{n}→尾帧#{nxt})…', flush=True)
+        flf_generate(clip, kf, last_png, ctrl, i2v_prompts[n])
+        print(f'[视频] #{n} ✓ FLF', flush=True)
+        continue
     print(f'[视频] #{n} I2V…', flush=True)
     wan.generate_i2v(i2v_prompts[n], kf, width=W, height=H, length=97, steps=20,
                      fps=FPS, output_path=clip)
@@ -249,7 +428,13 @@ for i, n in enumerate(SHOTS):
 open(SRT, 'w').write('\n'.join(srt_lines))
 print(f'[字幕] ✓ {SRT}', flush=True)
 
-# ── H) 终拼：xfade + acrossfade + 烧字幕 + yuv420p ──
+# ── H) 终拼：xfade（v18：transition_out 按镜选型，旧拆解回退 fade）+ acrossfade + 烧字幕 + yuv420p ──
+# xfade 可用 kind 白名单（v5 effects 库对齐子集，跨镜语义安全）
+XF_KIND = {'cut': 'fade', 'fade': 'fade', 'crossfade': 'fade', 'wipeleft': 'wipeleft',
+           'wiperight': 'wiperight', 'slideleft': 'slideleft', 'slideright': 'slideright',
+           'circleopen': 'circleopen', 'circleclose': 'circleclose', 'dissolve': 'dissolve',
+           'pixelize': 'pixelize', 'radial': 'radial', 'smoothleft': 'smoothleft',
+           'smoothright': 'smoothright', 'fadeblack': 'fadeblack', 'fadewhite': 'fadewhite'}
 inputs = []
 for p in parts:
     inputs += ['-i', p]
@@ -259,7 +444,8 @@ prev = '[0:v]'
 for i in range(1, len(parts)):
     off = acc_len - FADE_V
     out = f'[v{i}]'
-    fc.append(f'{prev}[{i}:v]xfade=transition=fade:duration={FADE_V}:offset={off:.3f}{out}')
+    kind = XF_KIND.get(str(by_shot[SHOTS[i - 1]].get('transition_out', 'fade')), 'fade')
+    fc.append(f'{prev}[{i}:v]xfade=transition={kind}:duration={FADE_V}:offset={off:.3f}{out}')
     acc_len = off + durs[i]
     prev = out
 aprev = '[0:a]'
@@ -287,12 +473,38 @@ run(['ffmpeg', '-y', '-loglevel', 'error'] + inputs +
 print(f'\n✓ 成片 {FINAL}（{probe_dur(FINAL):.1f}s，{len(parts)} 镜，字幕+yuv420p）',
       flush=True)
 
+# ── J) 事件线（v18 M4）：拆解 JSON 事件序列 → 长片分段摘要卡（RAG 人物卡路子延伸；缓存幂等）──
+EVENTS_JSON = BD.replace('breakdown_', 'events_')
+if not os.path.isfile(EVENTS_JSON):
+    from agents.common.tools.llm import LLMClient
+    arcs_in = [{'shot': s['shot'], 'scene': s['scene'], 'narration': s.get('narration', ''),
+                'visual': s['visual']} for s in bd['storyboard']]
+    events = LLMClient().chat_json(
+        [{'role': 'system', 'content':
+            '你是剧本医生。把分镜序列按剧情弧线分组（每弧 3-6 镜），生成摘要卡供长片导航与续写检索。\n'
+            '只输出 JSON：{"arcs":[{"arc": 弧名(短), "shots": [镜号...], '
+            '"summary": 弧线摘要(60-100字), "characters": [出场角色]}]}。'},
+         {'role': 'user', 'content': json.dumps(
+             {'world': world, 'arcs_input': arcs_in}, ensure_ascii=False)}],
+        temperature=0.4)
+    for a in events.get('arcs', []):
+        a['shots'] = sorted(a.get('shots', []))
+    json.dump(events, open(EVENTS_JSON, 'w'), ensure_ascii=False, indent=1)
+    print(f'[事件线] ✓ {len(events.get("arcs", []))} 弧 → {EVENTS_JSON}', flush=True)
+else:
+    events = json.load(open(EVENTS_JSON))
+    print(f'[事件线] 缓存 {len(events.get("arcs", []))} 弧（{EVENTS_JSON}）', flush=True)
+
 # ── I) prompt 清单落盘 ──
 md = ['# 孔乙己 v3 渲染 prompt 清单', '',
       f'- 拆解源: `{BD}`（shot.visual=画面描述，shot.narration=旁白/字幕）',
       f'- 关键帧 STYLE（全镜统一）: `{STYLE_EN}`',
       f'- I2V 运镜 MOTION: `{MOTION_EN}`',
       f'- 关键帧英文翻译（LLM 从 visual 生成）: `{PROMPTS_EN}`',
+      '- 场景锚与服装（v18 M1）: 关键帧 EN prompt = 景别 + **场景锚**（scenes[].anchor_en，'
+      '同场景镜头逐字复用，防布景漂移）+ **服装段**（costumes[].stages 区间命中，'
+      '如镜9=破旧长衫/镜30=破夹袄蒲包）+ LLM 翻译增量（visual）三层叠加；'
+      '溯源拆解 JSON 的 world/scenes/characters 字段',
       f'- TTS: {VOICE}（cosy-default，无参考文本泄漏）', '',
       '| 镜 | 景别 | 关键帧 EN prompt | 旁白（字幕） | I2V prompt | 单镜时长 |',
       '|---|---|---|---|---|---|']
@@ -305,5 +517,14 @@ md += ['', '## 工程参数', '',
        f'- 片间 xfade {FADE_V}s + acrossfade {FADE_A}s，首尾淡入淡出',
        '- 长旁白镜头慢放 ≤2x + 尾段 Ken Burns 缓推（替代死帧定格）',
        '- 字幕 Noto Sans CJK SC Bold 15px 白字黑边，按实际时间轴烧录']
+if world:
+    md += ['', '## 世界观（v18 M4 注册表）', '',
+           f'- world: `{WORLD_JSON}`（style_en 英译缓存，已叠加进 STYLE_EN）']
+    for t in world.get('taboos', []):
+        md.append(f'- 禁则: {t}')
+    md.append('')
+    for a in events.get('arcs', []):
+        md.append(f'- **{a["arc"]}**（镜 {a["shots"][0]}-{a["shots"][-1]}）: '
+                  f'{a.get("summary", "")}（{"/".join(a.get("characters", []))}）')
 open(os.path.join(OUT, 'prompts.md'), 'w').write('\n'.join(md))
 print(f'[清单] ✓ {OUT}/prompts.md', flush=True)

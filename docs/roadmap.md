@@ -1,7 +1,7 @@
 # Vidance 总览与路线图
 
 > 视频生成 agent 系统：opencode 当"制片人"编排本地生图/生视频/生3D/语音引擎，从一句概念产出有声短片。
-> 原始规划稿见 `archive/roadmap_origin.md`。**已实现**：v0-v10 + t2c + v11 多智能体（原 v13）+ v12 三排正交 M1-M2（原 v17）+ v13 轻量化无模型四线：营销号/SVG/PPT/Blender 3D（原 v15）+ v15 LLM 生成 PPT（原 v20）；**待开发**：v14 社交媒体（原 v11，🔗 已移交队友）/ v16 视频处理编辑（原 v19）/ v17 开源整合（原 v12）/ v18 长视频质量（原 v14）/ v19 二创（原 v16）/ v20 生成中审核（原 v21）/ v21 交付形态（原 v18）。（2026-09-26 重排：已完成块前移，未完成块后移；2026-09-30 新增 v19-v21；2026-10-01 二次重排：PPT/视频编辑前移至 v14 后、生成中审核插至交付形态前；2026-10-01 晚三调：v13/v15 关版 ✅（v15 条目移入已实现区，待开发条目前移）、v14 移交队友——括号内为原号，v12/v14/v16 指最初编号，v18-v21 指 2026-09-30 编号，方便对照 commit；2026-10-30 四调：v17 开源整合关版 ✅（M1-M7 全绿，条目就地标记））
+> 原始规划稿见 `archive/roadmap_origin.md`。**已实现**：v0-v10 + t2c + v11 多智能体（原 v13）+ v12 三排正交 M1-M2（原 v17）+ v13 轻量化无模型四线：营销号/SVG/PPT/Blender 3D（原 v15）+ v15 LLM 生成 PPT（原 v20）+ v16 视频处理编辑（原 v19）+ v17 开源整合关版（原 v12）+ v18 长视频质量关版（原 v14，M1-M4 全绿 2026-10-31）；**待开发**：v14 社交媒体（原 v11，🔗 已移交队友）/ v19 二创（原 v16）/ v20 生成中审核（原 v21）/ v21 交付形态（原 v18）。（2026-09-26 重排：已完成块前移，未完成块后移；2026-09-30 新增 v19-v21；2026-10-01 二次重排：PPT/视频编辑前移至 v14 后、生成中审核插至交付形态前；2026-10-01 晚三调：v13/v15 关版 ✅（v15 条目移入已实现区，待开发条目前移）、v14 移交队友——括号内为原号，v12/v14/v16 指最初编号，v18-v21 指 2026-09-30 编号，方便对照 commit；2026-10-30 四调：v17 开源整合关版 ✅（M1-M7 全绿，条目就地标记））
 
 ## 1. 定位
 
@@ -472,7 +472,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v18 — 长视频质量（原 v14）（🎯 待开发）
+### v18 — 长视频质量（原 v14）（✅ 2026-10-31 关版：M1-M4 全绿，设计稿 docs/design/v18-design.md）
 
 **目标**：提升长片（分钟级）的画面质量与跨镜一致性。
 
@@ -487,6 +487,15 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 - 衍生资产系统：角色变身/场景时间变体自动生成
 
 **里程碑**：M1 关键帧驱动 → M2 一镜到底（末帧回灌+运镜脚本）→ M3 层级一致性 → M4 长文本管线+世界观
+
+**实施实录（按 docs/design/v18-design.md 四里程碑，不新增模型，全部现成基建接线）**：
+
+- **M1 一致性资产底座 ✅**：拆解 schema 升级（world{era,region,style,taboos}/characters[].costumes[{name,desc,stages}]/scenes[].anchor_en/storyboard[].costume+transition_out，缺字段降级警告不阻断）；旧拆解迁移工具 `m6_upgrade_breakdown.py`（dry-run/--apply/防改动断言/.v17.bak 备份，孔乙己 world=True costumes=8 anchor_en=14/14 transition_out=36/36）；prompt 组装器（SCENE_ANCHOR 同场景逐字复用 + WARDROBE 衣橱 `costume_for` 区间命中取最窄 + 服装英译缓存 KF/costumes_en.json）；xfade 16 种过渡按 `transition_out` 选型。**验收**：14 场景全部镜头锚段逐字注入/镜9=破旧长衫/镜30=破夹袄蒲包 程序断言全绿；v4 对照成片 `output/m6/v4/`（8 镜 73.7s）
+- **M2 VACE flf2v 首尾帧驱动 ✅**：`m6_flf_smoke.py` 单镜冒烟（control.mp4=首帧定帧→xfade 1.2s→尾帧定帧 → WanVaceToVideo control_video 序列口，零新模型；首/尾帧 MAE 0.019/0.015 + 自身首尾差 0.154=真运动）；`m6_render_v3.py` 加 `M6_FLF=1` 模式（首帧=本镜关键帧、尾帧=下镜关键帧，832x480@16fps 组装段 scale+pad 自适配）。**验收**：v5 同题 8 镜成片 74.1s，镜间边界 MAE **0.199→0.158（-20.6%）**（5 对中 4 对改善，镜 21→24 略升 0.163→0.200 诚实记录）
+- **M3 一镜到底 ✅**：`utils/oneshot.py`（LLM 运镜链五维 motion 域段间连续 + FLUX 首帧 + 段 N 末帧 ffmpeg 提取回灌段 N+1 I2V 首帧条件 + 每段重注角色/风格锚防漂移 + concat 拼接 + 拼缝断言/规格断言/prompts.md）+ `core/vidance.py auto --oneshot --duration N` 早退路由。**验收**："穿越隧道的光" 30s 目标 → 28.3s 成片（7 段×4.04s，1280x704@24fps h264+yuv420p）；运镜链 push-in 0.8→1.5→减速 1.0 连续；拼缝 MAE（成片段 k+1 首帧 vs 回灌条件图）[0.018, 0.016, 0.009, 0.028, 0.015, 0.009] 全部 <0.10（量级=FLF 冒烟）
+- **M4 世界观收口 ✅**：world 注册表 `world_*.json`（拆解 world.style → LLM 英译缓存 → STYLE_EN 叠加注入 + taboos 禁则打印/落盘 prompts.md）；事件线 `events_*.json`（分镜序列 → LLM 按弧线分组摘要卡，孔乙己 10 弧覆盖 36/36 镜）；SKILL/roadmap/演示页/usage 正式化同步
+
+**明确不引入**（设计稿 §不引入清单）：模型能力路由矩阵、九宫格 turnaround（依赖网格服从度）、向量世界观库（JSON 注册表够用）。**诚实边界**：FLUX 无图像条件，场景锚/角色锚首版全部 prompt 级；图像级合成依赖 inpaint/Fill 组合，标增强项。
 
 **参考**：ViMax Novel2Movie、BigBanana 关键帧驱动、Toonflow 导演规划五步；原 v8-design.md。
 
@@ -633,7 +642,7 @@ vidance/
 │   ├── svg_llm.py             # v13（原 v15）概念→LLM→动效 SVG
 │   ├── t2c_server.py          # t2c 自然语言→命令（translate，进程内/可选 HTTP）
 │   ├── h3_prompt_video.py     # 整段式 prompt + 参考图 → H3 ref2va 单镜（原生音频直出）
-│   ├── oneshot.py             # v18（原 v14）一镜到底（🎯 待实现）
+│   ├── oneshot.py             # v18（原 v14）一镜到底（✅ 链式 I2V 末帧回灌 + LLM 运镜链 + 拼缝断言；auto --oneshot）
 │   ├── notify/                # v14（原 v11）机器人网关（🎯 待实现）
 │   ├── luts/  bgm/  workflows/  voices/
 ├── agents/                    # v11 多智能体（原 v13）：D/G/P/V 物理分层 + 薄包装（docs/design/v11-design.md）

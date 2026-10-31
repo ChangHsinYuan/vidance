@@ -7,8 +7,10 @@
 | 文件 | 作用 |
 |---|---|
 | `novel2video.yaml` | 技能参数（doc_key/风格/运镜/默认值） |
-| `m6_breakdown_test.py` | 步骤①②：RAG 人物卡注入 → LLM 结构化拆解（角色/场景/道具/分镜 JSON） |
-| `m6_render_v3.py` | 步骤③④⑤⑥：英文 prompt 关键帧 → I2V → 配音 → 拼装烧字幕（`M6_ALL=1` 全量镜头，默认 8 关键镜） |
+| `m6_breakdown_test.py` | 步骤①②：RAG 人物卡注入 → LLM 结构化拆解（角色/场景/道具/分镜 JSON；v18 schema：world/costumes/anchor_en/costume/transition_out） |
+| `m6_upgrade_breakdown.py` | v18 迁移：旧拆解 JSON 补齐 v18 字段（dry-run/--apply，防改动断言+.v17.bak 备份） |
+| `m6_render_v3.py` | 步骤③④⑤⑥：英文 prompt 关键帧 → I2V → 配音 → 拼装烧字幕（`M6_ALL=1` 全量镜头，默认 8 关键镜；v18：场景锚+衣橱组装器+过渡选型；`M6_FLF=1` VACE 首尾帧驱动 832x480@16fps） |
+| `m6_flf_smoke.py` | v18 M2 冒烟：VACE flf2v 单镜（control.mp4 拼接→WanVaceToVideo；首/尾帧 MAE 0.019/0.015） |
 | `m6_archive_buffer.py` | 步骤⑦：产物引用式归档 buffer（幂等，按 name+sha 去重） |
 | `m6_wardrobe_test.py` | 衣橱系统（BigBanana 借鉴）：Base Look 锁脸多套服装 prompt（`--gen` FLUX 出图+拼贴） |
 | `nahan.txt` | 《呐喊》古登堡原文（复现样片用，doc_key=454eb1f2…） |
@@ -29,6 +31,8 @@ $PY SKILL/commands/novel2video/m6_breakdown_test.py 孔乙己   # 首次运行�
 # 渲染（幂等可续跑；M6_ALL=1 渲染拆解里全部镜头）
 $PY SKILL/commands/novel2video/m6_render_v3.py
 # M6_ALL=1 $PY SKILL/commands/novel2video/m6_render_v3.py   # 全量 36 镜（~2h，后台化跑）
+# M6_FLF=1 M6_OUT=v5 $PY SKILL/commands/novel2video/m6_render_v3.py  # v18 M2：VACE 首尾帧驱动（镜间连贯性 +20.6%）
+# 旧拆解迁移 v18 schema：$PY SKILL/commands/novel2video/m6_upgrade_breakdown.py output/m6/breakdown_孔乙己.json --apply
 
 # 产物归档 buffer（引用式不拷贝，幂等）
 $PY SKILL/commands/novel2video/m6_archive_buffer.py m6_kongyiji_v3

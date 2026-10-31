@@ -62,6 +62,13 @@ def cmd_auto(args):
                   f'{", ".join(k for k in _SM.list() if k.startswith("templates/"))}），忽略')
     d = (skill and _SM.params_for(skill, 'auto')) or {}
 
+    # v18 M3：--oneshot 一镜到底（末帧回灌链式 I2V + LLM 运镜链），不走多镜主管线
+    if getattr(args, 'oneshot', False):
+        from utils.oneshot import run_oneshot
+        out = run_oneshot(args.concept, duration=args.duration or 30,
+                          character=args.character or d.get('character'))
+        return {'task_id': 'oneshot', 'output_path': out}
+
     # RAG 参考资料（--rag-doc，M5b）：文档入索引（md5 缓存）→ 按概念检索 → 拼上下文
     # M6-R-N：--rag-novel 走小说路线（分章索引+人物卡，人物卡置顶=外观唯一来源）；
     # 未显式指定时若文档已按 novel 索引（如 UI 上传过）也自动走小说路线
@@ -976,6 +983,8 @@ def build_parser():
                         help='--rag-doc 按小说路线处理（分章索引+人物卡抽取，人物卡置顶注入编剧，M6-R-N）')
     p_auto.add_argument('--no-preflight', action='store_true',
                         help='跳过开跑前预检（默认开跑前探测依赖服务，硬依赖挂则拒绝启动）')
+    p_auto.add_argument('--oneshot', action='store_true',
+                        help='一镜到底（v18 M3）：LLM 运镜链 + 末帧回灌链式 I2V，--duration 控制总时长')
     p_auto.set_defaults(func=cmd_auto)
 
     # ── custom 子命令 ──
