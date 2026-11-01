@@ -68,6 +68,7 @@ python utils/oneshot.py "穿越隧道的光" --duration 30 --character "金色�
 
 - **world 注册表**：拆解 `world` 字段 → LLM 英译缓存 `output/m6/world_*.json` → `STYLE_EN` 叠加注入（era/region/色调/质感）；taboos 禁则打印 + 落盘 prompts.md
 - **事件线**：`output/m6/events_*.json` 分镜序列 → LLM 按弧线分组摘要卡（每弧 3-6 镜，arc/shots/summary/characters），供长片导航与续写检索（孔乙己 10 弧覆盖 36/36 镜）；prompts.md 尾部追加「世界观」节
+- **事件线入 RAG 索引**：渲染时自动 `RagIndex.add_chunks()` 显式分块——**每弧一卡**（首版 `add_document` 会按 ~500 字聚合把 10 弧并成 3 块稀释，已弃用该路径）；key=32b60cbc（10 卡），检索需 `doc_keys=[全 key]` 限定（8 位前缀过滤无效，API 层 `/rag` 有短前缀展开）；程序断言 4 查询命中 3/4（断腿卡 top-2 微差 0.60 vs 0.61，MiniLM 中文细粒度极限）；索引失败仅警告不阻塞渲染
 - **正式化**：SKILL/commands/novel2video/（m6_upgrade_breakdown/m6_flf_smoke 归档 + README 流程）、.opencode/skills/novel_to_video/SKILL.md 双位置同步
 
 ## 产物速查
@@ -80,9 +81,16 @@ python utils/oneshot.py "穿越隧道的光" --duration 30 --character "金色�
 | `output/m6/breakdown_孔乙己.json` | v18 schema 拆解（world/costumes/anchor_en 全量） |
 | `output/m6/world_孔乙己.json` | 世界观注册表（style_en 英译缓存） |
 | `output/m6/events_孔乙己.json` | 事件线摘要卡（10 弧） |
+| `output/m6/events_孔乙己.md` | 事件线可读版（弧线表格，RAG 索引的源格式） |
 | `output/oneshot/os-*/` | 一镜到底成片 + 运镜脚本 + 断言报告 |
 | `/tmp/opencode/demo/v3_v4_kf_compare.jpg` | v17↔v18 关键帧对照条 |
 | `/tmp/opencode/demo/oneshot_contact.jpg` | oneshot 8 帧拼贴（人工查验用） |
+
+## 验证与回归
+
+- 程序断言：场景锚逐字注入 / 衣橱区间命中 / FLF 边界 MAE 两级口径 / oneshot 拼缝 <0.10（各里程碑节内已列）
+- 全量回归 7 套件 **116/116**（buffer 26 / checkpoint_m4 18 / retry 13 / embed_index 13 / subtitle_correct 20 / material_cache 20 / preflight 6）
+- 对照演示页：[docs/v18-benchmark.html](../v18-benchmark.html)（6 章节/3 图内嵌，含 M2 归因实录）
 
 ## 已知边界
 

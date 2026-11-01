@@ -65,6 +65,8 @@ $PY SKILL/commands/novel2video/m6_breakdown_test.py 章节名
 产物（`output/m6/v3/`）：`kongyiji_v3.mp4` 成片（yuv420p/烧字幕，Windows 可放）、
 `subs.srt`、`prompts.md`（全部 prompt 清单）、`kf_contact.jpg`（关键帧速查）、
 `kf/`（关键帧）、`clips/`（分镜视频+配音）。
+v18 另产 `output/m6/world_*.json`（世界观注册表：style_en 缓存+禁则落盘）+
+`events_*.json/.md`（事件线摘要卡，渲染时每弧一卡经 `RagIndex.add_chunks` 自动入 RAG 索引）。
 
 ## 六步流程
 

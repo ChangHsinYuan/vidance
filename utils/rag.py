@@ -13,6 +13,7 @@
     from utils.rag import RagIndex
     idx = RagIndex()
     n = idx.add_document('notes.md')          # 入索引（md5 缓存）
+    idx.add_chunks('事件线', [card1, card2])  # 显式分块（结构化卡片，避免聚合稀释）
     hits = idx.search('雪山日出', k=5)         # [{'text', 'score', 'doc', 'chunk'}]
     ctx = RagIndex.format_context(hits)       # 拼注入编剧的"参考资料"段
 """

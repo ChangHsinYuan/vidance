@@ -25,7 +25,9 @@ description: "Use when converting a novel/text chapter into a narrated short vid
 - `input/rag_test/m6_archive_buffer.py <session_id>` — 步骤 7：产物引用式归档 buffer（幂等）
 - `input/rag_test/m6_wardrobe_test.py [--gen]` — 衣橱系统（BigBanana 借鉴）：Base Look 锁脸多套服装，`--gen` FLUX 出图（输出 output/m6/wardrobe/）
 - 样片：`output/m6/v3/kongyiji_v3.mp4`（349.2s/36 镜全量，2026-10-30；8 镜子集版已被覆盖）；
-  v18 对照：`output/m6/v4/`（I2V，8 镜 73.7s）vs `output/m6/v5/`（FLF 首尾帧驱动，8 镜 74.1s，镜间边界 MAE 0.199→0.158）
+  v18 对照：`output/m6/v4/`（I2V，8 镜 73.7s）vs `output/m6/v5/`（FLF 首尾帧驱动，8 镜 74.1s，镜间边界 clip 级 MAE -87% / part 级 -72.6%）
+- v18 M4 产物：`output/m6/world_*.json`（世界观注册表：style_en 缓存+禁则）+ `events_*.json/.md`
+  （事件线摘要卡，渲染时每弧一卡经 `RagIndex.add_chunks` 自动入 RAG 索引；检索需 doc_keys 限定全 key）
 
 ## 步骤要点
 

@@ -121,6 +121,7 @@ vidance/
 │   ├── embed_index.py         # v17（原 v12）M7 MiniLM ONNX 本地嵌入 EmbedIndex（暴力余弦+npz 持久化；13/13）
 │   ├── subtitle_correct.py    # v17（原 v12）MPT 借鉴字幕 Levenshtein 纠正（幻觉丢弃，接 run_stt；20/20）
 │   ├── material_cache.py      # v17（原 v12）MPT 借鉴素材 URL-md5 缓存+搜索 24h TTL（接 asset_crawler；20/20）
+│   ├── rag.py                 # v17（原 v12）M5b RAG 索引/检索（文档+小说分章+人物卡；v18 加 add_chunks 显式分块——事件线每弧一卡）
 │   ├── t2c_server.py          # t2c 推理封装（translate(text)→command，进程内单例/可选 HTTP）
 │   ├── svg_llm.py             # v13（原 v15）概念→LLM→动效 SVG（S1）
 │   ├── svg_pipeline.py        # v13（原 v15）SVG→mp4（无头浏览器逐帧渲染，纯 CPU；S2 单帧/S3 抽帧/S4 成片）
