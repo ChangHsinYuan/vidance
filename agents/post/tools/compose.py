@@ -622,7 +622,10 @@ def mux_audio(video: str, audio_els: List[Dict[str, Any]], tl: Dict[str, Any],
         mix_labels = ['[ducked]'] + side
     else:
         mix_labels = a_labels
-    fc.append(''.join(mix_labels) + f'amix=inputs={len(mix_labels)}:duration=first:dropout_transition=0[mixed]')
+    # duration=first 依赖首输入是全长主轨原声；无主轨音轨时（如 xfade 后）first 会退化成
+    # 第一条音频元素长度、截断后续旁白——改用 longest 以最后一条音频元素收尾
+    dur_pol = 'first' if has_main_audio else 'longest'
+    fc.append(''.join(mix_labels) + f'amix=inputs={len(mix_labels)}:duration={dur_pol}:dropout_transition=0[mixed]')
     out = final_path if os.path.isabs(final_path) else os.path.abspath(final_path)
     cmd = [FFMPEG, '-y'] + inputs + ['-filter_complex', ';'.join(fc),
                                      '-map', '0:v', '-map', '[mixed]'] +           ['-c:v', 'copy', '-c:a', 'aac', out]

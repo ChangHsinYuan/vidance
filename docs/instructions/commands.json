@@ -1164,6 +1164,49 @@
         "/grid a.mp4 b.mp4 c.mp4 --grid 1x3 --trim 5 -o compare.mp4",
         "/grid a.mp4 b.mp4 c.mp4 d.mp4 --audio mix --fill loop"
       ]
+    },
+    {
+      "name": "rework",
+      "version": "v19",
+      "brief": "视频链接二创（营销号 Plus）：下载→理解→改写解说→重配音→画面改写→成片",
+      "detail": "输入视频链接（M1 承诺 B站）→ yt-dlp 合流下载 + faster-whisper 转写 + 抽帧 qwen 多模态理解（source.json）→ deepseek 改写解说词（流式 JSON + Levenshtein 防复述断言 <0.55，超阈回喂重写）→ 逐段 CosyVoice 重配音 + subs.srt 同源 → 逐段画面改写（强度 0-5 档组合式：0 原样/1 变速 0.75-1.6x/2 +LUT/3 +镜像裁剪/4 +光流插帧/5 +v5 特效）→ v10 compose 时间线组装（xfade+旁白轨+BGM ducking）→ 终拼 LUT+烧字幕+h264/yuv420p。默认音色 cosy-default（jieshuo1 在音色黑名单）；meta.json 必录来源 URL；发布前人工审核，不做自动发布。M1 缓存命中时全链 ~12min（60s 目标成片）。",
+      "params": [
+        {
+          "key": "url",
+          "desc": "视频链接（B站 BV 号全链）",
+          "required": true
+        },
+        {
+          "key": "--style",
+          "desc": "解说/盘点/吐槽（默认 解说）"
+        },
+        {
+          "key": "--duration",
+          "desc": "目标成片秒数（默认 60，4 字/秒约束 LLM）"
+        },
+        {
+          "key": "--visual-rewrite",
+          "desc": "画面改写强度 0-5 档（默认 2，档 N 含全部 <N）"
+        },
+        {
+          "key": "--lut",
+          "desc": "cinematic/warm/cool/vintage/vivid/soft"
+        },
+        {
+          "key": "--bgm",
+          "desc": "calm/uplifting/mysterious/dramatic/playful/epic"
+        },
+        {
+          "key": "--voice",
+          "desc": "TTS 音色（默认 cosy-default；黑名单音色告警）"
+        },
+        {
+          "key": "-o/--output",
+          "desc": "输出目录（默认 output/rework/rw-*）"
+        }
+      ],
+      "example": "python core/vidance.py rework \"https://www.bilibili.com/video/BV1jTxC6mExW\" --style 解说 --duration 60 --visual-rewrite 2 --lut cinematic --bgm dramatic",
+      "notes": "四通道：CLI / utils/rework.py（M1 单步 source）/ generator.rework agent / POST /api/tool/rework 异步 job。tests/test_rework.py 15 项纯逻辑断言。"
     }
   ],
   "v10_effects": {

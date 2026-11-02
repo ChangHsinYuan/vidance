@@ -2,7 +2,7 @@
 
 > 统一入口 `python core/vidance.py <子命令> [参数]`
 >
-> 分版本文档：[usage-v0.md](./usage-v0.md)（有声短片 MVP/T2V/TTS）· [usage-v1.md](./usage-v1.md)（角色锚/3DGS）· [usage-v2.md](./usage-v2.md)（RIFE/LUT/BGM/ffmpeg/STT）· [usage-v3.md](./usage-v3.md)（mesh/资产库）· [usage-v4.md](./usage-v4.md)（爬虫/队列/声音克隆/fast/hot） · [usage-v6.md](./usage-v6.md)（prompt 多轮核实）· [usage-v7.md](./usage-v7.md)（前端 WebUI）· [usage-v10.md](./usage-v10.md)（时间线拼接与特效）· [usage-v-svg.md](./usage-v-svg.md)（SVG→mp4 流水线）· [usage-v11.md](./usage-v11.md)（多智能体 chain 编排）· [usage-v16.md](./usage-v16.md)（SAM2 图片/视频编辑 + 生成式编辑）· [usage-v17.md](./usage-v17.md)（会话资产/断点续跑/RAG/五维模板/嵌入/重试）
+> 分版本文档：[usage-v0.md](./usage-v0.md)（有声短片 MVP/T2V/TTS）· [usage-v1.md](./usage-v1.md)（角色锚/3DGS）· [usage-v2.md](./usage-v2.md)（RIFE/LUT/BGM/ffmpeg/STT）· [usage-v3.md](./usage-v3.md)（mesh/资产库）· [usage-v4.md](./usage-v4.md)（爬虫/队列/声音克隆/fast/hot） · [usage-v6.md](./usage-v6.md)（prompt 多轮核实）· [usage-v7.md](./usage-v7.md)（前端 WebUI）· [usage-v10.md](./usage-v10.md)（时间线拼接与特效）· [usage-v-svg.md](./usage-v-svg.md)（SVG→mp4 流水线）· [usage-v11.md](./usage-v11.md)（多智能体 chain 编排）· [usage-v16.md](./usage-v16.md)（SAM2 图片/视频编辑 + 生成式编辑）· [usage-v17.md](./usage-v17.md)（会话资产/断点续跑/RAG/五维模板/嵌入/重试）· [usage-v19.md](./usage-v19.md)（视频链接二创 rework）
 >
 > 架构：[hierarchy.md](./hierarchy.md)（方法脉络图：视频模型/非视频模型 × 导演方式总览）· [v12-modules.md](./v12-modules.md)（三排正交统一入口）· [v11-design.md](./v11-design.md)（多智能体分层与 Agent 链）· [v-t2c.md](./v-t2c.md)（自然语言→命令翻译层）· [v-svg-pipeline.md](./v-svg-pipeline.md)（SVG 流水线设计）
 
@@ -34,6 +34,7 @@
 | `blender3d` (v13) | 概念或 scene.json | bpy EEVEE（宿主 GPU/容器 CPU） | LLM 规划 3D 场景 | TTS 旁白/字幕 | 3D 质感短片（模板 title3d/shapes/bars3d） |
 | `edit` (v16) | 图/视频路径 | SAM2+YOLO+FLUX Fill/VACE/Qwen-Edit（GPU 档） | SAM2 分割+inpaint/传播/彩色多物体/YOLO 自动 + 生成式重绘/换底/参考图生视频/指令式编辑 | — | 抠图/换底/打码/去水印/视频双向追踪/框提示 + 生成式编辑（v16.x），详见 [v16-design.md](./v16-design.md) |
 | `vace` (v16.x) | 参考图 + prompt | Wan2.1 VACE（wan 8189） | 参考图→主体一致视频 | — | 角色参考图生成 5s 视频（480×832@16fps） |
+| `rework` (v19) | 视频链接 | yt-dlp+STT+多模态+LLM（无新模型） | 下载→理解→改写解说→重配音 | 画面改写 0-5 档/LUT/BGM/字幕 | 视频链接二创（M1 承诺 B站），见 usage-v19.md |
 | `compose` (v10) | 时间线 JSON | — | — | 时间线拼接特效 | 后端 CLI 剪辑，见 usage-v10.md |
 | `h3shot` | prompt + 参考图 | H3 ref2va | 整段式单镜 | 原生音频直出 | 整段式单镜（`--ref` 条件注入） |
 | `ask` (v6) | 一句概念 | — | LLM 追问核实 | — | 多轮补全增强概念，见 usage-v6.md |

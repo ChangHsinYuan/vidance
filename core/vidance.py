@@ -246,6 +246,24 @@ def cmd_grid(args):
               cell_ratio=args.cell_ratio, trim=args.trim)
 
 
+def cmd_rework(args):
+    """rework 子命令（v19）：视频链接二创 → 解说向新视频"""
+    from utils.rework import run_rework
+    out = args.output
+    if not out:
+        from core.pipeline import CONFIG_PATH
+        with open(CONFIG_PATH, encoding='utf-8') as f:
+            out_root = (json.load(f).get('output_dir') or 'output').rstrip('/')
+        out = os.path.join(out_root, 'rework',
+                           f"rw-{time.strftime('%Y%m%d-%H%M%S')}")
+    if not os.path.isabs(out):
+        out = os.path.abspath(out)
+    final = run_rework(args.url, out, style=args.style, duration=args.duration,
+                       voice=args.voice, level=args.visual_rewrite,
+                       lut=args.lut, bgm=args.bgm)
+    return {'task_id': os.path.basename(out), 'output_path': final}
+
+
 def cmd_concat(args):
     """concat 子命令：多视频拼接"""
     clips = args.videos
@@ -1025,6 +1043,22 @@ def build_parser():
     p_concat.add_argument('--crossfade-duration', type=float, default=0.5,
                           help='交叉淡化时长（秒，仅 --transition crossfade 时生效）')
     p_concat.set_defaults(func=cmd_concat)
+
+    # ── rework 子命令（v19：视频链接二创） ──
+    p_rework = sub.add_parser('rework', parents=[output_parent],
+                              help='视频链接二创（v19）：下载→理解→改写解说→重配音→画面改写→成片')
+    p_rework.add_argument('url', help='原视频链接（M1 承诺 B站；其他平台 best-effort）')
+    p_rework.add_argument('--style', default='解说', choices=['解说', '盘点', '吐槽'],
+                          help='二创风格（默认: 解说）')
+    p_rework.add_argument('--duration', type=int, default=60,
+                          help='目标成片时长秒（默认: 60）')
+    p_rework.add_argument('--voice', default='cosy-default',
+                          help='解说音色（默认: cosy-jieshuo1 影视解说）')
+    p_rework.add_argument('--visual-rewrite', type=int, default=2, choices=range(6),
+                          help='画面改写强度 0-5：0 原样/1 +变速/2 +LUT/3 +镜像裁剪/4 +光流插帧/5 +特效')
+    p_rework.add_argument('--lut', default='', help='调色风格（v2 LUT，如 cinematic）')
+    p_rework.add_argument('--bgm', default='', help='BGM mood（如 dramatic）')
+    p_rework.set_defaults(func=cmd_rework)
 
     # ── grid 子命令（画布网格合成，matplotlib subplot 风格） ──
     p_grid = sub.add_parser('grid', parents=[output_parent],

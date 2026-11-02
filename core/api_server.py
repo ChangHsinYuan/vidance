@@ -607,6 +607,50 @@ def _run_custom_job(job_id: str, rr: dict):
             })
 
 
+def _run_reworkjob(job_id: str, url: str, flags: dict):
+    """v19 二创（异步 job，复用 h3shot 轮询通道）：链接 → 解说向二创成片。"""
+    def _scb(s):
+        with _h3_jobs_lock:
+            if job_id in _h3_jobs:
+                _h3_jobs[job_id]['stage'] = s
+        _agent_log(job_id, '▶ ' + s)
+
+    try:
+        from utils.rework import run_rework
+        out = (flags.get('o') or flags.get('output')
+               or os.path.join(load_config().get('output_dir', 'output'),
+                               'rework', f'rw_{job_id}'))
+        if not os.path.isabs(out):
+            out = os.path.abspath(out)
+
+        def _int(k, d):
+            try:
+                return int(flags.get(k))
+            except (TypeError, ValueError):
+                return d
+
+        final = run_rework(url, out, style=flags.get('style') or '解说',
+                           duration=_int('duration', 60),
+                           voice=flags.get('voice') or 'cosy-default',
+                           level=_int('visual-rewrite', 2),
+                           lut=flags.get('lut') or '', bgm=flags.get('bgm') or '',
+                           stage_cb=_scb)
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'completed', 'output': final,
+                'video_url': (_file_url(final)) if final else '',
+                'completed_at': datetime.now().isoformat(),
+            })
+        _agent_log(job_id, '■ 完成 %s' % (final or ''))
+    except Exception as e:
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'failed', 'error': str(e),
+                'completed_at': datetime.now().isoformat(),
+            })
+        _agent_log(job_id, '✗ 失败: %s' % str(e)[:300])
+
+
 def _run_svgjob(job_id: str, concept, n: int, say: list, flags: dict, voiced: bool):
     """SVG 短片（异步 job，复用 h3shot 轮询通道；回执 output/video_url）。
 
@@ -1489,6 +1533,16 @@ def options():
 
 # ── /api/tools：/ 斜杠命令清单（前端补全渲染） ──
 TOOLS = [
+    {'name': 'rework', 'help': 'v19 视频链接二创：下载→理解→改写解说→重配音→画面改写→成片',
+     'params': [
+         {'key': 'url', 'type': 'text', 'required': True, 'desc': '原视频链接（M1 承诺 B站）'},
+         {'key': '--style', 'type': 'choice', 'choices': ['解说', '盘点', '吐槽'], 'desc': '二创风格'},
+         {'key': '--duration', 'type': 'number', 'desc': '目标时长秒（默认 60）'},
+         {'key': '--visual-rewrite', 'type': 'number', 'desc': '画面改写强度 0-5（默认 2）'},
+         {'key': '--lut', 'type': 'choice', 'choices': ['cinematic', 'warm', 'cool', 'vintage', 'vivid', 'soft'], 'desc': '调色风格'},
+         {'key': '--bgm', 'type': 'choice', 'choices': ['calm', 'uplifting', 'mysterious', 'dramatic', 'playful', 'epic'], 'desc': 'BGM mood'},
+         {'key': '--voice', 'type': 'text', 'desc': '解说音色（默认 cosy-default）'},
+     ]},
     {'name': 'auto', 'help': '概念→LLM编剧→生成→后处理（完整流水线）',
      'params': [
          {'key': 'concept', 'type': 'text', 'required': True, 'desc': '视频概念（中文）'},
@@ -2201,6 +2255,24 @@ def tool_dispatch(name: str, req: ToolRequest):
                 'video_url': (_file_url(out)) if out else ''}
 
     # ── svg（v13（原 v15）流水线：全部异步 job（无声 concept_to_mp4 / 有声 narrate_to_mp4），前端 pollH3 复用）──
+    # ── rework（v19 视频链接二创，异步 job，复用 h3shot 轮询通道）──
+    if name == 'rework':
+        fl, pos2 = _parse_tool_args(req.args or '')['flags'], _parse_tool_args(req.args or '')['positional']
+        url = pos2[0] if pos2 else fl.get('url')
+        if not url or not url.startswith(('http://', 'https://')):
+            raise HTTPException(status_code=400,
+                                detail='用法: /rework <视频链接> [--style 解说 --duration 60 --visual-rewrite 2 --lut cinematic --bgm dramatic]')
+        job_id = f'rework_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        with _h3_jobs_lock:
+            _h3_jobs[job_id] = {'job_id': job_id, 'concept': f'二创: {url[:50]}',
+                                'status': 'running',
+                                'created_at': datetime.now().isoformat()}
+        threading.Thread(target=_run_reworkjob, args=(job_id, url, fl),
+                         daemon=True).start()
+        return {'message': '二创任务已提交（异步：下载+理解+改写+组装，预计 10-20 分钟，发布前请人工审核）',
+                'job_id': job_id, 'poll': f'/api/h3shot/{job_id}', 'h3_job_id': job_id}
+
+    # ── svg（LLM 生成动效 SVG → mp4，异步 job，复用 h3shot 轮询通道）──
     if name == 'svg':
         rr = _parse_repeated(req.args or '', {'say'})
         fl, pos2 = rr['flags'], rr['pos']

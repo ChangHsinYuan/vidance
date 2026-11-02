@@ -57,6 +57,22 @@ def blender3d(p):
                        trace=[{'step': 'blenderline', 'output': video}])
 
 
+@register(name='generator.rework', layer='generator', needs_gpu=False,
+          desc='视频链接二创（v19）：下载→理解→改写解说→重配音→画面改写→成片',
+          inputs='{url, style?, duration?, voice?, visual_rewrite?, lut?, bgm?, out_path?}')
+def rework(p):
+    from utils.rework import run_rework
+    out = p.get('out_path') or os.path.dirname(default_out('rework'))
+    final = run_rework(p['url'], out, style=p.get('style', '解说'),
+                       duration=int(p.get('duration') or 60),
+                       voice=p.get('voice', 'cosy-default'),
+                       level=int(p.get('visual_rewrite') if p.get('visual_rewrite') is not None else 2),
+                       lut=p.get('lut', ''), bgm=p.get('bgm', ''))
+    return TaskResult(ok=bool(final), artifacts={'video': final},
+                      trace=[{'step': 'rework', 'video': final,
+                              'meta': f'{out}/meta.json'}])
+
+
 @register(name='generator.fast', layer='generator', needs_gpu=False,
           desc='概念 → 网图 + 运镜 + 旁白 + BGM（FastLine 全链）',
           inputs='{concept, n?, images_dir?, motion?, out_path?}')

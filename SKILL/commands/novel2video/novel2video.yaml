@@ -27,5 +27,7 @@ style_en: >-
 
 motion_en: very subtle slow camera drift, minimal natural human motion, calm pacing
 
+narration_style: 纪录片解说词：完整长句，每句 15-25 字，克制客观，不玩梗不夸饰，与画面互证
+
 test_cases:
   - 孔乙己（8 关键镜 73.7s 成片：output/m6/v3/kongyiji_v3.mp4）
