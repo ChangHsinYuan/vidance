@@ -844,6 +844,349 @@ def video_inpaint_vace(in_path, out_path, points=None, boxes=None, prompt='empty
 _PROPAINTER_SRC = '/mnt/disk_sdb/zxy/ProPainter'
 
 
+# ── v19 烧录字幕消除（OCR 定位 → 静态 mask → ProPainter 流传播） ──────────
+
+_UNLIMITED_OCR = 'unlimited-ocr'
+
+
+def _ocr_stream(img_path: str, prompt: str, tries: int = 3,
+                timeout: tuple = (15, 900)) -> str:
+    """unlimited-ocr 流式调用 → 全文。
+
+    铁律（SKILL LLM 调用 #1）：该模型 reasoning 长，非流式零字节必 read timeout；
+    流式 delta 持续到达。端点偶发排队（首字节 >300s 实测），带 3 次重试。
+    detect 场景传短 timeout（如 (15, 120)）快速失败走像素启发式兜底。
+    """
+    import json as _json
+    import base64
+    import requests
+
+    cfg = _load_llm_cfg()
+    b64 = base64.b64encode(open(img_path, 'rb').read()).decode()
+    last = None
+    for t in range(tries):
+        try:
+            r = requests.post(
+                f"{cfg['base_url']}/chat/completions",
+                headers={'Authorization': f"Bearer {cfg['api_key']}"},
+                json={'model': _UNLIMITED_OCR, 'stream': True,
+                      'messages': [{'role': 'user', 'content': [
+                          {'type': 'image_url',
+                           'image_url': {'url': f'data:image/jpeg;base64,{b64}'}},
+                          {'type': 'text', 'text': prompt}]}]},
+                timeout=timeout, stream=True)
+            text = ''
+            for line in r.iter_lines():
+                if not line or not line.startswith(b'data: '):
+                    continue
+                p = line[6:].decode()
+                if p == '[DONE]':
+                    break
+                try:
+                    text += _json.loads(p)['choices'][0]['delta'].get('content') or ''
+                except (_json.JSONDecodeError, KeyError, IndexError):
+                    pass
+            if text.strip():
+                return text
+            last = RuntimeError('OCR 空响应')
+        except Exception as e:  # noqa: BLE001 — 网络/解析异常统一重试
+            last = e
+        time.sleep(5)
+    raise RuntimeError(f'unlimited-ocr 调用失败（{tries} 次）: {last}')
+
+
+def _load_llm_cfg() -> dict:
+    """读 config llm 段（base_url/api_key），与 utils.llm 同源。"""
+    import json as _json
+    root = _os.path.dirname(_os.path.dirname(_os.path.dirname(
+        _os.path.dirname(_os.path.abspath(__file__)))))
+    with open(_os.path.join(root, 'config', 'config.json'), encoding='utf-8') as f:
+        c = _json.load(f)
+    llm = c.get('llm') or {}
+    return {'base_url': llm.get('base_url', '').rstrip('/'),
+            'api_key': llm.get('api_key', '')}
+
+
+def _parse_ocr_boxes(text: str, img_w: int, img_h: int, y_min: float = 0.75,
+                     a_max: float = 0.25) -> list:
+    """解析 unlimited-ocr 输出 → [(x1, y1, x2, y2, text)]（像素坐标）。
+
+    兼容两种格式：① 原生 `文本 [x1, y1, x2, y2]` 行（文档版面模型对视频帧的
+    典型输出）；② JSON {"subtitle_boxes": [{"text", "box"}]}。
+    坐标空间：该模型输出为 **千分比规范坐标（0-999，与输入分辨率无关）**——
+    实测 704p 与 1080p 输入返回相同数字、坐标上限 999；按 x*w/1000、
+    y*h/1000 映射回本帧像素。（⚠ 历史踩坑：曾误判为"高 1080 规范空间"，
+    704p 帧坐标归一化错 1.53 倍，mask 盖到字幕上方渐变条，字幕原样保留。）
+    过滤（字幕先验）：y 中心 ≥ y_min*h（底部带）；框面积 ≤ a_max 帧面积。
+    """
+    import re
+    import json as _json
+    out = []
+    try:  # ① 先试 JSON
+        j = _json.loads(text[text.index('{'):text.rindex('}') + 1])
+        for it in j.get('subtitle_boxes') or []:
+            b = it.get('box') or []
+            if len(b) == 4:
+                out.append((float(b[0]), float(b[1]), float(b[2]), float(b[3]),
+                            str(it.get('text', ''))))
+    except (ValueError, AttributeError, TypeError):
+        pass
+    if not out:  # ② 原生行格式：任意文本 + 末尾 [x1, y1, x2, y2]
+        for m in re.finditer(r'^(.*?)\[(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\]',
+                             text, re.M):
+            txt = m.group(1).strip().strip('`"')
+            x1, y1, x2, y2 = (float(m.group(i)) for i in range(2, 6))
+            out.append((x1, y1, x2, y2, txt))
+    out = [(x1 * img_w / 1000.0, y1 * img_h / 1000.0,
+            x2 * img_w / 1000.0, y2 * img_h / 1000.0, t)
+           for x1, y1, x2, y2, t in out]  # 千分比 → 像素
+    keep = []
+    for x1, y1, x2, y2, txt in out:
+        if x2 <= x1 or y2 <= y1:
+            continue
+        yc = (y1 + y2) / 2
+        area = (x2 - x1) * (y2 - y1)
+        if yc < y_min * img_h or area > a_max * img_w * img_h:
+            continue
+        keep.append((x1, y1, x2, y2, txt))
+    return keep
+
+
+def _heuristic_subtitle_band(video: str, n_samples: int = 5,
+                             ss: float = None, t: float = None) -> list:
+    """像素启发式字幕带检测（OCR 不可用时的零依赖兜底）。
+
+    烧录字幕白字黑边特征：多帧采样 → 底部 40% 找近白像素行聚堆 →
+    ≥2 帧出现的连续行带 union → 归一化框。检测不到返回 []。
+    """
+    import cv2
+    tmpd = tempfile.mkdtemp(prefix='subheur_')
+    try:
+        cmd = [FFMPEG, '-y']
+        if ss is not None:
+            cmd += ['-ss', f'{float(ss):.3f}']
+        cmd += ['-i', video]
+        if t is not None:
+            cmd += ['-t', f'{float(t):.3f}']
+        step = max(1, int(_probe_fps(video) * 30))  # 每 ~30s 一帧
+        cmd += ['-vf', f"select='not(mod(n,{step}))'", '-vsync', 'vfr',
+                '-frames:v', str(n_samples),
+                os.path.join(tmpd, '%04d.jpg'), '-q:v', '2']
+        subprocess.run(cmd, capture_output=True, timeout=300)
+        names = sorted(f for f in os.listdir(tmpd) if f.endswith('.jpg'))
+        if not names:
+            return []
+        w, h = Image.open(os.path.join(tmpd, names[0])).size
+        bands = []  # 每帧的字幕行带 [(y0, y1)]
+        for n in names:
+            img = cv2.imread(os.path.join(tmpd, n))
+            if img is None:
+                continue
+            g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            rows = (g > 210).sum(axis=1)  # 近白像素逐行计数
+            y0 = int(h * 0.6)
+            ys = [y0 + i for i, v in enumerate(rows[y0:]) if v > w * 0.03]
+            if ys and max(ys) - min(ys) < h * 0.12:  # 连续带（防上部高亮画面混入）
+                bands.append((min(ys), max(ys)))
+        if len(bands) < 2:  # ≥2 帧出现才算字幕（单帧可能是偶然高亮）
+            return []
+        y1 = min(b[0] for b in bands) - 6
+        y2 = max(b[1] for b in bands) + 6
+        return [(0.04, max(0.0, y1 / h), 0.96, min(1.0, y2 / h))]
+    finally:
+        shutil.rmtree(tmpd, ignore_errors=True)
+
+
+def detect_subtitle_boxes(video: str, n_samples: int = 3, ss: float = None,
+                          t: float = None, timeout_s: float = 900) -> dict:
+    """定位烧录字幕（unlimited-ocr 主路 + 像素启发式兜底），坐标归一化。
+
+    OCR：多帧采样（统一放样到高 1080——模型坐标空间为高 1080 规范空间，
+    输入即 1080 高则坐标=像素坐标）→ 底部带过滤（y_min=0.75）→ 框并集
+    （一次调用多 part 复用）。OCR 是唯一可靠定位：实测汉白玉夜景里字幕为
+    灰字+深色底板（文字 ~185 / 底板 ~18-78），白像素/暗板启发式全部失效。
+    OCR 全失败/超预算 → 像素启发式兜底（白字行聚堆——仅对白字亮场视频有效）。
+    返回 {boxes_norm, detected, width, height, source: 'ocr'|'heuristic'}。
+    """
+    tmpd = tempfile.mkdtemp(prefix='subocr_')
+    try:
+        cmd = [FFMPEG, '-y']
+        if ss is not None:
+            cmd += ['-ss', f'{float(ss):.3f}']
+        cmd += ['-i', video]
+        if t is not None:
+            cmd += ['-t', f'{float(t):.3f}']
+        cmd += ['-vf', "select='not(mod(n,100))',scale=-2:1080", '-vsync', 'vfr',
+                os.path.join(tmpd, '%04d.jpg'), '-q:v', '2']
+        subprocess.run(cmd, capture_output=True, timeout=300)
+        names = sorted(f for f in os.listdir(tmpd) if f.endswith('.jpg'))
+        if not names:
+            raise RuntimeError(f'OCR 抽帧失败（ss={ss} t={t}）')
+        # 均匀采样 n_samples 张
+        if len(names) > n_samples:
+            idxs = {round(i * (len(names) - 1) / (n_samples - 1))
+                    for i in range(n_samples)}
+            names = [names[i] for i in sorted(idxs)]
+        w, h = Image.open(os.path.join(tmpd, names[0])).size
+        raw = []
+        t0 = time.time()
+        for i, n in enumerate(names):  # 全部采样帧都跑：字幕位置随行数/时段浮动，
+            if time.time() - t0 > timeout_s and raw:  # 单帧框 union 不全会漏盖
+                break
+            try:
+                txt = _ocr_stream(os.path.join(tmpd, n),
+                                  '检测画面中烧录字幕（硬字幕）的位置，'
+                                  '逐条输出: 字幕文本 [x1, y1, x2, y2]，像素坐标；'
+                                  '没有烧录字幕则输出：无',
+                                  tries=2, timeout=(15, 300))
+                raw += _parse_ocr_boxes(txt, w, h)
+            except Exception as e:  # noqa: BLE001 — 单帧 OCR 挂不阻塞，靠兜底
+                print(f'[sub-ocr] 第 {i} 帧 OCR 失败: {e}', flush=True)
+        src_tag = 'ocr' if raw else ''
+        if not raw:  # OCR 无果 → 像素启发式兜底（多帧行聚堆，≥2 帧确认）
+            print('[sub-ocr] OCR 无果，像素启发式兜底（白字假设，深色底板字幕不可检出）',
+                  flush=True)
+            heur = [(bx1 * w, by1 * h, bx2 * w, by2 * h, '')
+                    for bx1, by1, bx2, by2 in _heuristic_subtitle_band(
+                        video, n_samples=5, ss=ss, t=t)]
+            if heur:
+                raw = heur
+                src_tag = 'heuristic'
+        if not raw:
+            return {'boxes_norm': [], 'detected': False,
+                    'width': w, 'height': h, 'source': 'none'}
+        x1 = max(0, min(b[0] for b in raw) - 4) / w
+        y1 = max(0, min(b[1] for b in raw) - 4) / h
+        x2 = min(w, max(b[2] for b in raw) + 4) / w
+        y2 = min(h, max(b[3] for b in raw) + 4) / h
+        return {'boxes_norm': [(x1, y1, x2, y2)], 'detected': True,
+                'width': w, 'height': h, 'source': src_tag}
+    finally:
+        shutil.rmtree(tmpd, ignore_errors=True)
+
+
+def _subtitle_mask_from_norm(boxes_norm, w: int, h: int, band: float = 0.30):
+    """归一化框 → 全帧静态 mask（无框回退底部 band 带）。"""
+    if boxes_norm:
+        x1 = max(0, int(boxes_norm[0][0] * w))
+        y1 = max(0, int(boxes_norm[0][1] * h))
+        x2 = min(w, int(boxes_norm[0][2] * w))
+        y2 = min(h, int(boxes_norm[0][3] * h))
+    else:
+        y1, y2 = int(h * (1 - band)), h
+        x1, x2 = int(w * 0.04), int(w * 0.96)
+    mask = np.zeros((h, w), dtype=np.uint8)
+    mask[y1:y2, x1:x2] = 255
+    return mask
+
+
+def _extract_frames(video: str, framesd: str, ss: float = None,
+                    t: float = None) -> int:
+    """抽帧（%06d.jpg）→ 帧数。"""
+    os.makedirs(framesd, exist_ok=True)
+    cmd = [FFMPEG, '-y']
+    if ss is not None:
+        cmd += ['-ss', f'{float(ss):.3f}']
+    cmd += ['-i', video]
+    if t is not None:
+        cmd += ['-t', f'{float(t):.3f}']
+    cmd += ['-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+            os.path.join(framesd, '%06d.jpg'), '-q:v', '2']
+    subprocess.run(cmd, capture_output=True, timeout=600)
+    return len([f for f in os.listdir(framesd) if f.endswith('.jpg')])
+
+
+def video_remove_subtitle(in_path: str, out_path: str, mode: str = 'auto',
+                          n_samples: int = 4, mask_dilation: int = 8,
+                          fp16: bool = True, on_stage=None,
+                          ss: float = None, t: float = None,
+                          resize_ratio: float = 1.0,
+                          boxes_norm: list = None) -> dict:
+    """v19：烧录字幕消除（ProPainter 流传播，光流补全，非生成式）。
+
+    mode: auto=无字幕信息则原样拷贝（不白跑）；force=无框也按底部带消除。
+    ss/t: 只处理窗口 [ss, ss+t)——rework 引用窗口/单 part 用。
+    boxes_norm: 传入归一化框（detect_subtitle_boxes 产物）则跳过 OCR——
+    字幕位置全片固定，一次检测多 part 复用（OCR 延迟不可控，逐 part 调用不可承受）。
+    resize_ratio: ProPainter 处理分辨率缩放（1080p 全片建议 0.67；part 704p 用 1.0）。
+    返回 {output, removed, detected, frames, fps}。
+    """
+    import cv2  # noqa: F401 — 与 propainter 主路径同依赖面
+
+    def _stage(s):
+        print(f'[rm-sub] {s}', flush=True)
+        if on_stage:
+            on_stage(s)
+
+    detected = bool(boxes_norm)
+    if boxes_norm is None:  # 未预检测：现场 OCR 一次
+        _stage('OCR 定位字幕')
+        d = detect_subtitle_boxes(in_path, n_samples=n_samples, ss=ss, t=t)
+        boxes_norm, detected = d['boxes_norm'], d['detected']
+    if not detected and mode == 'auto':
+        _stage('未检出烧录字幕，原样拷贝')
+        os.makedirs(os.path.dirname(os.path.abspath(out_path)) or '.', exist_ok=True)
+        cmd = [FFMPEG, '-y']
+        if ss is not None:
+            cmd += ['-ss', f'{float(ss):.3f}']
+        cmd += ['-i', in_path]
+        if t is not None:
+            cmd += ['-t', f'{float(t):.3f}']
+        cmd += ['-c', 'copy', out_path]
+        subprocess.run(cmd, capture_output=True, timeout=300)
+        return {'output': out_path, 'removed': False, 'detected': False,
+                'frames': 0, 'fps': _probe_fps(in_path)}
+
+    workd = os.path.join(os.path.dirname(os.path.abspath(out_path)),
+                         'rmsub_work')
+    os.makedirs(workd, exist_ok=True)
+    try:
+        framesd = os.path.join(workd, 'frames')
+        nf = _extract_frames(in_path, framesd, ss=ss, t=t)
+        if not nf:
+            raise RuntimeError(f'抽帧失败（ss={ss} t={t}）')
+        w, h = Image.open(os.path.join(framesd, '000001.jpg')).size
+        _stage(f'ProPainter 流传播中（{nf} 帧 {w}x{h}，'
+               f'{"OCR 框复用" if boxes_norm is not None else "底部带回退"}）')
+        mask = _subtitle_mask_from_norm(boxes_norm, w, h)
+        maskd = os.path.join(workd, 'masks')
+        os.makedirs(maskd, exist_ok=True)
+        mtmp = os.path.join(workd, 'sub_mask.png')  # 不进 masks/（防被当多余帧）
+        Image.fromarray(mask).save(mtmp)
+        for n in sorted(os.listdir(framesd)):
+            shutil.copyfile(mtmp, os.path.join(maskd, n.rsplit('.', 1)[0] + '.png'))
+        tmp_out = os.path.join(workd, 'out')
+        cmd = [sys.executable,
+               os.path.join(_PROPAINTER_SRC, 'inference_propainter.py'),
+               '-i', os.path.abspath(framesd),
+               '-m', os.path.abspath(maskd),
+               '-o', os.path.abspath(tmp_out),
+               '--mask_dilation', str(mask_dilation),
+               '--save_fps', str(int(round(_probe_fps(in_path)))),
+               '--resize_ratio', str(resize_ratio)]
+        if fp16:
+            cmd.append('--fp16')
+        proc = subprocess.run(cmd, cwd=_PROPAINTER_SRC,
+                              capture_output=True, text=True)
+        if proc.returncode != 0:
+            tail = (proc.stderr or proc.stdout or '')[-2000:]
+            raise RuntimeError(f'ProPainter 推理失败: {tail}')
+        src = os.path.join(os.path.abspath(tmp_out),
+                           os.path.basename(os.path.abspath(framesd)),
+                           'inpaint_out.mp4')
+        if not os.path.isfile(src):
+            raise RuntimeError(f'ProPainter 未产出 {src}')
+        os.makedirs(os.path.dirname(os.path.abspath(out_path)) or '.',
+                    exist_ok=True)
+        shutil.copyfile(src, out_path)
+        print(f"[rm-sub] {nf} 帧 removed=True")
+        return {'output': out_path, 'removed': True, 'detected': detected,
+                'frames': nf, 'fps': _probe_fps(in_path)}
+    finally:
+        shutil.rmtree(workd, ignore_errors=True)
+
+
+
 def video_inpaint_propainter(in_path, out_path, points=None, boxes=None, op='remove',
                              prompt_frame=0, size='small', device='', yolo=False,
                              classes=None, conf=0.25, mask_dilation=8, fp16=True,

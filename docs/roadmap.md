@@ -516,6 +516,8 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 **里程碑**（2026-11-01 设计定稿 → 2026-11-02 全部完成 ✅，不新增模型全接线）：M1 下载+抽帧+转写 ✅（yt-dlp 合流 + STT/多模态并行 → source.json；实测 B站 533s 原片：203 段转写 1743 字 + 107 帧视觉理解 107/107 非空，140.9s）→ M2 改写解说词+重配音 ✅（流式 JSON + Levenshtein 防复述断言 <0.55 实测 max=0.195 + 时间轴映射 script.json）→ M3 画面二创 ✅（改写强度 0-5 档：变速/LUT/镜像/光流插帧/特效，组装走 v10 compose；final 70.6s h264+yuv420p+烧字幕程序断言）→ M4 一条命令端到端 ✅（`rework` 子命令 + meta 录来源 + 人工审核出口；CLI/utils/agent(generator.rework)/API(/api/tool/rework 异步 job) 四通道）。测试 `tests/test_rework.py` 15 项纯逻辑断言全过。**踩坑实录**：①cosy-jieshuo1 句首泄漏"街道…"幻听（音色黑名单实锤）→ 默认音色改 cosy-default + 黑名单告警；②chat_json 非流式长 reasoning read timeout（SKILL 铁律 #1）→ 改 chat_stream 1800s 稳过；③v10 compose 边界 bug：xfade 主轨拼接丢音轨 → mux_audio `amix duration=first` 退化成第一条旁白长度、成片被 -shortest 截断（rw-smoke1/rw-api1 双双中招）→ 无主轨原声时改 `duration=longest`，两成片重拼修复（64.3s/82.0s 贴合 narr_total）。**M1 只承诺 B站**（yt-dlp 已验证可达），其他平台 best-effort。
 
+**烧录字幕消除（2026-11-02/03 补全，复用 v16 ProPainter）**：`--remove-sub off/auto/force` 三档。定位 = `unlimited-ocr`（USTC 端点，多帧采样）**∪ 像素启发式兜底**（白字行聚堆 ≥2 帧确认，OCR 端点排队波动大实测 7s~7min+ 首字节，永不卡死）；检测结果落 `subtitle.json`（归一化坐标）各 part 复用零重复 OCR。**坐标空间踩坑（两次返工）**：unlimited-ocr 输出为千分比规范坐标（0-999，与输入分辨率无关，704p/1080p 输入同值），曾误判"高 1080 像素空间"导致 704p 归一化错 1.53 倍、mask 盖到字幕上方渐变条而字幕原样保留；且白像素/MAE 验证口径被"消的是渐变条"假象污染两轮，最终以文字行白像素峰结构消失（raw 峰 313→part 0）+ 裁剪放大 OCR 读不出原字幕定案。**启发式局限**：只对白字亮场有效，灰字深底板字幕/夜景高亮（汉白玉）漏检误检，OCR 为主定位。消除 = part 粒度（preclip 后 1280x704，ProPainter fp16 ~20G 显存；1080p 全片直接跑 OOM）RAFT 双向光流补全；终验 8 段文字行峰 7 归零 + 1 段平滑场景重建（边缘密度 0.000）。测试扩至 23 项。
+
 ---
 
 ### v20 — 生成中审核（tensor 导出 + 多模态边生边审）（原 v21，🎯 待开发，2026-09-30 立项）

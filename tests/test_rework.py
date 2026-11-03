@@ -82,5 +82,44 @@ ok('三种风格注册', set(_STYLES) == {'解说', '盘点', '吐槽'})
 frs = extract_frames.__doc__
 ok('抽帧文档含间隔说明', frs and 'every' in frs)
 
+# ── 8. 字幕消除：OCR 输出解析 + 启发式先验（不联网） ──
+from agents.post.tools.sam_edit import _parse_ocr_boxes
+t_native = '''从"测试过程"到
+image [329, 293, 665, 785]
+text [287, 880, 713, 941]和蟠龙口中的宝珠四个部分组成'''
+r = _parse_ocr_boxes(t_native, 1920, 1080)
+ok('OCR 原生格式解析（千分比→像素）',
+   len(r) == 1 and r[0][4] == 'text'
+   and all(abs(a - e) < 1e-6 for a, e in
+           zip(r[0][:4], (287*1.92, 880*1.08, 713*1.92, 941*1.08))),
+   f'实际 {r}')
+ok('OCR 版面元素被底部先验滤除',
+   all(b[1] / 1080 >= 0.75 for b in r))
+import json as _json
+t_json = _json.dumps({'subtitle_boxes': [
+    {'text': '故宫太和殿', 'box': [500, 950, 1400, 1030]},
+    {'text': '大版面框', 'box': [100, 100, 1800, 800]}]})
+r2 = _parse_ocr_boxes(t_json, 1920, 1080)
+ok('OCR JSON 格式解析 + 大框过滤',
+   len(r2) == 1 and r2[0][:4] == (500*1.92, 950*1.08, 1400*1.92, 1030*1.08))
+ok('OCR 无字幕输出', _parse_ocr_boxes('无', 1920, 1080) == [])
+
+# 千分比规范坐标（0-999，与输入分辨率无关）→ 像素映射（实测 704p/1080p 同值、上限 999）
+r3 = _parse_ocr_boxes('text [287, 880, 713, 941]和蟠龙口中的宝珠', 1280, 704)
+ok('OCR 千分比坐标映射（704p）',
+   len(r3) == 1 and abs(r3[0][1] - 880 * 704 / 1000) < 1
+   and abs(r3[0][3] - 941 * 704 / 1000) < 1,
+   f'实际 {r3}')
+r4 = _parse_ocr_boxes('text [287, 880, 713, 941]同帧', 1920, 1080)
+ok('OCR 千分比坐标与输入分辨率无关',
+   abs(r4[0][1] - 880 * 1080 / 1000) < 1 and abs(r4[0][3] - 941 * 1080 / 1000) < 1)
+
+from agents.post.tools.sam_edit import _subtitle_mask_from_norm
+mask = _subtitle_mask_from_norm([(0.1, 0.88, 0.9, 0.94)], 1280, 704)
+ok('归一化框→mask 覆盖底部带',
+   mask[int(0.90*704), int(0.5*1280)] == 255 and mask[int(0.5*704), int(0.5*1280)] == 0)
+mask_fb = _subtitle_mask_from_norm([], 1280, 704)
+ok('无框回退底部 30% 带', mask_fb[int(0.85*704), 640] == 255 and mask_fb[100, 640] == 0)
+
 print(f'\n{sum(1 for _, c in PASS if c)}/{len(PASS)} passed')
 sys.exit(0 if all(c for _, c in PASS) else 1)

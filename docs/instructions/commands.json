@@ -1169,7 +1169,7 @@
       "name": "rework",
       "version": "v19",
       "brief": "视频链接二创（营销号 Plus）：下载→理解→改写解说→重配音→画面改写→成片",
-      "detail": "输入视频链接（M1 承诺 B站）→ yt-dlp 合流下载 + faster-whisper 转写 + 抽帧 qwen 多模态理解（source.json）→ deepseek 改写解说词（流式 JSON + Levenshtein 防复述断言 <0.55，超阈回喂重写）→ 逐段 CosyVoice 重配音 + subs.srt 同源 → 逐段画面改写（强度 0-5 档组合式：0 原样/1 变速 0.75-1.6x/2 +LUT/3 +镜像裁剪/4 +光流插帧/5 +v5 特效）→ v10 compose 时间线组装（xfade+旁白轨+BGM ducking）→ 终拼 LUT+烧字幕+h264/yuv420p。默认音色 cosy-default（jieshuo1 在音色黑名单）；meta.json 必录来源 URL；发布前人工审核，不做自动发布。M1 缓存命中时全链 ~12min（60s 目标成片）。",
+      "detail": "输入视频链接（M1 承诺 B站）→ yt-dlp 合流下载 + faster-whisper 转写 + 抽帧 qwen 多模态理解（source.json）→ deepseek 改写解说词（流式 JSON + Levenshtein 防复述断言 <0.55，超阈回喂重写）→ 逐段 CosyVoice 重配音 + subs.srt 同源 → 逐段画面改写（强度 0-5 档组合式：0 原样/1 变速 0.75-1.6x/2 +LUT/3 +镜像裁剪/4 +光流插帧/5 +v5 特效）→ v10 compose 时间线组装（xfade+旁白轨+BGM ducking）→ 终拼 LUT+烧字幕+h264/yuv420p。--remove-sub 复用 v16 ProPainter 消除原片烧录字幕（unlimited-ocr 多帧定位 ∪ 像素启发式兜底，part 级 704p 消除）。默认音色 cosy-default（jieshuo1 在音色黑名单）；meta.json 必录来源 URL；发布前人工审核，不做自动发布。M1 缓存命中时全链 ~12min（60s 目标成片）。",
       "params": [
         {
           "key": "url",
@@ -1199,6 +1199,10 @@
         {
           "key": "--voice",
           "desc": "TTS 音色（默认 cosy-default；黑名单音色告警）"
+        },
+        {
+          "key": "--remove-sub",
+          "desc": "消除原片烧录字幕 off/auto/force（默认 off；ProPainter 光流补全，检出框落 subtitle.json 各 part 复用）"
         },
         {
           "key": "-o/--output",

@@ -260,7 +260,8 @@ def cmd_rework(args):
         out = os.path.abspath(out)
     final = run_rework(args.url, out, style=args.style, duration=args.duration,
                        voice=args.voice, level=args.visual_rewrite,
-                       lut=args.lut, bgm=args.bgm)
+                       lut=args.lut, bgm=args.bgm,
+                       remove_sub=getattr(args, 'remove_sub', 'off'))
     return {'task_id': os.path.basename(out), 'output_path': final}
 
 
@@ -1058,6 +1059,8 @@ def build_parser():
                           help='画面改写强度 0-5：0 原样/1 +变速/2 +LUT/3 +镜像裁剪/4 +光流插帧/5 +特效')
     p_rework.add_argument('--lut', default='', help='调色风格（v2 LUT，如 cinematic）')
     p_rework.add_argument('--bgm', default='', help='BGM mood（如 dramatic）')
+    p_rework.add_argument('--remove-sub', default='off', choices=['off', 'auto', 'force'],
+                          help='消除原片烧录字幕（v16 ProPainter）：off/auto=检出才消/force=底部带强制')
     p_rework.set_defaults(func=cmd_rework)
 
     # ── grid 子命令（画布网格合成，matplotlib subplot 风格） ──

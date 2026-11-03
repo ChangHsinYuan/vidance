@@ -634,6 +634,7 @@ def _run_reworkjob(job_id: str, url: str, flags: dict):
                            voice=flags.get('voice') or 'cosy-default',
                            level=_int('visual-rewrite', 2),
                            lut=flags.get('lut') or '', bgm=flags.get('bgm') or '',
+                           remove_sub=flags.get('remove-sub') or 'off',
                            stage_cb=_scb)
         with _h3_jobs_lock:
             _h3_jobs[job_id].update({
@@ -1542,6 +1543,8 @@ TOOLS = [
          {'key': '--lut', 'type': 'choice', 'choices': ['cinematic', 'warm', 'cool', 'vintage', 'vivid', 'soft'], 'desc': '调色风格'},
          {'key': '--bgm', 'type': 'choice', 'choices': ['calm', 'uplifting', 'mysterious', 'dramatic', 'playful', 'epic'], 'desc': 'BGM mood'},
          {'key': '--voice', 'type': 'text', 'desc': '解说音色（默认 cosy-default）'},
+         {'key': '--remove-sub', 'type': 'choice', 'choices': ['off', 'auto', 'force'],
+          'desc': '消除原片烧录字幕（ProPainter 光流补全；默认 off）'},
      ]},
     {'name': 'auto', 'help': '概念→LLM编剧→生成→后处理（完整流水线）',
      'params': [

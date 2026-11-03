@@ -17,6 +17,13 @@ python core/vidance.py rework "https://www.bilibili.com/video/BVxxxx" \
   - 0 原样引用 · 1 +变速（0.75-1.6x 贴合旁白）· 2 +LUT 调色 · 3 +镜像/裁剪构图 · 4 +光流插帧（minterpolate，加速>1.25x 时平滑）· 5 +v5 特效（punch_in/zoom/grain_vignette 轮换）
 - `--voice`：默认 `cosy-default`（**安全默认**；`cosy-jieshuo1` 在音色黑名单——句首泄漏"街道…"幻听，实锤见 output/rework/rw-smoke1 日志）
 - `--lut`：cinematic/warm/cool/vintage/vivid/soft · `--bgm`：calm/uplifting/mysterious/dramatic/playful/epic（终拼 sidechaincompress ducking）
+- `--remove-sub`（复用 v16 ProPainter，**消除原片烧录字幕**）：
+  - `off`（默认）不动原片字幕 · `auto` = 检出才消 · `force` = 无框也按底部带强制消
+  - 定位：`unlimited-ocr`（USTC 端点，多帧采样）**∪ 像素启发式兜底**（白字行聚堆 ≥2 帧确认）——OCR 端点排队波动大（实测 7s~7min+ 首字节），启发式保证检测永不卡死
+  - **⚠ 坐标空间（两次返工换来的铁律）**：unlimited-ocr 输出为**千分比规范坐标（0-999，与输入分辨率无关）**，须按 x*w/1000、y*h/1000 映射；曾误判为"高 1080 像素空间"，704p 帧归一化错 1.53 倍，mask 盖到字幕上方渐变条、字幕原样保留（视觉验收两轮被骗：白像素/MAE 口径均被"消的是渐变条"假象污染，最终以**文字行白像素峰结构消失**（raw 峰 313→part 0）+ 裁剪放大 OCR 读不出原字幕为准）
+  - **⚠ 启发式局限**：只对"白字亮场"有效；灰字+深色底板字幕（本源片）或夜景高亮场景（汉白玉）会漏检/误检——OCR 是主定位，启发式仅兜底。检测结果落 `subtitle.json`，各 part 复用零重复 OCR
+  - 消除：part 粒度（preclip 后 1280x704，ProPainter fp16 ~20G 显存；1080p 全片直接跑会 OOM，须 resize_ratio 0.67）→ RAFT 双向光流补全非生成式，无字幕区域回填原画面无损
+  - 终验（rw-api1）：8 段文字行白像素峰 7 段归零、1 段剩平滑场景重建（边缘密度 0.000/OCR 无文字）
 
 ## 流水线（四级幂等缓存）
 

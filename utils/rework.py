@@ -370,8 +370,14 @@ _REWORK_EFFECTS = ['punch_in', 'zoom', 'grain_vignette']
 
 
 def assemble(script: dict, src: dict, out_dir: str, level: int = 2,
-             lut: str = '', bgm: str = '') -> str:
-    """预改写各段 → compose 时间线（主轨+转场+旁白轨）→ 终拼（BGM ducking+LUT+字幕+yuv420p）"""
+             lut: str = '', bgm: str = '', remove_sub: str = 'off',
+             boxes_norm: list = None) -> str:
+    """预改写各段 → compose 时间线（主轨+转场+旁白轨）→ 终拼（BGM ducking+LUT+字幕+yuv420p）
+
+    remove_sub: off=不消除；auto=有 OCR 框才消除；force=无框也按底部带消除。
+    boxes_norm: run_rework 一次 OCR 检测的归一化框（subtitle.json），各 part 复用零 OCR。
+    消除在 part 粒度（preclip 后、组装前）：每段独立幂等缓存（raw_XX → part_XX）。
+    """
     from agents.post.tools.compose import run_timeline
     work = os.path.join(out_dir, 'parts')
     os.makedirs(work, exist_ok=True)
@@ -379,8 +385,28 @@ def assemble(script: dict, src: dict, out_dir: str, level: int = 2,
     for i, s in enumerate(script['segments']):
         s['_i'] = i
         part = os.path.join(work, f'part_{i:02d}.mp4')
-        if not (os.path.isfile(part) and os.path.getsize(part) > 10000):
+        if remove_sub in ('auto', 'force'):
+            raw = os.path.join(work, f'raw_{i:02d}.mp4')
+            if os.path.isfile(part) and not os.path.isfile(raw):
+                os.rename(part, raw)
+            if not (os.path.isfile(raw) and os.path.getsize(raw) > 10000):
+                _preclip(src['video'], s, raw, level)
+            if not (os.path.isfile(part) and os.path.getsize(part) > 10000):
+                from agents.post.tools.sam_edit import video_remove_subtitle
+                print(f'[消除字幕] part_{i:02d}（mode={remove_sub}，'
+                      f'{"OCR 框" if boxes_norm else "底部带回退"}）', flush=True)
+                video_remove_subtitle(raw, part, mode=remove_sub,
+                                      boxes_norm=boxes_norm)
+        elif not (os.path.isfile(part) and os.path.getsize(part) > 10000):
             _preclip(src['video'], s, part, level)
+        if remove_sub in ('auto', 'force'):
+            raw = os.path.join(work, f'raw_{i:02d}.mp4')
+            if os.path.isfile(part) and not os.path.isfile(raw):
+                os.rename(part, raw)
+            if not (os.path.isfile(part) and os.path.getsize(part) > 10000):
+                from agents.post.tools.sam_edit import video_remove_subtitle
+                print(f'[消除字幕] part_{i:02d}（mode={remove_sub}）', flush=True)
+                video_remove_subtitle(raw, part, mode=remove_sub, n_samples=3)
         main.append({'id': f'c{i}', 'type': 'video', 'source': part,
                      'trim_start': 0, 'duration': s['narr_dur'] + 0.2,
                      'transition_in': ({'kind': 'fade', 'duration': 0.4} if i else None),
@@ -437,13 +463,36 @@ def assemble(script: dict, src: dict, out_dir: str, level: int = 2,
 
 def run_rework(url: str, out_dir: str, style: str = '解说', duration: int = 60,
                voice: str = 'cosy-default', level: int = 2, lut: str = '',
-               bgm: str = '', stage_cb=None) -> str:
-    """v19 主入口：链接 → source.json → script.json → final.mp4（每级幂等缓存）"""
+               bgm: str = '', stage_cb=None, remove_sub: str = 'off') -> str:
+    """v19 主入口：链接 → source.json → script.json → final.mp4（每级幂等缓存）
+
+    remove_sub: off（默认）/ auto（OCR 检出烧录字幕才消除）/ force（底部带强制消除）。
+    检测一次（unlimited-ocr，3 帧采样）落 subtitle.json，各 part 复用零 OCR。
+    """
     _stage = (lambda s: stage_cb(s)) if stage_cb else (lambda s: None)
     os.makedirs(out_dir, exist_ok=True)
     t0 = time.time()
     _stage('下载+理解（yt-dlp/STT/多模态）')
     src = build_source(url, out_dir)
+    boxes_norm = None
+    if remove_sub in ('auto', 'force'):
+        sub_path = os.path.join(out_dir, 'subtitle.json')
+        if os.path.isfile(sub_path):
+            with open(sub_path, encoding='utf-8') as f:
+                boxes_norm = json.load(f).get('boxes_norm') or []
+        else:
+            from agents.post.tools.sam_edit import detect_subtitle_boxes
+            _stage('OCR 检测烧录字幕（unlimited-ocr）')
+            d = detect_subtitle_boxes(src['video'], n_samples=3)
+            json.dump({'boxes_norm': d['boxes_norm'], 'detected': d['detected']},
+                      open(sub_path, 'w', encoding='utf-8'),
+                      ensure_ascii=False, indent=1)
+            boxes_norm = d['boxes_norm']
+            print(f'[字幕检测] {"检出 " + str(len(boxes_norm)) + " 框" if d["detected"] else "未检出（回退底部带）"}',
+                  flush=True)
+        if remove_sub == 'auto' and not boxes_norm:
+            remove_sub = 'off'  # 检出前不知道有没有字幕：auto+无框=不消除
+            # 注意：OCR 空响应与真无字幕不可分，auto 模式保守放行
     script_path = os.path.join(out_dir, 'script.json')
     _stage('LLM 改写解说词')
     if os.path.isfile(script_path):
@@ -460,7 +509,8 @@ def run_rework(url: str, out_dir: str, style: str = '解说', duration: int = 60
           f'相似度 max={script.get("max_similarity")} · 总时长 {script["total_duration"]}s',
           flush=True)
     _stage(f'画面改写 L{level} + compose 组装')
-    final = assemble(script, src, out_dir, level=level, lut=lut, bgm=bgm)
+    final = assemble(script, src, out_dir, level=level, lut=lut, bgm=bgm,
+                     remove_sub=remove_sub, boxes_norm=boxes_norm)
     meta = {'url': url, 'source_title': src.get('title', ''),
             'style': style, 'rewrite_level': level, 'lut': lut, 'bgm': bgm,
             'voice': voice, 'script_title': script.get('title', ''),
@@ -468,6 +518,7 @@ def run_rework(url: str, out_dir: str, style: str = '解说', duration: int = 60
             'final_duration': script['total_duration'],
             'source_duration': src['duration'],
             'max_similarity': script.get('max_similarity'),
+            'remove_sub': remove_sub,
             'elapsed': round(time.time() - t0, 1), 'ts': time.time()}
     with open(os.path.join(out_dir, 'meta.json'), 'w', encoding='utf-8') as f:
         json.dump(meta, f, ensure_ascii=False, indent=1)
@@ -490,6 +541,8 @@ def main():
                     help='画面改写强度 0-5')
     ap.add_argument('--lut', default='', help='cinematic/warm/cool/vintage/vivid/soft')
     ap.add_argument('--bgm', default='', help='calm/uplifting/mysterious/dramatic/playful/epic')
+    ap.add_argument('--remove-sub', default='off', choices=['off', 'auto', 'force'],
+                    help='消除原片烧录字幕（ProPainter）：off/auto=检出才消/force=底部带强制')
     a = ap.parse_args()
     out = a.out if os.path.isabs(a.out) else os.path.join(ROOT, a.out)
     if a.action == 'source':
@@ -498,7 +551,8 @@ def main():
                           if k in src}, ensure_ascii=False))
         return
     final = run_rework(a.url, out, style=a.style, duration=a.duration,
-                       voice=a.voice, level=a.visual_rewrite, lut=a.lut, bgm=a.bgm)
+                       voice=a.voice, level=a.visual_rewrite, lut=a.lut, bgm=a.bgm,
+                       remove_sub=a.remove_sub)
     print(final)
 
 
