@@ -635,6 +635,7 @@ def _run_reworkjob(job_id: str, url: str, flags: dict):
                            level=_int('visual-rewrite', 2),
                            lut=flags.get('lut') or '', bgm=flags.get('bgm') or '',
                            remove_sub=flags.get('remove-sub') or 'off',
+                           keyframes=bool(flags.get('keyframes')),
                            stage_cb=_scb)
         with _h3_jobs_lock:
             _h3_jobs[job_id].update({
@@ -1537,7 +1538,7 @@ TOOLS = [
     {'name': 'rework', 'help': 'v19 视频链接二创：下载→理解→改写解说→重配音→画面改写→成片',
      'params': [
          {'key': 'url', 'type': 'text', 'required': True, 'desc': '原视频链接（M1 承诺 B站）'},
-         {'key': '--style', 'type': 'choice', 'choices': ['解说', '盘点', '吐槽'], 'desc': '二创风格'},
+         {'key': '--style', 'type': 'choice', 'choices': ['解说', '盘点', '吐槽', '第一人称'], 'desc': '二创风格'},
          {'key': '--duration', 'type': 'number', 'desc': '目标时长秒（默认 60）'},
          {'key': '--visual-rewrite', 'type': 'number', 'desc': '画面改写强度 0-5（默认 2）'},
          {'key': '--lut', 'type': 'choice', 'choices': ['cinematic', 'warm', 'cool', 'vintage', 'vivid', 'soft'], 'desc': '调色风格'},
@@ -1545,6 +1546,8 @@ TOOLS = [
          {'key': '--voice', 'type': 'text', 'desc': '解说音色（默认 cosy-default）'},
          {'key': '--remove-sub', 'type': 'choice', 'choices': ['off', 'auto', 'force'],
           'desc': '消除原片烧录字幕（ProPainter 光流补全；默认 off）'},
+         {'key': '--keyframes', 'type': 'bool',
+          'desc': '关键帧模式：每段 1 帧（静帧去字幕）+ Ken Burns + RIFE morph 过渡'},
      ]},
     {'name': 'auto', 'help': '概念→LLM编剧→生成→后处理（完整流水线）',
      'params': [

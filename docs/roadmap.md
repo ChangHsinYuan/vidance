@@ -518,6 +518,8 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 **烧录字幕消除（2026-11-02/03 补全，复用 v16 ProPainter）**：`--remove-sub off/auto/force` 三档。定位 = `unlimited-ocr`（USTC 端点，多帧采样）**∪ 像素启发式兜底**（白字行聚堆 ≥2 帧确认，OCR 端点排队波动大实测 7s~7min+ 首字节，永不卡死）；检测结果落 `subtitle.json`（归一化坐标）各 part 复用零重复 OCR。**坐标空间踩坑（两次返工）**：unlimited-ocr 输出为千分比规范坐标（0-999，与输入分辨率无关，704p/1080p 输入同值），曾误判"高 1080 像素空间"导致 704p 归一化错 1.53 倍、mask 盖到字幕上方渐变条而字幕原样保留；且白像素/MAE 验证口径被"消的是渐变条"假象污染两轮，最终以文字行白像素峰结构消失（raw 峰 313→part 0）+ 裁剪放大 OCR 读不出原字幕定案。**启发式局限**：只对白字亮场有效，灰字深底板字幕/夜景高亮（汉白玉）漏检误检，OCR 为主定位。消除 = part 粒度（preclip 后 1280x704，ProPainter fp16 ~20G 显存；1080p 全片直接跑 OOM）RAFT 双向光流补全；终验 8 段文字行峰 7 归零 + 1 段平滑场景重建（边缘密度 0.000）。测试扩至 23 项。
 
+**关键帧模式（2026-11-03，`--keyframes` + `--style 第一人称`）**：替代 ProPainter 逐段光流补全的快档——每段抽 1 关键帧（t=ref_start+ref_dur*0.45）静帧 cv2.INPAINT_TELEA 去字幕（秒级，比 ProPainter 快百倍）→ zoompan Ken Burns 缓推（2560 上采样抗抖，zoom 1.08→1280x704@24fps）→ 段间 RIFE v4.26 光流 morph 过渡（ComfyUI 8189，multiplier 8，失败回退 0.0 硬切）。时长账目不变（morph 烘焙进前段尾：hold×(narr+0.2-morph)+morph），compose/旁白同步零改动；kf part 带 anullsrc 静音轨供 amix。`第一人称` 风格 = 角色自述 + 人称反转铁律（原第三人称→第一人称，实测 6/6 段 ✓，相似度 0.121）。**踩坑实录**：①concat 前置 tpad 克隆尾帧把 morph 挤出 -t 窗口（帧 66-76 全 0.0 差异）→ tpad 移到 concat 之后，morph 递进 diff 18.6→64.3 ✓；②kf 模式误触 ProPainter（重复 remove_sub 块）→ force 且 keyframes 时跳过；③JPEG 全范围导致 zoompan 输出带 pc 标记、成片 pix_fmt 被 ffprobe 报 yuvj420p → hold 链尾 `scale=in_range=pc:out_range=tv` 归一化，final 恢复 yuv420p/tv ✓。首跑全链 61.7s（BV1jTxC6mExW，蓝调 cool LUT + 第一人称 + 去原字幕 + 自字幕语音，程序断言全绿）。测试扩至 24 项。
+
 ---
 
 ### v20 — 生成中审核（tensor 导出 + 多模态边生边审）（原 v21，🎯 待开发，2026-09-30 立项）

@@ -261,7 +261,8 @@ def cmd_rework(args):
     final = run_rework(args.url, out, style=args.style, duration=args.duration,
                        voice=args.voice, level=args.visual_rewrite,
                        lut=args.lut, bgm=args.bgm,
-                       remove_sub=getattr(args, 'remove_sub', 'off'))
+                       remove_sub=getattr(args, 'remove_sub', 'off'),
+                       keyframes=getattr(args, 'keyframes', False))
     return {'task_id': os.path.basename(out), 'output_path': final}
 
 
@@ -1049,7 +1050,7 @@ def build_parser():
     p_rework = sub.add_parser('rework', parents=[output_parent],
                               help='视频链接二创（v19）：下载→理解→改写解说→重配音→画面改写→成片')
     p_rework.add_argument('url', help='原视频链接（M1 承诺 B站；其他平台 best-effort）')
-    p_rework.add_argument('--style', default='解说', choices=['解说', '盘点', '吐槽'],
+    p_rework.add_argument('--style', default='解说', choices=['解说', '盘点', '吐槽', '第一人称'],
                           help='二创风格（默认: 解说）')
     p_rework.add_argument('--duration', type=int, default=60,
                           help='目标成片时长秒（默认: 60）')
@@ -1061,6 +1062,8 @@ def build_parser():
     p_rework.add_argument('--bgm', default='', help='BGM mood（如 dramatic）')
     p_rework.add_argument('--remove-sub', default='off', choices=['off', 'auto', 'force'],
                           help='消除原片烧录字幕（v16 ProPainter）：off/auto=检出才消/force=底部带强制')
+    p_rework.add_argument('--keyframes', action='store_true',
+                          help='关键帧模式：每段 1 关键帧（静帧去字幕）+ Ken Burns + RIFE morph 过渡')
     p_rework.set_defaults(func=cmd_rework)
 
     # ── grid 子命令（画布网格合成，matplotlib subplot 风格） ──

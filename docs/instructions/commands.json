@@ -1178,7 +1178,7 @@
         },
         {
           "key": "--style",
-          "desc": "解说/盘点/吐槽（默认 解说）"
+          "desc": "解说/盘点/吐槽/第一人称（第一人称=角色自述人称反转，默认 解说）"
         },
         {
           "key": "--duration",
@@ -1203,6 +1203,10 @@
         {
           "key": "--remove-sub",
           "desc": "消除原片烧录字幕 off/auto/force（默认 off；ProPainter 光流补全，检出框落 subtitle.json 各 part 复用）"
+        },
+        {
+          "key": "--keyframes",
+          "desc": "关键帧模式：每段 1 关键帧（静帧去字幕）+ Ken Burns 缓推 + RIFE morph 过渡"
         },
         {
           "key": "-o/--output",

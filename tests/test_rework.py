@@ -76,7 +76,9 @@ d = _probe(out1)['duration']
 ok('输出时长贴合 narr_dur+0.2', abs(d - 2.2) < 0.35, f'{d:.2f}s')
 
 # ── 6. 风格表完整 ──
-ok('三种风格注册', set(_STYLES) == {'解说', '盘点', '吐槽'})
+ok('四种风格注册', set(_STYLES) == {'解说', '盘点', '吐槽', '第一人称'})
+ok('第一人称风格含人称反转铁律',
+   '第三人称' in _STYLES['第一人称'] and '第一人称' in _STYLES['第一人称'])
 
 # ── 7. 抽帧索引推导 ──
 frs = extract_frames.__doc__

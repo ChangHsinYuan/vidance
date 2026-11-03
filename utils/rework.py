@@ -19,6 +19,8 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import numpy as np
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
@@ -196,6 +198,11 @@ _STYLES = {
     '解说': '影视解说风格：先抛悬念钩子，再按时间线讲清事件，结尾点评升华。口语化、有节奏感。',
     '盘点': '盘点清单风格：分点罗列亮点，每点独立成段，信息密度高。',
     '吐槽': '犀利吐槽风格：玩梗、反转、带情绪，但事实准确不造谣。',
+    '第一人称': '角色第一人称叙事风格：从原片内容中选一个核心事物/角色（文物、神兽、'
+             '建筑构件、古人），以"我"的口吻讲述自己的所见与身世——如原片讲太和殿'
+             '天花板上的琉璃球，就写"我就是太和殿上那颗琉璃球，我守望这座大殿一千多年"。'
+             '人称反转铁律：原文第三人称→必须改为第一人称（角色自述），原文第一人称→'
+             '改为第三人称旁观。事实以转写为准，不编造；代入感强但克制，不玩梗不夸饰。',
 }
 
 
@@ -369,9 +376,148 @@ def _preclip(src_path: str, s: dict, out_path: str, level: int, width: int = 128
 _REWORK_EFFECTS = ['punch_in', 'zoom', 'grain_vignette']
 
 
+# ── 关键帧模式：每段 1 关键帧（静帧去字幕）+ Ken Burns 缓推 + RIFE morph 过渡 ──
+
+_KF_W, _KF_H, _KF_FPS = 1280, 704, 24
+
+
+def _kf_inpaint(img_path: str, boxes_norm: list, out_path: str) -> str:
+    """关键帧静帧去字幕：cv2.inpaint 修复字幕带（比 ProPainter 快百倍，静帧足够）。"""
+    import cv2
+    img = cv2.imread(img_path)
+    if img is None:
+        raise RuntimeError(f'关键帧读取失败: {img_path}')
+    h, w = img.shape[:2]
+    mask = np.zeros((h, w), np.uint8)
+    for b in boxes_norm or [(0.03, 0.80, 0.97, 0.96)]:
+        mask[max(0, int(b[1] * h) - 4):min(h, int(b[3] * h) + 4),
+             max(0, int(b[0] * w) - 4):min(w, int(b[2] * w) + 4)] = 255
+    if mask.any():
+        img = cv2.inpaint(img, mask, 5, cv2.INPAINT_TELEA)
+    cv2.imwrite(out_path, img, [cv2.IMWRITE_JPEG_QUALITY, 95])
+    return out_path
+
+
+def _kf_hold(img_path: str, out_path: str, dur_s: float, zoom: float = 1.08) -> None:
+    """Ken Burns 缓推静帧片段（2560 上采样抗 zoompan 抖动 → 1280x704）。"""
+    frames = max(2, int(dur_s * _KF_FPS))
+    rate = (zoom - 1.0) / frames
+    vf = (f'scale=2560:-2,crop=2560:1408:(iw-2560)/2:(ih-1408)/2,'
+          f"zoompan=z='min(zoom+{rate:.6f},{zoom})':d=1:"
+          f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+          f's={_KF_W}x{_KF_H}:fps={_KF_FPS},'
+          f'scale=in_range=pc:out_range=tv,format=yuv420p')
+    cmd = ['ffmpeg', '-y', '-loop', '1', '-framerate', str(_KF_FPS), '-t', f'{dur_s:.3f}',
+           '-i', img_path, '-vf', vf, '-t', f'{dur_s:.3f}',
+           '-c:v', 'libx264', '-preset', 'fast', '-crf', '20', '-pix_fmt', 'yuv420p',
+           out_path]
+    subprocess.run(cmd, capture_output=True, timeout=600)
+    if not os.path.isfile(out_path) or os.path.getsize(out_path) < 5000:
+        raise RuntimeError(f'kf hold 失败: {subprocess.list2cmdline(cmd)[-200:]}')
+
+
+def _kf_morph(hold_a: str, hold_b: str, out_path: str,
+              rife_cfg: dict = None) -> float:
+    """RIFE 过渡：hold_a 末帧 → hold_b 首帧光流插帧。失败返回 0.0（回退硬切）。"""
+    from utils.rife import RIFEClient, extract_frame as rife_extract_frame, \
+        get_video_frame_count
+    cfg = rife_cfg or {}
+    tmp_a = out_path + '.fa.png'
+    tmp_b = out_path + '.fb.png'
+    try:
+        n_a = get_video_frame_count(hold_a)
+        rife_extract_frame(hold_a, max(0, n_a - 1), tmp_a)
+        rife_extract_frame(hold_b, 0, tmp_b)
+        client = RIFEClient(instance='wan',
+                            model_name=cfg.get('model', 'rife_v4.26.safetensors'))
+        r = client.interpolate_transition(
+            tmp_a, tmp_b, out_path, multiplier=int(cfg.get('multiplier', 8)),
+            fps=int(cfg.get('fps', _KF_FPS)),
+            filename_prefix='vidance/rework_kf/morph')
+        return r.get('frame_count', 0) / float(cfg.get('fps', _KF_FPS))
+    except Exception as e:  # noqa: BLE001 — RIFE 不可用回退硬切
+        print(f'⚠ [kf] RIFE morph 失败（回退硬切）: {e}', flush=True)
+        return 0.0
+    finally:
+        for t in (tmp_a, tmp_b):
+            if os.path.isfile(t):
+                os.remove(t)
+
+
+def _keyframe_parts(script: dict, src: dict, work: str, boxes_norm: list,
+                    rife_cfg: dict = None) -> list:
+    """构建关键帧 parts：hold(缓推) + RIFE morph(段尾过渡，时长账目不变)。
+
+    morph 烘焙进前一段尾部：kf_i = hold_i(narr_dur+0.2-morph) + morph_i(→下一段
+    首帧)，总时长仍 = narr_dur_i + 0.2，compose 时间线/旁白同步零改动。
+    返回 part 路径列表（幂等缓存 kf_XX.mp4）。
+    """
+    segs = script['segments']
+    n = len(segs)
+    morph_s = (int((rife_cfg or {}).get('multiplier', 8)) + 1) / \
+        float((rife_cfg or {}).get('fps', _KF_FPS))
+    holds, parts = [], []
+    kfd = os.path.join(work, 'kf')
+    os.makedirs(kfd, exist_ok=True)
+    for i, s in enumerate(segs):
+        s['_i'] = i
+        img = os.path.join(kfd, f'kf_{i:02d}.jpg')
+        hold = os.path.join(kfd, f'hold_{i:02d}.mp4')
+        if not (os.path.isfile(img) and os.path.getsize(img) > 5000):
+            t_kf = float(s['ref_start']) + float(s['ref_dur']) * 0.45
+            cmd = ['ffmpeg', '-y', '-ss', f'{t_kf:.3f}', '-i', src['video'],
+                   '-frames:v', '1', img]
+            subprocess.run(cmd, capture_output=True, timeout=120)
+            if not os.path.isfile(img):
+                raise RuntimeError(f'关键帧抽取失败 seg{i}@{t_kf:.1f}s')
+            _kf_inpaint(img, boxes_norm, img)
+        hold_dur = (s['narr_dur'] + 0.2 - morph_s) if i < n - 1 else (s['narr_dur'] + 0.2)
+        if not (os.path.isfile(hold) and os.path.getsize(hold) > 5000):
+            _kf_hold(img, hold, hold_dur)
+        holds.append(hold)
+    morphs = []
+    for i in range(n - 1):
+        morph = os.path.join(kfd, f'morph_{i:02d}.mp4')
+        if not (os.path.isfile(morph) and os.path.getsize(morph) > 5000):
+            _kf_morph(holds[i], holds[i + 1], morph, rife_cfg)
+        morphs.append(morph if os.path.isfile(morph) and
+                      os.path.getsize(morph) > 5000 else None)
+    for i, s in enumerate(segs):
+        part = os.path.join(work, f'kf_{i:02d}.mp4')
+        target = s['narr_dur'] + 0.2
+        if os.path.isfile(part) and os.path.getsize(part) > 5000:
+            parts.append(part)
+            continue
+        if i < n - 1 and morphs[i]:
+            cmd = ['ffmpeg', '-y', '-i', holds[i], '-i', morphs[i],
+                   '-f', 'lavfi', '-t', f'{target:.3f}',
+                   '-i', 'anullsrc=r=24000:cl=mono',
+                   '-filter_complex',
+                   '[0:v][1:v]concat=n=2:v=1:a=0[c];'
+                   '[c]tpad=stop_mode=clone:stop_duration=1[v]',
+                   '-map', '[v]', '-map', '2:a', '-t', f'{target:.3f}',
+                   '-c:v', 'libx264', '-preset', 'fast', '-crf', '20',
+                   '-pix_fmt', 'yuv420p', '-c:a', 'aac', part]
+        else:  # 末段或 RIFE 不可用：hold 克隆尾帧延长到满时长（硬切）
+            cmd = ['ffmpeg', '-y', '-i', holds[i],
+                   '-f', 'lavfi', '-t', f'{target:.3f}',
+                   '-i', 'anullsrc=r=24000:cl=mono',
+                   '-map', '0:v', '-map', '1:a',
+                   '-vf', 'tpad=stop_mode=clone:stop_duration=1',
+                   '-t', f'{target:.3f}',
+                   '-c:v', 'libx264', '-preset', 'fast', '-crf', '20',
+                   '-pix_fmt', 'yuv420p', '-c:a', 'aac', part]
+        subprocess.run(cmd, capture_output=True, timeout=600)
+        if not os.path.isfile(part) or os.path.getsize(part) < 5000:
+            raise RuntimeError(f'kf part 组装失败 seg{i}')
+        parts.append(part)
+    return parts
+
+
 def assemble(script: dict, src: dict, out_dir: str, level: int = 2,
              lut: str = '', bgm: str = '', remove_sub: str = 'off',
-             boxes_norm: list = None) -> str:
+             boxes_norm: list = None, keyframes: bool = False,
+             rife_cfg: dict = None) -> str:
     """预改写各段 → compose 时间线（主轨+转场+旁白轨）→ 终拼（BGM ducking+LUT+字幕+yuv420p）
 
     remove_sub: off=不消除；auto=有 OCR 框才消除；force=无框也按底部带消除。
@@ -381,11 +527,17 @@ def assemble(script: dict, src: dict, out_dir: str, level: int = 2,
     from agents.post.tools.compose import run_timeline
     work = os.path.join(out_dir, 'parts')
     os.makedirs(work, exist_ok=True)
+    kf_parts = None
+    if keyframes:  # 关键帧模式：1 段 1 帧（静帧已去字幕）+ RIFE morph，跳过 preclip/ProPainter
+        print(f'[关键帧] {len(script["segments"])} 帧 + RIFE morph 过渡', flush=True)
+        kf_parts = _keyframe_parts(script, src, work, boxes_norm or [], rife_cfg)
     main, audio, t = [], [], 0.0
     for i, s in enumerate(script['segments']):
         s['_i'] = i
         part = os.path.join(work, f'part_{i:02d}.mp4')
-        if remove_sub in ('auto', 'force'):
+        if keyframes:
+            part = kf_parts[i]
+        elif remove_sub in ('auto', 'force'):
             raw = os.path.join(work, f'raw_{i:02d}.mp4')
             if os.path.isfile(part) and not os.path.isfile(raw):
                 os.rename(part, raw)
@@ -399,7 +551,7 @@ def assemble(script: dict, src: dict, out_dir: str, level: int = 2,
                                       boxes_norm=boxes_norm)
         elif not (os.path.isfile(part) and os.path.getsize(part) > 10000):
             _preclip(src['video'], s, part, level)
-        if remove_sub in ('auto', 'force'):
+        if remove_sub in ('auto', 'force') and not keyframes:  # kf 模式静帧已修复，跳过 ProPainter
             raw = os.path.join(work, f'raw_{i:02d}.mp4')
             if os.path.isfile(part) and not os.path.isfile(raw):
                 os.rename(part, raw)
@@ -463,11 +615,14 @@ def assemble(script: dict, src: dict, out_dir: str, level: int = 2,
 
 def run_rework(url: str, out_dir: str, style: str = '解说', duration: int = 60,
                voice: str = 'cosy-default', level: int = 2, lut: str = '',
-               bgm: str = '', stage_cb=None, remove_sub: str = 'off') -> str:
+               bgm: str = '', stage_cb=None, remove_sub: str = 'off',
+               keyframes: bool = False) -> str:
     """v19 主入口：链接 → source.json → script.json → final.mp4（每级幂等缓存）
 
     remove_sub: off（默认）/ auto（OCR 检出烧录字幕才消除）/ force（底部带强制消除）。
     检测一次（unlimited-ocr，3 帧采样）落 subtitle.json，各 part 复用零 OCR。
+    keyframes: 关键帧模式——每段 1 关键帧（静帧 inpaint 去字幕）+ Ken Burns 缓推
+    + RIFE morph 段间过渡（需 ComfyUI 8189；失败回退硬切）。
     """
     _stage = (lambda s: stage_cb(s)) if stage_cb else (lambda s: None)
     os.makedirs(out_dir, exist_ok=True)
@@ -475,7 +630,7 @@ def run_rework(url: str, out_dir: str, style: str = '解说', duration: int = 60
     _stage('下载+理解（yt-dlp/STT/多模态）')
     src = build_source(url, out_dir)
     boxes_norm = None
-    if remove_sub in ('auto', 'force'):
+    if remove_sub in ('auto', 'force') or keyframes:  # 关键帧静帧修复也需要字幕框
         sub_path = os.path.join(out_dir, 'subtitle.json')
         if os.path.isfile(sub_path):
             with open(sub_path, encoding='utf-8') as f:
@@ -509,8 +664,11 @@ def run_rework(url: str, out_dir: str, style: str = '解说', duration: int = 60
           f'相似度 max={script.get("max_similarity")} · 总时长 {script["total_duration"]}s',
           flush=True)
     _stage(f'画面改写 L{level} + compose 组装')
+    with open(os.path.join(ROOT, 'config', 'config.json'), encoding='utf-8') as f:
+        cfg = json.load(f)
     final = assemble(script, src, out_dir, level=level, lut=lut, bgm=bgm,
-                     remove_sub=remove_sub, boxes_norm=boxes_norm)
+                     remove_sub=remove_sub, boxes_norm=boxes_norm,
+                     keyframes=keyframes, rife_cfg=cfg.get('rife'))
     meta = {'url': url, 'source_title': src.get('title', ''),
             'style': style, 'rewrite_level': level, 'lut': lut, 'bgm': bgm,
             'voice': voice, 'script_title': script.get('title', ''),
@@ -518,7 +676,7 @@ def run_rework(url: str, out_dir: str, style: str = '解说', duration: int = 60
             'final_duration': script['total_duration'],
             'source_duration': src['duration'],
             'max_similarity': script.get('max_similarity'),
-            'remove_sub': remove_sub,
+            'remove_sub': remove_sub, 'keyframes': keyframes,
             'elapsed': round(time.time() - t0, 1), 'ts': time.time()}
     with open(os.path.join(out_dir, 'meta.json'), 'w', encoding='utf-8') as f:
         json.dump(meta, f, ensure_ascii=False, indent=1)
@@ -543,6 +701,8 @@ def main():
     ap.add_argument('--bgm', default='', help='calm/uplifting/mysterious/dramatic/playful/epic')
     ap.add_argument('--remove-sub', default='off', choices=['off', 'auto', 'force'],
                     help='消除原片烧录字幕（ProPainter）：off/auto=检出才消/force=底部带强制')
+    ap.add_argument('--keyframes', action='store_true',
+                    help='关键帧模式：每段 1 关键帧（静帧去字幕）+ Ken Burns + RIFE morph 过渡')
     a = ap.parse_args()
     out = a.out if os.path.isabs(a.out) else os.path.join(ROOT, a.out)
     if a.action == 'source':
@@ -552,7 +712,7 @@ def main():
         return
     final = run_rework(a.url, out, style=a.style, duration=a.duration,
                        voice=a.voice, level=a.visual_rewrite, lut=a.lut, bgm=a.bgm,
-                       remove_sub=a.remove_sub)
+                       remove_sub=a.remove_sub, keyframes=a.keyframes)
     print(final)
 
 
