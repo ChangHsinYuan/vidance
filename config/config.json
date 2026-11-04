@@ -592,5 +592,11 @@
   "buffer": {
     "max_file_size": 209715200,
     "ttl_days": 7
+  },
+  "v20_live_audit": {
+    "enabled": false,
+    "max_reviews": 3,
+    "min_step": 4,
+    "timeout": 60
   }
 }

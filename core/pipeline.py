@@ -43,7 +43,7 @@ def load_config():
 
 
 class Pipeline:
-    def __init__(self, config=None):
+    def __init__(self, config=None, live_audit: bool = None):
         self.config = config or load_config()
         self.llm = LLMClient(self.config)
         self.tts = TTSClient(self.config)
@@ -70,6 +70,11 @@ class Pipeline:
         self.post = PostProcessor(self.config, llm=self.llm)
         self._rife_client = None
         self._board = None  # v11 黑板（M4 步进记录挂载点，懒加载）
+        # v20 生成中审核：config v20_live_audit.enabled 为默认，CLI --live-audit 可覆盖
+        from agents.audit.tools.live_auditor import load_cfg
+        self.live_cfg = load_cfg(self.config)
+        if live_audit is not None:
+            self.live_cfg['enabled'] = bool(live_audit)
 
     def _get_rife_client(self):
         """Lazy-init RIFE client for slowmo."""
@@ -950,31 +955,111 @@ class Pipeline:
                         i2v_w, i2v_h, bg_w, bg_h,
                     )
 
-            # [8] Wan I2V (或 T2V fallback)
-            if composite_ref:
-                t2v_result = self.i2v_vendor.i2v(
-                    prompt=shot['video_prompt'],
-                    image_path=composite_ref,
-                    seed=seed,
-                    width=i2v_w, height=i2v_h,
-                    length=length,
-                    steps=self.i2v_defaults.get('steps', 20),
-                    cfg=self.i2v_defaults.get('cfg', 5.0),
-                    fps=fps,
-                    output_path=video_path,
-                )
+            # [8] Wan I2V (或 T2V fallback)——v20: 开关开启时边生边审（旁挂，原路径不变）
+            vendor = self.i2v_vendor if composite_ref else self.t2v_vendor
+            scene_desc = shot.get('scene_desc') or shot.get('video_prompt', '')
+            live_summary = None
+            if self.live_cfg.get('enabled'):
+                from agents.generator.tools.comfy_preview import (EarlyStopError,
+                                                                  live_audit_patch)
+                task_dir = os.path.dirname(clips_dir.rstrip('/')) or self.output_dir
+
+                def _on_live_event(ev, _sid=sid, _td=task_dir):
+                    # M3：粗审事件落盘（预览帧 + verdict），供 /api/task/{id}/preview
+                    if ev.get('kind') != 'review':
+                        return
+                    try:
+                        ev['png'] and open(
+                            os.path.join(_td, f'v20_preview_{_sid}.png'),
+                            'wb').write(ev['png'])
+                        json.dump(
+                            {'shot': _sid, 'step': ev.get('step'),
+                             'verdict': ev.get('verdict'),
+                             'score': ev.get('score'), 'reason': ev.get('reason'),
+                             'ts': time.time()},
+                            open(os.path.join(_td, 'v20_preview.json'), 'w',
+                                 encoding='utf-8'), ensure_ascii=False)
+                    except Exception:
+                        pass
+
+                try:
+                    with live_audit_patch(vendor.client, scene_desc,
+                                          self.live_cfg,
+                                          on_event=_on_live_event) as la:
+                        if composite_ref:
+                            t2v_result = self.i2v_vendor.i2v(
+                                prompt=shot['video_prompt'],
+                                image_path=composite_ref,
+                                seed=seed,
+                                width=i2v_w, height=i2v_h,
+                                length=length,
+                                steps=self.i2v_defaults.get('steps', 20),
+                                cfg=self.i2v_defaults.get('cfg', 5.0),
+                                fps=fps,
+                                output_path=video_path,
+                            )
+                        else:
+                            t2v_result = self.t2v_vendor.t2v(
+                                prompt=shot['video_prompt'],
+                                seed=seed,
+                                width=self.wan_defaults.get('width', 1280),
+                                height=self.wan_defaults.get('height', 704),
+                                length=length,
+                                steps=self.wan_defaults.get('steps', 20),
+                                cfg=self.wan_defaults.get('cfg', 5.0),
+                                fps=fps,
+                                output_path=video_path,
+                            )
+                    live_summary = {**la.auditor.summary(),
+                                    'interrupted': la.interrupted}
+                except EarlyStopError as e:
+                    v = e.verdict
+                    print(f'  [live-audit] ⚡ 止损（step {v.get("score", "?")}）'
+                          f'→ 换 seed 重生成')
+                    self._log('▸ shot %s live-audit 止损: %s' % (
+                        sid, str(v.get('reason', ''))[:48]))
+                    live_summary = {'reviews': la.auditor.reviews_used,
+                                    'fails': 1, 'interrupted': True,
+                                    'history': la.auditor.history}
+                    attempts.append({'attempt': attempt, 'seed': seed,
+                                     'video': None, 'composite_ref': composite_ref,
+                                     'early_stop': v.get('reason', ''),
+                                     'review': {'score': 0, 'pass': False,
+                                                'feedback': f'live-audit: {v.get("reason", "")}'}})
+                    if attempt <= self.max_retries:
+                        shot['video_prompt'] = self.llm.optimize_prompt(
+                            shot['scene_desc'] + ' ' + v.get('reason', ''),
+                            shot.get('style', ''),
+                            five_dim=shot.get('five_dim'),
+                            ref_frame=bool(character),
+                            anchors=getattr(self, '_anchors', None) or None,
+                        )
+                    continue
             else:
-                t2v_result = self.t2v_vendor.t2v(
-                    prompt=shot['video_prompt'],
-                    seed=seed,
-                    width=self.wan_defaults.get('width', 1280),
-                    height=self.wan_defaults.get('height', 704),
-                    length=length,
-                    steps=self.wan_defaults.get('steps', 20),
-                    cfg=self.wan_defaults.get('cfg', 5.0),
-                    fps=fps,
-                    output_path=video_path,
-                )
+                if composite_ref:
+                    t2v_result = self.i2v_vendor.i2v(
+                        prompt=shot['video_prompt'],
+                        image_path=composite_ref,
+                        seed=seed,
+                        width=i2v_w, height=i2v_h,
+                        length=length,
+                        steps=self.i2v_defaults.get('steps', 20),
+                        cfg=self.i2v_defaults.get('cfg', 5.0),
+                        fps=fps,
+                        output_path=video_path,
+                    )
+                else:
+                    t2v_result = self.t2v_vendor.t2v(
+                        prompt=shot['video_prompt'],
+                        seed=seed,
+                        width=self.wan_defaults.get('width', 1280),
+                        height=self.wan_defaults.get('height', 704),
+                        length=length,
+                        steps=self.wan_defaults.get('steps', 20),
+                        cfg=self.wan_defaults.get('cfg', 5.0),
+                        fps=fps,
+                        output_path=video_path,
+                    )
             print(f'  video: {video_path}')
             self._log('▸ shot %s 生成完成: %s' % (sid, os.path.basename(video_path)))
 
@@ -1073,6 +1158,7 @@ class Pipeline:
             'composite_ref': best.get('composite_ref'),
             'final_score': best['review']['score'],
             'slowmo': slowmo_info,
+            **({'live_audit': live_summary} if live_summary else {}),
             'audio': {
                 'narration': shot['narration'],
                 'audio_path': audio_path,

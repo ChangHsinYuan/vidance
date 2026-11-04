@@ -705,6 +705,7 @@ function addTaskCard(t) {
     <div class="concept">${escapeHtml(t.concept)}</div>
     <div class="progress-bar"><div id="bar-${t.task_id}"></div></div>
     <div class="meta" id="meta-${t.task_id}">阶段: ${t.stage || 'queued'}</div>
+    <div id="v20-${t.task_id}" style="display:none;margin-top:8px"></div>
     ${chain ? '<div id="trace-' + t.task_id + '" style="margin-top:8px"></div>' : ''}`;
   messages.appendChild(div);
   scrollBottom();
@@ -732,9 +733,34 @@ function updateTaskCard(t) {
   }
   if ((t.status === 'completed' || t.status === 'failed') && pollers[t.task_id]) {
     clearInterval(pollers[t.task_id]); delete pollers[t.task_id];
+    const v20el = document.getElementById('v20-' + t.task_id);
+    if (v20el) v20el.style.display = 'none';
     if (t.status === 'completed') addVideoCard(t);
     else addBot(`<b>✗ 任务失败</b> ${escapeHtml(t.task_id)}：${escapeHtml(t.error||'')}`);
   }
+  // v20 生成中审核：running 时轮询粗审 verdict + 预览帧
+  if (t.status === 'running') pollV20(t.task_id);
+}
+
+let _v20tick = {};
+async function pollV20(taskId) {
+  const now = Date.now();
+  if (_v20tick[taskId] && now - _v20tick[taskId] < 6000) return;  // 6s 节流
+  _v20tick[taskId] = now;
+  try {
+    const r = await fetch(`/api/tasks/${taskId}/preview`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const el = document.getElementById('v20-' + taskId);
+    if (!el) return;
+    if (!d.available) { el.style.display = 'none'; return; }
+    el.style.display = 'block';
+    el.innerHTML = `<div class="meta" style="margin-bottom:4px"><b>v20 边生边审</b> · shot ${d.shot} step ${d.step} · `
+      + `<span class="pill ${d.verdict === 'pass' ? 'completed' : 'failed'}">${d.verdict}</span> `
+      + `score ${d.score}</div>`
+      + (d.png ? `<img src="data:image/png;base64,${d.png}" style="max-width:240px;border-radius:6px;display:block">` : '')
+      + `<div class="meta">${escapeHtml(d.reason || '')}</div>`;
+  } catch (e) {}
 }
 
 function addVideoCard(t) {

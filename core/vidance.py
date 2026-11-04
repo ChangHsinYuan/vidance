@@ -115,7 +115,7 @@ def cmd_auto(args):
         args.duration = float(d['duration'])
     if d.get('stt'):
         args.stt = True
-    pipeline = Pipeline()
+    pipeline = Pipeline(live_audit=getattr(args, 'live_audit', None))
     if args.no_rife:
         pipeline.rife_config['enabled'] = False
     if args.no_color:
@@ -1005,6 +1005,8 @@ def build_parser():
                         help='跳过开跑前预检（默认开跑前探测依赖服务，硬依赖挂则拒绝启动）')
     p_auto.add_argument('--oneshot', action='store_true',
                         help='一镜到底（v18 M3）：LLM 运镜链 + 末帧回灌链式 I2V，--duration 控制总时长')
+    p_auto.add_argument('--live-audit', action='store_true',
+                        help='v20 生成中审核：latent 预览帧粗审 + 审不过早停止损（默认关，config v20_live_audit.enabled 亦可开）')
     p_auto.set_defaults(func=cmd_auto)
 
     # ── custom 子命令 ──

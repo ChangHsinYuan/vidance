@@ -118,9 +118,9 @@ start_one() {
         h3)   # H3 ref2va → GPU0
             bg_run h3 "$LOG_DIR/comfyui_8188.log" "$COMFYUI_DIR" \
                 env CUDA_VISIBLE_DEVICES=0 "$PY_COMFY" main.py --listen 0.0.0.0 --port 8188 ;;
-        wan)  # Wan T2V/I2V + RIFE → GPU2
+        wan)  # Wan T2V/I2V + RIFE → GPU2（--preview-method：v20 边生边审 WS 推 latent 预览帧）
             bg_run wan "$LOG_DIR/comfyui_8189.log" "$COMFYUI_DIR" \
-                env CUDA_VISIBLE_DEVICES=2 "$PY_COMFY" main.py --listen 0.0.0.0 --port 8189 ;;
+                env CUDA_VISIBLE_DEVICES=2 "$PY_COMFY" main.py --listen 0.0.0.0 --port 8189 --preview-method latent2rgb ;;
         hunyuan) # HunyuanVideo → GPU3（与 flux 互斥）
             bg_run hunyuan "$LOG_DIR/comfyui_8190.log" "$COMFYUI_DIR" \
                 env CUDA_VISIBLE_DEVICES=3 "$PY_COMFY" main.py --listen 0.0.0.0 --port 8190 ;;

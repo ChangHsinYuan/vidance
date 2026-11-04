@@ -335,6 +335,8 @@ class Scheduler:
                 cmd += ['--no-color']
             if opts.get('no_bgm'):
                 cmd += ['--no-bgm']
+            if opts.get('live_audit'):
+                cmd += ['--live-audit']  # v20 生成中审核
         elif mode == 'fast':
             if opts.get('images_source'):
                 cmd += ['--images-source', opts['images_source']]

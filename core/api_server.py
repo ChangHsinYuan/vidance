@@ -100,6 +100,7 @@ class TaskSubmit(BaseModel):
     no_rife: bool = False
     no_color: bool = False
     no_bgm: bool = False
+    live_audit: bool = False  # v20 生成中审核（latent 预览粗审 + 早停）
     # v7 fast/hot 参数
     images_source: Optional[str] = None
     images_count: Optional[int] = None
@@ -315,6 +316,28 @@ def get_task(task_id: str):
     if not task:
         raise HTTPException(status_code=404, detail='Task not found')
     return task
+
+
+@app.get('/api/tasks/{task_id}/preview')
+def get_task_preview(task_id: str):
+    """v20 生成中审核：返回最新粗审 verdict + 预览帧（base64 PNG）"""
+    import base64
+    import os
+    d = os.path.join(load_config()['output_dir'], task_id)
+    vp = os.path.join(d, 'v20_preview.json')
+    if not os.path.isfile(vp):
+        return {'available': False}
+    try:
+        with open(vp, encoding='utf-8') as f:
+            verdict = json.load(f)
+    except Exception:
+        return {'available': False}
+    png_b64 = None
+    pp = os.path.join(d, f"v20_preview_{verdict.get('shot')}.png")
+    if os.path.isfile(pp):
+        with open(pp, 'rb') as f:
+            png_b64 = base64.b64encode(f.read()).decode('ascii')
+    return {'available': True, **verdict, 'png': png_b64}
 
 
 @app.post('/api/tasks/{task_id}/cancel')
@@ -1559,6 +1582,8 @@ TOOLS = [
          {'key': '--lut', 'type': 'choice', 'choices': ['cinematic', 'warm', 'cool', 'vintage', 'vivid', 'soft'], 'desc': '调色风格'},
          {'key': '--bgm', 'type': 'choice', 'choices': ['calm', 'uplifting', 'mysterious', 'dramatic', 'playful', 'epic'], 'desc': 'BGM mood'},
          {'key': '--slowmo', 'type': 'number', 'desc': '慢动作倍率'},
+         {'key': '--live-audit', 'type': 'bool',
+          'desc': 'v20 生成中审核：latent 预览帧粗审 + 审不过早停止损'},
      ]},
     {'name': 'arch', 'help': '架构总览：编排→D/G/P/V 四层 Agent + 服务在线状态',
      'params': []},
@@ -2940,6 +2965,8 @@ def tool_dispatch(name: str, req: ToolRequest):
                     opts[k] = float(flags[k])
             if flags.get('stt'):
                 opts['stt'] = True
+            if flags.get('live-audit'):
+                opts['live_audit'] = True  # v20 生成中审核
         else:  # fast / hot
             for k in ('images_source', 'effects', 'voice', 'motion', 'lut', 'bgm', 'account'):
                 if flags.get(k):

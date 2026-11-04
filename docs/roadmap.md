@@ -522,23 +522,19 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v20 — 生成中审核（tensor 导出 + 多模态边生边审）（原 v21，🎯 待开发，2026-09-30 立项）
+### v20 — 生成中审核（tensor 导出 + 多模态边生边审）（原 v21，✅ 已完成 2026-11-04：M0-M3，方案=旁挂+开关）
 
 **目标**：体现**本地部署的优越性**——生成视频时中间有 token/latent 在流动，把中间态**直接导出成可审图像**丢给多模态 LLM 实时审核，**边生成边审**（不等全片渲完再逐帧审），流水线级省时（审片是当前最大耗时瓶颈之一，30-200s/镜）。
 
-**范围**：
-- **原理**：Wan T2V/I2V 是 diffusion 迭代去噪——ComfyUI 节点间流动的 latent tensor 可以**中途解码出预览帧**（VAE decode 部分去噪的 latent → 模糊但可判构图/主体的图）。本地部署 = 能拿到中间 tensor；云端 API = 只能等最终结果
-- **latent 中途导出**：ComfyUI 自定义节点（`PreviewLatent`/SaveImage 中间态）或 workflow 改造——每 N 步去噪导出一帧预览（步骤数/质量权衡：太多打断 GPU，太少审核滞后）；`utils/latent_probe.py`（workflow JSON 模板 + 中间帧导出）
-- **边生边审流水线**：中间帧 → 多模态 LLM（qwen3.8-chat）**与生成并行**审核——构图/主体/角色一致性早判，不合格**提前止损**（terminate 当前 workflow，省下剩余去噪时间）而非渲完再审重做
-- **早停重生成**：审核不过 → 提前终止 + 调整 prompt/seed 重生成（相比渲完再审省 50-80% 单镜时间，N 步内发现问题就能止损）
-- **渐进式审片**：低步数粗审（快，构图/主体）→ 高步数细审（慢，细节/伪影）分级，最后成片仍走现有逐帧审片（v0 口径）
-- **v11 集成**：审核事件进 chain SSE（`event: preview`），前端画布实时显示"生成中预览帧 + 审核意见"——用户可看到 AI 正在边画边自检
+**方案定稿（2026-11-03，用户拍板）**：**不推翻现有代码，旁挂 + 开关**——`config.json` 新增 `v20_live_audit` 节（`enabled: false` 默认关）+ CLI `--live-audit` 可覆盖；**关 = 原路径一字节不变，开 = 生成调用外套 wrapper**。现有审片（light/full）保留为终审，粗审只是前面多一道止损闸（并联非替换）。调研实证（2026-11-03 explore）：ComfyClient 纯 HTTP 轮询无 WS/interrupt 代码，但 **ComfyUI 服务端原生支持** WS 推流采样中的 latent 预览帧（`--preview-method` 启动参数，latent2rgb 免装模型）+ `POST /interrupt` 立即终止——早停无需自研；比原稿"改 workflow 拆 KSampler"路线侵入小得多。
 
-**里程碑**：M0 spike（ComfyUI 中间 latent 解码导出验证：改 workflow 8189 实测能否拿到可判图）→ M1 latent_probe 工具化 + 审核接通 → M2 早停止损（不合格提前终止重生成）→ M3 分级粗/细审 + 前端实时预览集成。
+**里程碑**（2026-11-04 M0-M3 全绿）：M0 spike ✅（start_services.sh wan 加 `--preview-method latent2rgb`；WS 实测 8 张预览帧、step 8/20 interrupt 立即生效省时 ~60%、qwen3.8 读预览帧可判主体场景）→ M1 工具化 ✅（`agents/generator/tools/comfy_preview.py` PreviewListener/`interrupt_if_running`（查 /queue 校验归属防误杀 RIFE）/`live_audit_patch` 实例级补丁（generate_i2v 内部 self.queue_prompt 命中实例属性，生成代码零改动）+ `agents/audit/tools/live_auditor.py` LiveAuditor（节流 ≤3 次/镜、step≥4 且帧 std≥40 才发 API、异常放行不阻塞）+ 24 项单测；踩坑：粗审默认走 `models['script']`（切到 deepseek-v4-flash-ascend1 后无多模态 400）→ 显式 `models['review']`）→ M2 pipeline 接线 ✅（EarlyStop→continue 换 seed 重生成；同题 3 镜对比 OFF 895.8s vs ON 929.2s（**+3.7%**，9 次粗审全藏生成窗口）；meta 每镜 live_audit 落库）→ M3 前端 ✅（粗审事件落盘 task_dir → `GET /api/tasks/{id}/preview` → UI 任务卡实时显示预览帧+verdict；开关 API 通道 scheduler/TOOLS/flags 透传）。
 
-**依赖**：Wan/ComfyUI 本地实例（8189）+ 多模态 LLM + v11 chain SSE/前端。
+**诚实缺口**：早期止损全链自然触发样本未遇（实验题全 pass），fail→interrupt→重生成由 spike（interrupt 实测）+ 单测（判定/接线）合成覆盖。
 
-**参考**：ComfyUI PreviewLatent/TAESD（快速 latent 解码小模型）、LCM（低步数快速出图思路）。
+**依赖**：Wan/ComfyUI 本地实例（8189，`--preview-method latent2rgb`）+ 多模态 LLM（qwen3.8-chat）+ 前端任务卡轮询。
+
+**参考**：ComfyUI 原生 `--preview-method auto|latent2rgb|taesd`（latent2rgb 免装模型）、`POST /interrupt`、WS `executing/progress/execution_cached` 消息协议；LCM（低步数快速出图思路）。详见 docs/usage/usage-v20.md。
 
 ---
 
