@@ -108,7 +108,7 @@
     "fps": 24
   },
   "color": {
-    "enabled": true,
+    "enabled": false,
     "lut_dir": "/mnt/disk_sdb/zxy/vidance/utils/luts",
     "styles": [
       "cinematic",

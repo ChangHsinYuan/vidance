@@ -42,12 +42,13 @@ CLI 开关优先于 config；任务卡 meta 的每镜 `live_audit` 字段记录 
 | `agents/audit/tools/live_auditor.py` | `LiveAuditor`（节流 + 帧结构判定 + 粗审 prompt + 异常放行）、`load_cfg` |
 | `core/pipeline.py` | `_process_shot` 生成调用外套 wrapper；EarlyStop → continue 换 seed 重生成；meta 记 live_audit |
 
-## 实测（M0-M2，2026-11-04）
+## 实测（M0-M3，2026-11-04）
 
 - **M0 spike**：8 张预览帧 WS 推流；step 8/20 interrupt 立即生效（queue 清空，省时 ~60%）；qwen3.8 读 step-8 预览帧："雪地场景，动物"——粗审够用
 - **M1 联调**：真实 8189 + 真实 qwen3.8，2 次粗审正常；踩坑：粗审默认走了 `models['script']`（deepseek 无多模态，400）→ 显式用 `models['review']`
 - **M2 对比**（同题 3 镜 quick 式，红狐狸）：OFF 895.8s vs ON 929.2s（**+3.7%**，9 次粗审全部藏在生成窗口内）；终审分 7/7/9 vs 7/9/9；meta 每镜 live_audit 落库 ✓
-- 早期止损（fail→interrupt→重生成）路径：spike 实测 interrupt + 单测覆盖判定/重生成接线；自然触发 fail 的全链样本未遇（狐狸题全 pass）
+- **M3 全链 UI 实测**（任务 `output/auto_20261104_153353`，雪夜古镇白猫 12s/3 镜，API `live_audit:true` 提交）：3 镜 × 3 次粗审全 pass（score 8，step 4/9/15 采样）；生成中 `GET /api/tasks/{id}/preview` 实时返回 shot/step/verdict/score/reason + 预览帧，UI 任务卡「v20 边生边审」卡片实时刷新 ✓；成片 final.mp4 正常
+- 早期止损（fail→interrupt→重生成）路径：spike 实测 interrupt + 单测覆盖判定/重生成接线；自然触发 fail 的全链样本未遇（狐狸/古镇题全 pass）
 
 ## 已知限制
 
@@ -55,3 +56,4 @@ CLI 开关优先于 config；任务卡 meta 的每镜 `live_audit` 字段记录 
 2. `/interrupt` 是实例级——`interrupt_if_running` 先查 `/queue` 校验 prompt_id 归属，但理论上仍有竞态窗口（极小）
 3. 粗审 prompt 口径偏宽（模糊不扣分）——挡的是"跑偏/崩坏"，不是画质问题（那是终审的活）
 4. latent2rgb 预览色彩有偏（线性插值近似解码），只可用于构图/主体判断
+5. **预览帧 ≠ 成片观感**：预览是原始生成画面，成片若开了 LUT 调色会变色（2026-11-04 雪夜古镇实测：预览红灯笼→成片被 auto 选 cool 蓝调）。已按用户偏好把 `config.json → color.enabled` 默认**关**——成片默认保持原始生成色，与预览一致；需要调色时显式 `--lut warm|cool|...`
