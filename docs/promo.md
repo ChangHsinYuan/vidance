@@ -31,7 +31,7 @@
 
 ## 发布渠道 checklist
 
-- [ ] GitHub：README（已就绪）+ 3 个 demo mp4（已入库）+ LICENSE（待定 MIT/Apache-2.0）+ Topics（video-generation / comfyui / llm-agent / tts / sam2）
+- [ ] GitHub：README（已就绪）+ 3 个 demo mp4（已入库）+ LICENSE（Apache-2.0 ✅）+ Topics（video-generation / comfyui / llm-agent / tts / sam2）
 - [ ] Gitee 同步镜像（已有 origin）
 - [ ] 知乎/公众号长文（框架见上）
 - [ ] B站演示视频（可用 docs/demo 三条拼接 + 录屏 WebUI）

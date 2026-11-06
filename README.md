@@ -109,4 +109,4 @@ python core/vidance.py auto "雪山日出：小狐狸的冒险" --character "红
 
 ## License
 
-待定（见 LICENSE 文件）。
+[Apache License 2.0](./LICENSE) —— 可商用/可修改/可闭源二次分发；贡献者代码附带明确专利授权。
