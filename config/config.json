@@ -1,10 +1,10 @@
 {
   "pexels": {
-    "api_key": "***REMOVED***"
+    "api_key": "YOUR_PEXELS_API_KEY"
   },
   "llm": {
-    "base_url": "https://api.llm.ustc.edu.cn/v1",
-    "api_key": "***REMOVED***",
+    "base_url": "https://api.llm.example.com/v1",
+    "api_key": "YOUR_LLM_API_KEY",
     "models": {
       "script": "deepseek-v4-flash-ascend1",
       "prompt_opt": "deepseek-v4-flash-ascend1",
@@ -45,7 +45,7 @@
   "tts": {
     "host": "127.0.0.1",
     "port": 9880,
-    "model_dir": "/mnt/dataset/zxy/CosyVoice2-0.5B",
+    "model_dir": "/path/to/CosyVoice2-0.5B",
     "default_voice": "cosy-default",
     "engines": [
       "cosyvoice",
@@ -65,9 +65,9 @@
       "cosy-default": "CosyVoice默认",
       "cosy-cross": "CosyVoice跨语言"
     },
-    "custom_voice_dir": "/mnt/disk_sdb/zxy/vidance/voices"
+    "custom_voice_dir": "/path/to/vidance/voices"
   },
-  "output_dir": "/mnt/disk_sdb/zxy/vidance/output",
+  "output_dir": "/path/to/vidance/output",
   "task_prefixes": {
     "auto": "auto",
     "quick": "quick",
@@ -109,7 +109,7 @@
   },
   "color": {
     "enabled": false,
-    "lut_dir": "/mnt/disk_sdb/zxy/vidance/utils/luts",
+    "lut_dir": "/path/to/vidance/utils/luts",
     "styles": [
       "cinematic",
       "warm",
@@ -131,12 +131,12 @@
     ],
     "default_mood": "calm",
     "volume": 0.9,
-    "custom_dir": "/mnt/disk_sdb/zxy/vidance/bgm"
+    "custom_dir": "/path/to/vidance/bgm"
   },
   "stt": {
     "enabled": false,
     "model_name": "large-v3-turbo",
-    "model_path": "/mnt/dataset/zxy/hf_cache/hub/models--mobiuslabsgmbh--faster-whisper-large-v3-turbo/snapshots/0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf",
+    "model_path": "/path/to/faster-whisper-large-v3-turbo",
     "language": "zh",
     "device": "cuda",
     "compute_type": "int8_float16"
@@ -183,7 +183,7 @@
         "id": "custom-muchvp3h",
         "name": "硅基流动",
         "base_url": "https://api.siliconflow.cn/v1",
-        "api_key": "***REMOVED***",
+        "api_key": "YOUR_SILICONFLOW_API_KEY",
         "models": [
           {
             "id": "tencent/Hy4-preview",

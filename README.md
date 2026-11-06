@@ -1,134 +1,112 @@
-!!!
+# Vidance — 中文概念 → 有声短片，一条命令
 
-本文件是由手工维护的，由作者在理解vibe coding所产生的内容之后再做总结，就算有所不对但是要确保跟作者理解一致。所以禁止AI修改本文件
+> AI 有声短片生成系统：**中文一句话 → LLM 编剧 → 视频生成 → 边生边审 → TTS 配音 → 剪辑特效 → 成片**。
+> 五档部署（无 GPU 笔记本到 4 卡全家桶）、28 个多智能体协作、WebUI 可视化、一键安装。
 
-!!!
+**当前版本 v1.0.0**（[CHANGELOG](./CHANGELOG.md) · [完整路线图](./docs/roadmap.md)）
 
+---
 
+## ✨ 核心特性
 
-# vidance
+- **🎬 全链路自动生成**：LLM 编剧 → FLUX 关键帧 → Wan2.2 I2V → 逐镜审片（不过自动重试）→ RIFE 插帧 → TTS 配音 → BGM 混音 → 字幕烧录，一条命令出片
+- **👀 生成中审核（边生边审）**：生成过程中实时抽取 latent 预览帧丢给多模态模型粗审，发现画面崩坏立即中断止损换 seed，不浪费整段生成时间
+- **📦 五档部署**：同一份代码，`VIDANCE_TIER` 一个环境变量切换能力档——无 GPU 机器也能跑 SVG 动画和爬图营销号链路
+- **✂️ 编辑全家桶**：SAM2 分割/抠图/打码/换背景 + YOLO 自动检测 + FLUX Fill 重绘 + Wan VACE 参考图生视频 + 指令式编辑（"把猫换成狗"）
+- **🔁 视频链接二创**：丢一个 B 站/YouTube 链接 → 自动下载理解 → LLM 改写解说词（防复述）→ 重配音 → 画面改写，还能消除原片烧录字幕
+- **🧩 多形态输出**：有声短片 / 营销号图文快剪 / SVG 动画 / LLM 生成 PPT（mp4+PDF+PNG）/ Blender 3D 演示 / 小说一键改编成片
+- **🤖 多智能体编排**：导演/生成/后期/审片四层 28 个 Agent，chain 编排 + 黑板共享 + 全轨迹可视化
+- **🗣️ 自然语言操控**：t2c 微调模型把中文口语直接翻译成 Vidance 命令，WebUI 里说话就能出片
 
-## 0、可视化效果
+## 🎬 效果演示
 
-- v0：初步简陋的流程：
-[v0](./assets/v0.mp4)
-- v1：一致性初步：生图/3D锚点：3dgs/flux加入
-[v1](./assets/v13dgs.mp4)
-[v1](./assets/v1flux.mp4)
-- v2：长视频测试
-[v2](./assets/v2.mp4)
-- v3：一致性增强：生图/3D锚点增强
-[v3](./assets/v3.mp4)
-- v4：营销号初步
-[v4](./assets/v4.mp4)
-- v5：营销号修复
-[v5](./assets/v5.mp4)
-- v6：多轮对话核实
-<img src="./assets/v6_demo.jpg">
-- v7：前端初步
-<img src="./assets/v7_demo.png">
-- v8：前端增强
-<img src="./assets/v8_ui.png">
-<img src="./assets/v8_log.png">
-<img src="./assets/v8_comfyui.png">
-- v9：API配置
-<img src="./assets/v9_api1.png">
-<img src="./assets/v9_api2.png">
-- v10：特效剪辑（仿照opencut）
-[v10](./assets/v10.mp4)
-- v-t2c：完善对话pipeline
-<img src="./assets/v-t2c1.png">
-<img src="./assets/v-t2c2.png">
-- v11：
-- v12：
-- v13：
-- v14：
-- v15：
+| 演示 | 说明 | 命令 |
+|------|------|------|
+| [auto-healing.mp4](./docs/demo/auto-healing.mp4) | auto 全链路：LLM 编剧 + Wan 生成 + 配音后期（12s） | `vidance auto "治愈系小短片"` |
+| [template-cinematic.mp4](./docs/demo/template-cinematic.mp4) | 电影感五维模板出片 | `auto "概念" --template cinematic` |
+| [template-guofeng.mp4](./docs/demo/template-guofeng.mp4) | 国风水墨模板出片 | `auto "概念" --template guofeng` |
 
+前端与架构：
 
+| WebUI 任务画布 | 系统架构 |
+|---|---|
+| <img src="./assets/v8_ui.png" width="420"> | <img src="./assets/架构.png" width="420"> |
 
-更多demo参看PPT
+> 更多版本演进截图见 [docs/archive/README-origin.md](./docs/archive/README-origin.md)（作者手记版 README）。
 
-## 1、项目构思
+## 🚀 快速开始
 
-### 0、思考
-目前我的想法是借鉴市面上的agent。然后视频生成引擎我打算就是借鉴opencode这种，只不过处理的对象不是代码而是视频。
+```bash
+git clone <repo-url> && cd vidance
 
-### 1、待完成
+# 1) 一键安装：自动探测 GPU/磁盘/网络 → 推荐档位 → 起容器 → 冒烟验证
+bash deploy/install.sh
 
-#### 整个框架图以及解读
-<img src="./assets/架构.png">
-核心还是那个生成-审计的loop嘛
-然后上游：1、websearch、NVS 2、多轮对话具体化prompt 3、multiagent分工协作
-下游：1、节点式画布（仿libTV的定制化功能） 2、功能分块式前端（仿豆包、Hidream的简洁前端设计） 3、自动后期（剪辑配音啥的）
+# 2) 首次配置向导（LLM key / 音色 / 输出目录，逐项回车保留）
+python core/vidance.py init
 
-#### 目前已完成：
-- tools调用2：内部审查，借鉴LSP
-- tools调用3：编辑工具，比如类似抖音特效，视频配乐等等
-#### 进行中：
-- API接入：借鉴opencode等等openAI格式协议，备选minimaxH3以及Wan以及diffusion相关其他开源
-#### 待做：按照优先级排序
-- tools调用1：借鉴web_fetch，从网上爬更真实的人像图片等等以达到去除ai的效果等等的，技术参考借鉴openvideo
-- skill：比如生成特定风格的，比如ai漫剧的或者营销号的或者电影的或者vlog的等等的
-- 多模态输入：Word、PDF等等的，我最近还跑了一些腾讯混元的3D生成模型，感觉也可以加进去（比如真实的3D图形动起来那种风格的）
-- 消息网关：借鉴hermes微信网关（最后做了，类似前端那种，咱们还是后端为主）
+# 3) 出第一条片（无 GPU 也能跑：爬图 + Ken Burns + TTS）
+python core/vidance.py fast "深夜便利店的一只橘猫" -n 3
 
+# 有视频卡的话，跑全链路 auto
+python core/vidance.py auto "雪山日出：小狐狸的冒险" --character "红色小狐狸" --character-mode flux
+```
 
-### 2、已完成
+浏览器打开 `http://<ip>:9400/ui` 即是 WebUI。
 
-<img src="./assets/v0.png">
-<img src="./assets/v1.png">
-<img src="./assets/v2.png">
-<img src="./assets/v3.png">
-<img src="./assets/v4.png">
-<img src="./assets/v5.png">
-<img src="./assets/v6.png">
-<img src="./assets/v7.png">
+其他安装方式与细节见 **[deploy/README.md](./deploy/README.md)**（离线镜像包交付、conda 裸机路线、GPU 服务编排）。
 
+## 📦 五档能力矩阵
 
-### 3、发现的问题
+| 档 | 硬件 | 能力 |
+|----|------|------|
+| `none` | 无 GPU | SVG 动画 + 爬图营销号链路 + edge-tts（在线） |
+| `flux` | 1× 图像卡 | + SDXL/FLUX 生图 |
+| `wan` | 1× 视频卡 | + Wan2.2 T2V/I2V + RIFE 插帧 + auto 全链路 + CosyVoice 本地 TTS |
+| `h3` | 1× | + MiniMax-H3 参考图直出（custom/h3shot） |
+| `full` | 多卡 | + Hunyuan3D 3D 锚点 + STT + 声音克隆，全家桶 |
 
-- 微信/飞书网关
-- 长片质量
-- 推理轻量化
+- 档位定义：`config/tiers/*.json`；守卫：`/api/health` 报档位、`/api/tools` 按档过滤、能力不足直接提示
+- **体检**：`vidance doctor` 探测 GPU/磁盘/网络并推荐档位；任务失败自动附诊断建议（端口/依赖/磁盘，UI 里 💡 提示）
 
-### 4、计划路线
+## 🗺️ 功能全景
 
-[详细路线](./docs/roadmap.md)
-目前是搞定了[v0](./docs/v0-design.md)
-可以看看效果，见可视化那一节，然后现在正在进行v1
-下面的纯属胡说，一会再更新
+| 线 | 入口 | 说明 |
+|----|------|------|
+| 全链路生成 | `auto` | LLM 编剧 × 审片重试 × 五维模板（cinematic/documentary/anime90s/guofeng）× `--oneshot` 一镜到底 |
+| 参考图直出 | `custom` / `h3shot` | 参考图 + 预写脚本 → H3 ref2va（原生带音频） |
+| 营销号快剪 | `fast` / `hot` | 爬热点 → LLM 选题 → 爬图/FLUX 出图 → Ken Burns → TTS，跳过视频模型 |
+| 链接二创 | `rework` | 视频 URL → 改写解说 → 重配音 → 画面改写 0-5 档 + 烧录字幕消除 |
+| 视频编辑 | `edit` / `vace` | SAM2 分割/追踪 + FLUX Fill + VACE + 指令式编辑 |
+| 多形态 | `svg` / `ppt` / `blender3d` | 纯 CPU 三线：SVG 动画 / LLM PPT（mp4+PDF+PNG）/ Blender 3D |
+| 小说改编 | novel2video | RAG 人物卡 + 剧本拆解 + 场景锚 + 衣橱系统 + 首尾帧驱动渲染 |
+| 时间线 | `compose` / `concat` | 关键帧/贴纸轨/转场特效库（30+ xfade）/ RIFE 光流过渡 |
+| 统一编排 | `make` / `agent` | director×generator 排列组合 + 28 Agent chain + `/api/agents` |
 
-    先搞定tools，再搞loop，
-    另外可以尝试多种模型并行，比如控制退火温度来决定是完全生成还是受约束生成，受约束生成中，是基于爬下来的做微调，还是保持故事情节不变大换血
+完整命令库：[docs/usage/usage.md](./docs/usage/usage.md)（按档位快速上手手册在顶部）
 
-## 2、组织架构
+## 🧪 质量
 
-- assets：写README的资产
-- bgm：存放bgm的
-- config：配置目录，存放json配置API-key以及
-- core：核心引擎
-- docs：说明文档
-- input：输入，比如参考帧啥的
-- output：输出，比如视频啥的，（很多视频文件，所以是软链接过来的）
-- tools：工具
-- ui：前端
-- utils：被引擎调用的工具
-- voice_samples：音频样本，如果想要cosyvoice处理TTS就把你拿下来的wav放这里，当然也可以考虑支持自己爬，也是软连接
-- voices：音频的README
+- 17 套测试 ~400 项断言全绿（`python tests/test_<name>.py` 直跑）
+- 关键约束自动化：随机 seed、单镜 ≤5s、时长对齐、Windows 兼容编码（h264 + yuv420p 全环节显式）
+- 全程元数据落盘（meta.json：脚本/prompt/seed/审片分/时间戳），断点续跑带 sha256 指纹防篡改
 
+## 📚 文档索引
 
-## 3、部署应用
+| 文档 | 内容 |
+|------|------|
+| [docs/usage/usage.md](./docs/usage/usage.md) | 主使用手册（按档位快速上手 + 全命令） |
+| [docs/roadmap.md](./docs/roadmap.md) | 完整版本路线（v0→v21 全部收官） |
+| [CHANGELOG.md](./CHANGELOG.md) | 版本变更日志 |
+| [deploy/README.md](./deploy/README.md) | 部署详解（五档/Docker/离线镜像/GPU 服务） |
+| [docs/design/](./docs/design/) | 各版本设计文档 |
+| [AGENTS.md](./AGENTS.md) | Agent 开发约定（内部） |
 
-面向**开发者**：docs下面有。参考roadmap和usage那些
-面向**用户**：webUI（v7）、微信/飞书机器人（v9）
+## 🔒 配置与隐私
 
-## 4、tmp：最新测试命令
+- `config/config.json` 入库的是**占位符模板**（`YOUR_*_API_KEY`），真实 key 放 `config/config.local.json`（已 gitignore，加载器自动优先读取）
+- 首次配置用 `python core/vidance.py init` 向导写入，key 不会出现在日志里
 
-/agent run generator.fast {"concept":"深夜便利店的一只橘猫","n":1}
-/agent run generator.fast {"concept":"深夜便利店的一只橘猫","n":1,"images_source":"flux"}
-/agent run generator.svg {"concept":"鹈鹕骑自行车"}
-/agent run generator.artist {"prompt":"a cyberpunk city at night with neon lights"}
+## License
 
-/agent run generator.wan_t2v {"concept":"一只猫在月球上跳舞"}
-/agent chain {"steps":[{"agent":"generator.artist","with":{"prompt":"a lighthouse in stormy night"},"as":"im"},{"agent":"director.brain","with":{"prompt":"用一句话形容这张图 ${im.image}"}},{"agent":"post.tts","with":{"text":"${b.answer}"}}]}
+待定（见 LICENSE 文件）。

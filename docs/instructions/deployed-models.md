@@ -191,7 +191,7 @@ Hunyuan3Dv2（与 Wan 共用 ComfyUI/models/）:
 | **claude-haiku-4-5** | 多模态审片（逐镜抽帧读图打分） | 4s/镜 | ✅ 免费 |
 | **claude-sonnet-4-6** | 严格审片备选（review_strict） | 534s/镜（太慢） | ✅ 免费 |
 
-> USTC API：`https://api.llm.ustc.edu.cn/v1`，key 存 `config/config.json`（不入 git）
+> LLM API：OpenAI 兼容网关（`llm.base_url`），key 存 `config/config.local.json`（本机覆盖，不入 git；`config.json` 只留占位符模板）
 
 ---
 
@@ -218,15 +218,15 @@ Hunyuan3Dv2（与 Wan 共用 ComfyUI/models/）:
 | GPU | 显存 | 实例 | 端口 | 状态 |
 |-----|------|------|------|------|
 | GPU0 | 48G | MiniMax-H3 ref2va | 8188 | 运行中（custom 主力，46G 按需加载） |
-| GPU1 | 48G | Hunyuan3Dv2 turbo | 8193 | 运行中（~15G 按需加载 + aluupy 训练） |
-| GPU2 | 48G | Wan2.2-5B + RIFE + CosyVoice 2 | 8189 / 9880 | 运行中（18G + 2.5G + aluupy 训练） |
-| GPU3 | 48G | HunyuanVideo 13B | 8190 | 运行中（20G 按需加载 + aluupy 训练） |
+| GPU1 | 48G | Hunyuan3Dv2 turbo | 8193 | 运行中（~15G 按需加载 + 本机训练任务） |
+| GPU2 | 48G | Wan2.2-5B + RIFE + CosyVoice 2 | 8189 / 9880 | 运行中（18G + 2.5G + 本机训练任务） |
+| GPU3 | 48G | HunyuanVideo 13B | 8190 | 运行中（20G 按需加载 + 本机训练任务） |
 
 - **FLUX.1-dev fp8 (8192) 已停**：auto 模式 `--character-mode flux/3dgs/auto` 需先重启 8192（TripoSplat 随 FLUX 共实例）
 - **SDXL (8191) 已停**：未接入流水线，需要时重启
 - **Hunyuan3Dv2 独立 GPU1:8193**：不再与 Wan 共实例，3D 重建与视频生成可并行
 - faster-whisper STT 按需加载，共享 GPU 显存（不独立常驻）
-- aluupy 在 GPU1/2/3 有训练任务，不能动
+- 训练任务在 GPU1/2/3 有训练任务，不能动
 - ⚠️ ComfyUI 启动不能加 `--cuda-device`，否则覆盖 `CUDA_VISIBLE_DEVICES`（main.py:87）
 
 ---
