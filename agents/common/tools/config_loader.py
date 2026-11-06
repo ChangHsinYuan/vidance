@@ -100,3 +100,20 @@ def load_base_config() -> dict:
     """读原始 config.json（不含本机覆盖），供写回配置时使用，避免把本机值固化进仓库文件"""
     with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
         return json.load(f)
+
+
+def user_config_path() -> str:
+    """用户配置写回目标：已有 config.local.json 写本机覆盖（不入库），否则写 config.json 本体"""
+    return LOCAL_PATH if os.path.isfile(LOCAL_PATH) else CONFIG_PATH
+
+
+def save_config(update: dict) -> dict:
+    """把 {段: {...}} 增量合并进用户配置文件（v21 M3：init 向导/设置端点共用），返回合并后全量"""
+    path = user_config_path()
+    with open(path, 'r', encoding='utf-8') as f:
+        cur = json.load(f)
+    cur = deep_merge(cur, update)
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(cur, f, ensure_ascii=False, indent=2)
+        f.write('\n')
+    return cur

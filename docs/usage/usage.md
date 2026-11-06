@@ -1,5 +1,25 @@
 # Vidance 使用指南
 
+## 按档位快速上手（用户手册，v21）
+
+不知道选哪档？先跑 `python core/vidance.py doctor`——探测 GPU/端口/磁盘后直接给推荐档。安装一条命令：`bash deploy/install.sh`（探测→选档→起服务→冒烟；详见 [deploy/README.md](../deploy/README.md)）。
+
+| 档 | 你的机器 | 能干什么 | 首条命令 |
+|----|---------|---------|---------|
+| `none` | 无 GPU 的服务器/PC | svg 动效 + fast 营销号（爬图）、ppt、blender3d、全部编辑/拼接；LLM/选题走远程 API，TTS=edge 在线 | `python core/vidance.py svg --concept "鹈鹕骑自行车"` |
+| `flux` | 1× 图像卡(16G+) | + FLUX/SDXL 生图（fast 画质更好） | `python core/vidance.py fast "深夜灯塔的故事" -n 3` |
+| `wan` | 1× 视频卡(24G+) | + Wan T2V/I2V：auto/quick 真视频生成 + CosyVoice 本地配音 | `python core/vidance.py auto "雪山日出小狐狸" --character "红色小狐狸"` |
+| `h3` | 1× 大卡(40G+) | + MiniMax-H3：custom/h3shot 参考图注入生成 | `python core/vidance.py custom --ref input/doubao.jpg --script input/prompt1.txt` |
+| `full` | 多卡 | 全功能（Hunyuan3D/STT/声音克隆全家桶） | `python core/vidance.py hot -n 5` |
+
+首次配置：`python core/vidance.py init`（交互向导：LLM key/网关、音色、输出目录、清理策略；或 `--llm-key X --voice cosy-default` 非交互）。看版本：`--version`；健康自检：`curl :8894/api/health`；失败诊断：任务报错自动附 💡 提示（端口/显存/外网点名到命令），或 `python core/diagnose.py "报错文本"`。
+
+前端：`http://127.0.0.1:8894/ui`（或容器 :9400/ui）——三栏画布，`/` 弹命令补全，⚙ 弹层管模型与系统（版本/磁盘/清理）。档位不足时 CLI/API 直接提示换档（`VIDANCE_TIER=none|flux|wan|h3|full`）。
+
+> 下面是面向开发者的全量子命令参考。
+
+## 统一入口
+
 > 统一入口 `python core/vidance.py <子命令> [参数]`
 >
 > 分版本文档：[usage-v0.md](./usage-v0.md)（有声短片 MVP/T2V/TTS）· [usage-v1.md](./usage-v1.md)（角色锚/3DGS）· [usage-v2.md](./usage-v2.md)（RIFE/LUT/BGM/ffmpeg/STT）· [usage-v3.md](./usage-v3.md)（mesh/资产库）· [usage-v4.md](./usage-v4.md)（爬虫/队列/声音克隆/fast/hot） · [usage-v6.md](./usage-v6.md)（prompt 多轮核实）· [usage-v7.md](./usage-v7.md)（前端 WebUI）· [usage-v10.md](./usage-v10.md)（时间线拼接与特效）· [usage-v-svg.md](./usage-v-svg.md)（SVG→mp4 流水线）· [usage-v11.md](./usage-v11.md)（多智能体 chain 编排）· [usage-v16.md](./usage-v16.md)（SAM2 图片/视频编辑 + 生成式编辑）· [usage-v17.md](./usage-v17.md)（会话资产/断点续跑/RAG/五维模板/嵌入/重试）· [usage-v19.md](./usage-v19.md)（视频链接二创 rework）

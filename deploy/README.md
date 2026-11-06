@@ -19,6 +19,12 @@
 ## Docker 用法（本机 = full 档演示）
 
 ```bash
+# ── 一键安装（v21 M2）：探测 → 选档 → 起容器 → 冒烟 ──
+bash deploy/install.sh                          # doctor 推荐档，默认 :9400，docker
+bash deploy/install.sh --tier full --port 9401  # 指定档/端口
+bash deploy/install.sh --gpu                    # 干净机器额外起 GPU 服务（compose gpu-* profile）
+bash deploy/install.sh --mode conda             # 无 docker：setup_env.sh + 后台 api_server
+
 cd /mnt/disk_sdb/zxy/vidance
 
 # 全量档：容器内 vidance API（host 网络直连宿主 ComfyUI/TTS），挂 9401

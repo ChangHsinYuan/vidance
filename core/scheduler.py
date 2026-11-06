@@ -42,6 +42,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.json')
 DEFAULT_DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'output', 'tasks.sqlite')
 
+
+def _now_iso():
+    """带时区的本地时间 ISO 串（浏览器可正确解析；容器 UTC 环境下不再 8h 偏差）"""
+    return datetime.now().astimezone().isoformat(timespec='seconds')
+
 VALID_STATUSES = ('queued', 'running', 'completed', 'failed', 'cancelled')
 VALID_STAGES = ('queued', 'generating', 'post_processing', 'completed', 'failed')
 
@@ -97,7 +102,7 @@ class TaskQueue:
             from agents.common.tools.config_loader import task_id_for
             task_id = task_id_for((options or {}).get('mode', 'auto'))
         opts = json.dumps(options or {}, ensure_ascii=False)
-        now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+        now = _now_iso()
 
         with self._lock, self._get_conn() as conn:
             conn.execute(
@@ -189,7 +194,7 @@ class TaskQueue:
 
     def save_scout_batch(self, batch_id, topics, candidates, selected=None):
         """保存选题批次记录"""
-        now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+        now = _now_iso()
         with self._get_conn() as conn:
             conn.execute(
                 'INSERT OR REPLACE INTO scout_batches '
@@ -226,10 +231,12 @@ class Scheduler:
         self.max_concurrent = max_concurrent
         self.config = config or load_config()
         self._running_threads = {}
+        self._lock = threading.Lock()
 
     def run(self, poll_interval=5):
         """主调度循环（阻塞）"""
         print(f'  [scheduler] started, max_concurrent={self.max_concurrent}')
+        self._fail_orphans()
         while True:
             self._cleanup_finished()
             running = self.queue.count_by_status('running')
@@ -243,6 +250,33 @@ class Scheduler:
 
             time.sleep(poll_interval)
 
+    def _fail_orphans(self):
+        """启动清扫：status=running 但进程已死的僵尸任务（服务重启/容器重建中断）标记失败。
+
+        按 pid 存活判断——避免误杀另一个 API 实例（8894/9401 共库）正在跑的任务。
+        pid=NULL 的历史僵尸不自动清理（无法判活，人工取消），新任务起 _start_task 已记录 pid。
+        """
+        import os as _os
+        with self.queue._lock, self.queue._get_conn() as conn:
+            rows = conn.execute(
+                "SELECT task_id, pid FROM tasks WHERE status='running'").fetchall()
+            for task_id, pid in rows or []:
+                alive = False
+                try:
+                    if pid:
+                        _os.kill(int(pid), 0)
+                        alive = True
+                except (ValueError, ProcessLookupError, PermissionError):
+                    alive = False
+                except OSError:
+                    alive = True  # pid 存在但无权限（EPERM）= 活着
+                if pid and not alive:
+                    conn.execute(
+                        "UPDATE tasks SET status='failed', error=?, completed_at=? "
+                        "WHERE task_id=? AND status='running'",
+                        ('服务重启中断（原进程已死），请重新提交', _now_iso(), task_id))
+                    print(f'  [scheduler] orphan cleaned: {task_id}')
+
     def _cleanup_finished(self):
         """清理已完成的线程"""
         finished = [tid for tid, t in self._running_threads.items() if not t.is_alive()]
@@ -251,9 +285,9 @@ class Scheduler:
 
     def _start_task(self, task):
         """启动一个任务线程"""
-        now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+        now = _now_iso()
         self.queue.update_task(task['task_id'], status='running', stage='generating',
-                               started_at=now)
+                               started_at=now, pid=os.getpid())
 
         t = threading.Thread(target=self._run_task, args=(task,), daemon=True)
         self._running_threads[task['task_id']] = t
@@ -401,14 +435,14 @@ class Scheduler:
 
             if rc == 0:
                 final_path = os.path.join(self.config['output_dir'], task_id, 'final.mp4')
-                now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+                now = _now_iso()
                 self.queue.update_task(
                     task_id, status='completed', stage='completed',
                     progress=1.0, output=final_path, completed_at=now,
                 )
                 print(f'  [scheduler] completed: {task_id}')
             else:
-                now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+                now = _now_iso()
                 self.queue.update_task(
                     task_id, status='failed', stage='failed',
                     error=f'exit code {rc}', completed_at=now,
@@ -422,14 +456,14 @@ class Scheduler:
                     proc.wait()
             except Exception:
                 pass
-            now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+            now = _now_iso()
             self.queue.update_task(
                 task_id, status='failed', stage='failed',
                 error='timeout (7200s)', completed_at=now,
             )
             print(f'  [scheduler] timeout: {task_id}')
         except Exception as e:
-            now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+            now = _now_iso()
             self.queue.update_task(
                 task_id, status='failed', stage='failed',
                 error=str(e), completed_at=now,
@@ -447,7 +481,7 @@ class Scheduler:
         ctx = opts.get('ctx') or {}
         log_path = os.path.join(self.config['output_dir'], task_id, 'scheduler.log')
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
-        now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+        now = _now_iso()
         self.queue.update_task(task_id, status='running', stage='chain',
                                progress=0.0, started_at=now)
         try:
@@ -462,7 +496,7 @@ class Scheduler:
                 f.write(_json.dumps({k: v for k, v in out.items() if k != 'ctx'},
                                     ensure_ascii=False, indent=2, default=str))
             video = out.get('ctx', {}).get('video')
-            now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+            now = _now_iso()
             if out.get('ok'):
                 self.queue.update_task(task_id, status='completed', stage='completed',
                                        progress=1.0, output=video, completed_at=now)
@@ -474,7 +508,7 @@ class Scheduler:
                                        error=err, completed_at=now)
                 print(f'  [scheduler] chain failed: {task_id} — {err}')
         except Exception as e:
-            now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+            now = _now_iso()
             self.queue.update_task(task_id, status='failed', stage='failed',
                                    error=str(e), completed_at=now)
             print(f'  [scheduler] chain error: {task_id} — {e}')

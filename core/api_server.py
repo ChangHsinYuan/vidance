@@ -141,6 +141,90 @@ def startup():
     print(f'  [api] scheduler started (max_concurrent=1)')
 
 
+@app.get('/api/doctor')
+def api_doctor():
+    """v21 M0 资源探测：GPU/端口/conda/磁盘/外网 → profile JSON + 推荐档"""
+    from core.doctor import run_doctor
+    return run_doctor()
+
+
+# ── v21 M3：版本 / 设置 / 清理 / 失败自诊断 ──
+def _version_str():
+    root = os.path.join(os.path.dirname(__file__), '..')
+    try:
+        with open(os.path.join(root, 'VERSION'), encoding='utf-8') as f:
+            return f.read().strip() or '0.0.0'
+    except Exception:
+        return '0.0.0'
+
+
+@app.get('/api/version')
+def api_version():
+    """v21 M3/M4：语义化版本（VERSION 文件）+ 运行环境"""
+    import platform
+    return {'version': _version_str(), 'python': platform.python_version(),
+            'tier': load_config().get('tier', 'full')}
+
+
+@app.get('/api/settings')
+def api_settings():
+    """输出目录 / 磁盘余量 / 任务目录数 / 清理保留数（v21 M3）"""
+    import shutil as _sh
+    cfg = load_config()
+    out_dir = cfg.get('output_dir', 'output')
+    free_gb = n_dirs = 0
+    try:
+        free_gb = round(_sh.disk_usage(out_dir).free / 1024 ** 3, 1)
+    except Exception:
+        pass
+    try:
+        n_dirs = sum(1 for d in os.listdir(out_dir) if os.path.isdir(os.path.join(out_dir, d)))
+    except Exception:
+        pass
+    return {'output_dir': out_dir, 'disk_free_gb': free_gb, 'task_dir_count': n_dirs,
+            'cleanup_keep': (cfg.get('cleanup') or {}).get('keep', 10),
+            'version': _version_str()}
+
+
+class SettingsIn(BaseModel):
+    cleanup_keep: Optional[int] = None
+
+
+@app.post('/api/settings')
+def api_settings_post(body: SettingsIn):
+    """改清理策略（cleanup.keep，1-200），落 config.local.json（有则）否则 config.json"""
+    if body.cleanup_keep is not None:
+        if not 1 <= body.cleanup_keep <= 200:
+            raise HTTPException(status_code=400, detail='cleanup_keep 须在 1-200')
+        from agents.common.tools.config_loader import save_config
+        save_config({'cleanup': {'keep': int(body.cleanup_keep)}})
+    cfg = load_config()
+    return {'ok': True, 'cleanup_keep': (cfg.get('cleanup') or {}).get('keep', 10)}
+
+
+@app.post('/api/clean')
+def api_clean(body: dict = None):
+    """按 mtime 清旧任务目录（保护 queued/running），keep 缺省读 config cleanup.keep"""
+    keep = (body or {}).get('keep') or (load_config().get('cleanup') or {}).get('keep', 10)
+    keep = int(keep)
+    protected = {t['task_id'] for t in queue.list_tasks(limit=200)
+                 if t.get('status') in ('queued', 'running')}
+    from core.cleanup import clean_task_dirs
+    r = clean_task_dirs(keep=keep, output_dir=load_config().get('output_dir', 'output'),
+                        protected_ids=protected)
+    return {'message': f"清理 {len(r['removed'])} 个旧任务，保留 {keep} 个"
+                       + (f"，保护 {len(r['skipped'])} 个运行中" if r['skipped'] else ''),
+            **r}
+
+
+def _with_hints(task):
+    """failed 任务附加 diagnose 提示（v21 M3），error 原文不动"""
+    if isinstance(task, dict) and task.get('status') == 'failed' and task.get('error'):
+        from core.diagnose import diagnose
+        task['hints'] = diagnose(task['error'])
+    return task
+
+
 @app.get('/api/health')
 def health():
     cfg = load_config()
@@ -207,7 +291,7 @@ def list_tasks(
     limit: int = Query(50, le=200),
 ):
     tasks = queue.list_tasks(status=status, limit=limit)
-    return {'tasks': tasks, 'count': len(tasks)}
+    return {'tasks': [_with_hints(t) for t in tasks], 'count': len(tasks)}
 
 
 def _dismissed_names():
@@ -315,7 +399,7 @@ def get_task(task_id: str):
     task = queue.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail='Task not found')
-    return task
+    return _with_hints(task)
 
 
 @app.get('/api/tasks/{task_id}/preview')
@@ -1792,9 +1876,18 @@ TOOLS = [
          {'key': '--k', 'type': 'number', 'desc': '检索条数（默认 5）'},
          {'key': '--force', 'type': 'flag', 'desc': '强制重建索引'},
      ]},
-    {'name': 'clean', 'help': '清理旧任务输出（默认保留最近 10 个，--keep 可改）',
+    {'name': 'clean', 'help': '清理旧任务输出（默认保留最近 10 个，--keep 可改；运行中任务受保护）',
      'params': [
          {'key': '--keep', 'type': 'number', 'desc': '保留最近 N 个（默认 10）'},
+     ]},
+    {'name': 'init', 'help': 'v21 配置向导：LLM key/网关、音色、输出目录、清理策略（写 config；--show 只看）',
+     'params': [
+         {'key': '--llm-url', 'type': 'text', 'desc': 'LLM 网关地址'},
+         {'key': '--llm-key', 'type': 'text', 'desc': 'LLM API key'},
+         {'key': '--voice', 'type': 'text', 'desc': '默认音色'},
+         {'key': '--output-dir', 'type': 'text', 'desc': '输出根目录'},
+         {'key': '--cleanup-keep', 'type': 'number', 'desc': '清理保留任务数（1-200）'},
+         {'key': '--show', 'type': 'bool', 'desc': '只看当前配置（key 打码）'},
      ]},
     {'name': 'help', 'help': '列出全部 / 命令', 'params': []},
 ]
@@ -2252,19 +2345,30 @@ def tool_dispatch(name: str, req: ToolRequest):
         return {'message': f'已索引 {len(docs)} 个文档', 'docs': docs, 'help_lines': lines}
     if name == 'clean':
         keep = int(flags.get('keep', 10))
-        import glob as _glob
-        out_root = os.path.join(os.path.dirname(__file__), '..', 'output')
-        dirs = sorted(_glob.glob(os.path.join(out_root, '2*')), key=os.path.getmtime, reverse=True)
-        to_del = dirs[keep:]
-        removed = []
-        for d in to_del:
-            try:
-                import shutil as _sh
-                _sh.rmtree(d)
-                removed.append(os.path.basename(d))
-            except Exception as e:
-                print(f'  ⚠ clean failed {d}: {e}')
-        return {'message': f'清理 {len(removed)} 个旧任务，保留 {keep} 个', 'removed': removed}
+        protected = {t['task_id'] for t in queue.list_tasks(limit=200)
+                     if t.get('status') in ('queued', 'running')}
+        from core.cleanup import clean_task_dirs
+        r = clean_task_dirs(keep=keep, output_dir=load_config().get('output_dir', 'output'),
+                            protected_ids=protected)
+        return {'message': f"清理 {len(r['removed'])} 个旧任务，保留 {keep} 个"
+                           + (f"，保护 {len(r['skipped'])} 个运行中" if r['skipped'] else ''),
+                **r}
+
+    # ── init（v21 M3 配置向导；非交互 flags，交互模式走 CLI）──
+    if name == 'init':
+        cmd = ['python', 'core/vidance.py', 'init']
+        if flags.get('show'):
+            cmd.append('--show')
+        for k in ('llm-url', 'llm-key', 'voice', 'output-dir'):
+            if flags.get(k):
+                cmd += [f'--{k}', str(flags[k])]
+        if flags.get('cleanup-keep'):
+            cmd += ['--cleanup-keep', str(int(flags['cleanup-keep']))]
+        import subprocess as _sp
+        r = _sp.run(cmd, capture_output=True, text=True, timeout=30)
+        if r.returncode != 0:
+            raise HTTPException(status_code=400, detail=(r.stderr or r.stdout or 'init 失败')[:500])
+        return {'message': (r.stdout or '已写入配置').strip()}
 
     # ── ask（v6 dialog）──
     if name == 'ask':

@@ -15,6 +15,9 @@ __pycache__/
 **/__pycache__/
 *.pyc
 start_services.sh
+# 零散大文件（历史安装包/备份 tarball，运行时无人引用）
+chrome-linux64.zip
+t2c-vidance.tar.gz
 deploy/
 # input materials stay on host (bind-mounted in compose)
 input/

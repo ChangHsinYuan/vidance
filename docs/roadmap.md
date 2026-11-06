@@ -1,7 +1,7 @@
 # Vidance 总览与路线图
 
 > 视频生成 agent 系统：opencode 当"制片人"编排本地生图/生视频/生3D/语音引擎，从一句概念产出有声短片。
-> 原始规划稿见 `archive/roadmap_origin.md`。**已实现**：v0-v10 + t2c + v11 多智能体（原 v13）+ v12 三排正交 M1-M2（原 v17）+ v13 轻量化无模型四线：营销号/SVG/PPT/Blender 3D（原 v15）+ v15 LLM 生成 PPT（原 v20）+ v16 视频处理编辑（原 v19）+ v17 开源整合关版（原 v12）+ v18 长视频质量关版（原 v14，M1-M4 全绿 2026-10-31）+ v19 视频链接二创关版（原 v16，2026-11-02）；**待开发**：v14 社交媒体（原 v11，🔗 已移交队友）/ v20 生成中审核（原 v21）/ v21 交付形态（原 v18）。（2026-09-26 重排：已完成块前移，未完成块后移；2026-09-30 新增 v19-v21；2026-10-01 二次重排：PPT/视频编辑前移至 v14 后、生成中审核插至交付形态前；2026-10-01 晚三调：v13/v15 关版 ✅（v15 条目移入已实现区，待开发条目前移）、v14 移交队友——括号内为原号，v12/v14/v16 指最初编号，v18-v21 指 2026-09-30 编号，方便对照 commit；2026-10-30 四调：v17 开源整合关版 ✅（M1-M7 全绿，条目就地标记）；2026-11-02 五调：v19 二创关版 ✅）
+> 原始规划稿见 `archive/roadmap_origin.md`。**已实现**：v0-v10 + t2c + v11 多智能体（原 v13）+ v12 三排正交 M1-M2（原 v17）+ v13 轻量化无模型四线：营销号/SVG/PPT/Blender 3D（原 v15）+ v15 LLM 生成 PPT（原 v20）+ v16 视频处理编辑（原 v19）+ v17 开源整合关版（原 v12）+ v18 长视频质量关版（原 v14，M1-M4 全绿 2026-10-31）+ v19 视频链接二创关版（原 v16，2026-11-02）+ v21 交付形态关版 1.0.0（原 v18，M0-M4 全绿 2026-11-05：doctor/五档/install.sh/init 向导/诊断 hints/清理/VERSION+CHANGELOG+用户手册+SKILL demo）+ v14 社交媒体 ✅（原 v11，🔗 队友仓交付 2026-11-05，未合入本仓库）；**待开发**：无（全部里程碑收官）。（2026-09-26 重排：已完成块前移，未完成块后移；2026-09-30 新增 v19-v21；2026-10-01 二次重排：PPT/视频编辑前移至 v14 后、生成中审核插至交付形态前；2026-10-01 晚三调：v13/v15 关版 ✅（v15 条目移入已实现区，待开发条目前移）、v14 移交队友——括号内为原号，v12/v14/v16 指最初编号，v18-v21 指 2026-09-30 编号，方便对照 commit；2026-10-30 四调：v17 开源整合关版 ✅（M1-M7 全绿，条目就地标记）；2026-11-02 五调：v19 二创关版 ✅；2026-11-04 六调：v20 生成中审核关版 ✅（条目移入已实现区）；2026-11-05 七调：v21 交付形态关版 1.0.0 ✅（M0-M4 全绿，条目移入已实现区）；2026-11-05 八调：v14 社交媒体队友仓交付 ✅（不合入本仓，条目标注收官））
 
 ## 1. 定位
 
@@ -360,7 +360,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 <!-- ═══ 以下 🎯 待开发 ═══ -->
 
-### v14 — 接入社交媒体（原 v11）（🔗 移交队友，暂不在本仓排期）
+### v14 — 接入社交媒体（原 v11）（✅ 队友仓交付 2026-11-05，未合入本仓库）
 
 **目标**：把成片一键分发到社交平台 / IM，任务完成可推送通知、可在 IM 里用 `/` 命令触发。
 
@@ -374,7 +374,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 **里程碑**：M1 Notifier 抽象+企微 → M2 飞书/钉钉+factory → M3 任务完成自动通知 → M4 回调网关 + 至少一个发布渠道
 
-> **🔗 移交说明**：v14（社交媒体/IM 网关）已移交队友负责，本仓暂停排期；`utils/notify/` 目录骨架已预留（base/factory 接口），队友接手时按上述里程碑推进即可。本仓后续聚焦 v16 视频处理与编辑。
+> **🔗 移交说明（2026-11-05 更新）**：v14（社交媒体/IM 网关）已由队友在其仓库交付完成 ✅（M1-M4），按用户决定不合入本仓库，本条目标注收官即结。`utils/notify/` 目录骨架仍预留（base/factory 接口），如需对接队友版网关，实现 Notifier 接口接入即可。
 
 **参考**：`lark-oapi`（飞书官方 SDK）、wechaty；BigBanana 多候选决策点；原 v9-design.md。
 
@@ -528,7 +528,7 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 **方案定稿（2026-11-03，用户拍板）**：**不推翻现有代码，旁挂 + 开关**——`config.json` 新增 `v20_live_audit` 节（`enabled: false` 默认关）+ CLI `--live-audit` 可覆盖；**关 = 原路径一字节不变，开 = 生成调用外套 wrapper**。现有审片（light/full）保留为终审，粗审只是前面多一道止损闸（并联非替换）。调研实证（2026-11-03 explore）：ComfyClient 纯 HTTP 轮询无 WS/interrupt 代码，但 **ComfyUI 服务端原生支持** WS 推流采样中的 latent 预览帧（`--preview-method` 启动参数，latent2rgb 免装模型）+ `POST /interrupt` 立即终止——早停无需自研；比原稿"改 workflow 拆 KSampler"路线侵入小得多。
 
-**里程碑**（2026-11-04 M0-M3 全绿）：M0 spike ✅（start_services.sh wan 加 `--preview-method latent2rgb`；WS 实测 8 张预览帧、step 8/20 interrupt 立即生效省时 ~60%、qwen3.8 读预览帧可判主体场景）→ M1 工具化 ✅（`agents/generator/tools/comfy_preview.py` PreviewListener/`interrupt_if_running`（查 /queue 校验归属防误杀 RIFE）/`live_audit_patch` 实例级补丁（generate_i2v 内部 self.queue_prompt 命中实例属性，生成代码零改动）+ `agents/audit/tools/live_auditor.py` LiveAuditor（节流 ≤3 次/镜、step≥4 且帧 std≥40 才发 API、异常放行不阻塞）+ 24 项单测；踩坑：粗审默认走 `models['script']`（切到 deepseek-v4-flash-ascend1 后无多模态 400）→ 显式 `models['review']`）→ M2 pipeline 接线 ✅（EarlyStop→continue 换 seed 重生成；同题 3 镜对比 OFF 895.8s vs ON 929.2s（**+3.7%**，9 次粗审全藏生成窗口）；meta 每镜 live_audit 落库）→ M3 前端 ✅（粗审事件落盘 task_dir → `GET /api/tasks/{id}/preview` → UI 任务卡实时显示预览帧+verdict；开关 API 通道 scheduler/TOOLS/flags 透传；全链实跑验证：任务 auto_20261104_153353 雪夜古镇 12s/3 镜，3 镜 × 3 次粗审全 pass score 8，UI 生成中实时刷新预览帧+审核意见 ✓）。
+**里程碑**（2026-11-04 M0-M3 全绿）：M0 spike ✅（start_services.sh wan 加 `--preview-method latent2rgb`；WS 实测 8 张预览帧、step 8/20 interrupt 立即生效省时 ~60%、qwen3.8 读预览帧可判主体场景）→ M1 工具化 ✅（`agents/generator/tools/comfy_preview.py` PreviewListener/`interrupt_if_running`（查 /queue 校验归属防误杀 RIFE）/`live_audit_patch` 实例级补丁（generate_i2v 内部 self.queue_prompt 命中实例属性，生成代码零改动）+ `agents/audit/tools/live_auditor.py` LiveAuditor（节流 ≤3 次/镜、step≥4 且帧 std≥40 才发 API、异常放行不阻塞）+ 24 项单测；踩坑：粗审默认走 `models['script']`（切到 deepseek-v4-flash-ascend1 后无多模态 400）→ 显式 `models['review']`）→ M2 pipeline 接线 ✅（EarlyStop→continue 换 seed 重生成；同题 3 镜对比 OFF 895.8s vs ON 929.2s（**+3.7%**，9 次粗审全藏生成窗口）；meta 每镜 live_audit 落库）→ M3 前端 ✅（粗审事件落盘 task_dir → `GET /api/tasks/{id}/preview` → UI 任务卡实时显示预览帧+verdict；开关 API 通道 scheduler/TOOLS/flags 透传；全链实跑验证：任务 auto_20261104_153353 雪夜古镇 12s/3 镜，3 镜 × 3 次粗审全 pass score 8，UI 生成中实时刷新预览帧+审核意见 ✓）。**补验（2026-11-05）**：3 任务 15 次自然粗审全 pass——latent2rgb 预览判不了语义细节（文字语言/人数），粗审只挡大崩坏；同批终审实抓 score 2（一人韩文横幅 ≠ 五人汉字横幅），实证粗审/终审分工；light 审片不重试系既有设计（并行提速取舍）。
 
 **诚实缺口**：早期止损全链自然触发样本未遇（实验题全 pass），fail→interrupt→重生成由 spike（interrupt 实测）+ 单测（判定/接线）合成覆盖。
 
@@ -538,16 +538,16 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
-### v21 — 面向最终用户的交付形态（原 v18，🎯 规划，2026-09-26 立项）
+### v21 — 面向最终用户的交付形态（原 v18，✅ 已完成 2026-11-05：M0-M4 全绿，版本 1.0.0）
 
 **目标**：从"开发者本地系统"变成"用户可安装可运行的产品"——先探测本机资源，再按资源分发对应部署档，屏蔽底层细节。
 
 **里程碑草案**：
-- **M0 资源探测**：`core/doctor.py`（GPU 型号/显存/端口占用/conda 环境/磁盘/外网可达性）→ 输出 profile JSON，`vidance doctor` + `/api/doctor`；首次启动自动跑并推荐档
+- **M0 资源探测** ✅（2026-11-05）：`core/doctor.py`（GPU 型号/显存/端口占用/conda 环境/磁盘/外网可达性——HTTPError 4xx 算可达）→ profile JSON，`vidance doctor [--json]` + `GET /api/doctor`；`recommend_tier()` 按显存/卡数阶梯推荐（none<flux 16G<wan 24G<h3 40G<full 4卡）；tests/test_doctor.py 13 项全绿
 - **M1 部署分档** ✅（2026-09-26 改五档落地，见 [deploy-tiers.md](./deploy-tiers.md)、deploy/README.md）：五档阶梯 `none`（无 GPU：svg + fast 爬图，LLM/edge-tts 全走远程接口）/ `flux`（+SDXL/FLUX 生图）/ `wan`（+Wan T2V/I2V+RIFE+auto/quick）/ `h3`（+MiniMax-H3 ref2va+custom/h3shot）/ `full`（全量全家桶）——同一份代码 + `VIDANCE_TIER` 环境变量 + `config/tiers/{档}.json` 覆盖（`agents/common/tools/config_loader.py` 深合并，缺省 full 宿主机零变化）；守卫点 `/api/health` 报档 / `/api/tools` 按档过滤 / tool 分发 400 / CLI require() 退出提示换档；Docker：`deploy/Dockerfile`（API 层 ~2GB：ffmpeg+Noto CJK+playwright/Chromium）+ `deploy/Dockerfile.comfyui`（GPU 模板，模型卷挂不进镜像）+ `deploy/docker-compose.yml`（profiles 五档，API 缺省挂 9400，host 网络直连宿主服务）——本机 full 档演示：`VIDANCE_TIER=full VIDANCE_PORT=9401 docker compose -f deploy/docker-compose.yml up -d vidance`
-- **M2 一键安装**：`install.sh` 按 M0 探测选档 → 拉镜像/建环境 → start_services 接管 → 冒烟自检（复用 start_services.sh test）
-- **M3 面向用户细节**：config 向导（首次填 LLM key/选端口）、失败自诊断提示（端口占用/显存不足/外网不通点名到人）、输出目录与清理策略 UI 化、版本更新通道
-- **M4 交付包装**：版本号语义化 + `vidance --version`、CHANGELOG、docs/usage/usage.md 按档重写成用户手册；**SKILL demo 随行**——最后最好每个 skill 的 yaml 旁边都有一个成功的 demo（`{skill}.demo.mp4`，出片验收后复制到 yaml 旁，用户翻 SKILL 目录即可看效果样片）
+- **M2 一键安装** ✅（2026-11-05）：`deploy/install.sh [--tier T] [--port N] [--mode docker|conda] [--gpu] [--no-smoke]`——`core/doctor.py --json` 探测（GPU/磁盘/推荐档）→ 端口占用预检（ss）→ docker 路径（镜像缺则 build + compose up，tier/port 环境变量注入；`--gpu` 追加 compose gpu-* profile 起 GPU 服务）/ conda 路径（setup_env.sh + 后台 api_server）→ 冒烟自检（/api/health 轮询 60s + tier/能力清单打印 + WebUI/诊断入口提示）；本机实测两轮（`--tier none --port 9402` 降级档与 `--tier full --port 9402` 全量档全流程绿，默认档路径 doctor 推荐 full 验证 ✓，测试后 9401 容器还原）
+- **M3 面向用户细节** ✅（2026-11-05）：**config 向导** `vidance init`（交互逐项问 LLM key/网关/音色/输出目录/清理保留数，回车保留现值；非交互 `--llm-url/--llm-key/--voice/--output-dir/--cleanup-keep`；`--show` key 打码；写 config.local.json 有则否则 config.json——config_loader 新增 `save_config`/`user_config_path`）+ `/api/tool/init` 分发；**失败自诊断** `core/diagnose.py`（11 条规则：连接拒绝→按端口点名服务+启动命令 / OOM / 401→init / edge-tts 外网→cosy / 磁盘满→clean / 端口占用 / websockets 缺依赖 / ffmpeg / 模型缺失 / 7200s 超时 / 非零退出→scheduler.log；`python core/diagnose.py "报错文本"` CLI 直测）——GET /api/tasks 与 /api/tasks/{id} 对 failed 任务自动附 `hints`（error 原文不动，旧失败任务也生效），UI 失败消息与任务详情浮层显示 💡 提示；**输出目录与清理** `core/cleanup.py`（任务目录判定=含 meta.json/scheduler.log 或 `2*` 时间戳命名——修掉旧 clean 只扫 `2*` 漏 auto_/fast_ 等任务目录的缺口；mtime 新→旧保留 N 个；queued/running 任务目录保护不删；`--dry-run`/`--keep/--output-dir` CLI）+ `/api/clean` + `/api/settings` GET（output_dir/磁盘余量/任务目录数/cleanup_keep/版本）/ POST（cleanup_keep 1-200 落盘）；UI ⚙ 弹层新增「系统」区（版本/磁盘/任务数/保留数输入/执行清理）；**版本通道** 根目录 `VERSION`（1.0.0 语义化）+ `GET /api/version`（version/python/tier）+ UI 系统区显示（更新通道=git pull 手动，见 M4 CHANGELOG）；tests/test_m3_ux.py **24/24**（diagnose 规则 10 + 清理 5 + 版本/配置写回 5 + 端点层 4）
+- **M4 交付包装** ✅（2026-11-05）：`vidance --version`（读根目录 VERSION，1.0.0 语义化）+ `CHANGELOG.md`（v0→v21 能力代际全收录）+ `docs/usage/usage.md` 顶部新增「按档位快速上手」用户手册节（五档 × 你的机器/能干什么/首条命令 + init 向导/诊断/前端入口，开发者参考保留在后）；**SKILL demo 随行**——`SKILL/templates/{tpl}.demo.mp4` ×4（cinematic/documentary/anime90s/guofeng，各 auto --template --duration 4 实跑出片复制至 yaml 旁）+ `SKILL/commands/auto/healing.demo.mp4`（--skill healing 12s）+ `SKILL/commands/blender3d/showcase.demo.mp4`（--skill showcase），与既有 fast/{marketing,narrative}.demo.mp4 惯例对齐
 
 **依赖**：v13 轻量化（原 v15）是 lite 档地基；v11 多智能体（原 v13）agent API 是网关/机器人接入面。
 

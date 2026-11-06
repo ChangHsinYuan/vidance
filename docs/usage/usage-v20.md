@@ -50,6 +50,15 @@ CLI 开关优先于 config；任务卡 meta 的每镜 `live_audit` 字段记录 
 - **M3 全链 UI 实测**（任务 `output/auto_20261104_153353`，雪夜古镇白猫 12s/3 镜，API `live_audit:true` 提交）：3 镜 × 3 次粗审全 pass（score 8，step 4/9/15 采样）；生成中 `GET /api/tasks/{id}/preview` 实时返回 shot/step/verdict/score/reason + 预览帧，UI 任务卡「v20 边生边审」卡片实时刷新 ✓；成片 final.mp4 正常
 - 早期止损（fail→interrupt→重生成）路径：spike 实测 interrupt + 单测覆盖判定/重生成接线；自然触发 fail 的全链样本未遇（狐狸/古镇题全 pass）
 
+## 补验（2026-11-05，容器/宿主双环境）
+
+- **fail 触发仍未自然命中**：3 个易崩坏概念任务（双手十指相扣传硬币 / 五人举汉字横幅 / 雪夜古镇复测），共 **15 次自然粗审全 pass**——latent2rgb 低清预览帧上审核员对语义细节（文字语言、人数）不敏感，粗审只对"主体消失/黑屏/构图崩坏"这类大错敏感
+- **终审抓到真实失败**（任务 `auto_20261105_170406` shot 3，score **2**）：需求"五人举汉字横幅"，实际"一人站韩文横幅前、无人群"——高清终审帧才能判语义细节，实证已知限制 3/4 的分工边界：**粗审挡大崩坏，语义/文字级错误靠终审**
+- **light 审片不重试（设计取舍，非 v20 问题）**：light 模式审片与下一镜生成并行（占位 score=8，真实分末尾回填 pipeline.py:417-423），fail 不触发重生成，score 2 的镜头直接进成片——重试仅在全量审片路径（pipeline.py:1119-1130）；若需 fail 兜底，用全量审片或提高粗审分辨率（成本+3.7% 基线会涨）
+- **color.enabled=false 验证 ✓**：成片 `lut: None`，成片=预览原始生成色（补验 3 任务全部无 LUT）；h264/yuv420p 照常
+- **容器全依赖教训**：8894（宿主）与 9401（容器）共用 `output/tasks.sqlite`，任务可能被任一调度器抢跑——容器镜像必须装全依赖（补验首任务 `auto_20261105_151201` 因容器缺 `websockets` shot1 即失败）；deploy/Dockerfile 已补 websockets 并拆层（chromium 大下载层与增量 pip 层分离）
+- **doctor 端点验证**：宿主 8894 `GET /api/doctor` → recommended_tier=full（4×RTX4090）；容器 9401 → none（容器无 GPU，如实上报）
+
 ## 已知限制
 
 1. 8189 需 `--preview-method latent2rgb`（start_services.sh wan 已加；别的实例没加）

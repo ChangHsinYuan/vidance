@@ -266,6 +266,105 @@ def cmd_rework(args):
     return {'task_id': os.path.basename(out), 'output_path': final}
 
 
+def cmd_doctor(args):
+    """doctor 子命令（v21 M0）：资源探测 + 档位推荐"""
+    from core.doctor import run_doctor, print_report
+    profile = run_doctor()
+    if args.json:
+        print(json.dumps(profile, ensure_ascii=False, indent=1))
+    else:
+        print_report(profile)
+
+
+def _mask(v):
+    v = str(v or '')
+    return (v[:4] + '****' + v[-4:]) if len(v) > 8 else ('****' if v else '(未设)')
+
+
+def _version_str():
+    """语义化版本（根目录 VERSION 文件，v21 M4）"""
+    try:
+        with open(os.path.join(os.path.dirname(__file__), '..', 'VERSION'),
+                  encoding='utf-8') as f:
+            return f.read().strip() or '0.0.0'
+    except Exception:
+        return '0.0.0'
+
+
+def cmd_init(args):
+    """init 子命令（v21 M3）：配置向导 — LLM key/网关、音色、输出目录、清理策略
+
+    交互模式（无参数）：逐项提问，回车保留现值；非交互：--llm-key/--llm-url/--port/
+    --voice/--output-dir/--cleanup-keep 任一给出即只写这些项。--show 只读当前配置。
+    写入 config.local.json（已存在则），否则 config.json。
+    """
+    from agents.common.tools.config_loader import load_config, save_config, user_config_path
+    import getpass
+    cur = load_config()
+    llm = cur.get('llm') or {}
+    if args.show:
+        print(f'llm.base_url = {llm.get("base_url", "(未设)")}')
+        print(f'llm.api_key  = {_mask(llm.get("api_key"))}')
+        print(f'llm.models   = {llm.get("models")}')
+        print(f'tts.default_voice = {cur.get("tts", {}).get("default_voice", "(未设)")}')
+        print(f'output_dir   = {cur.get("output_dir", "(未设)")}')
+        print(f'cleanup.keep = {(cur.get("cleanup") or {}).get("keep", 10)}')
+        print(f'配置文件      = {user_config_path()}')
+        return
+
+    upd = {}
+    if args.llm_url:
+        upd.setdefault('llm', {})['base_url'] = args.llm_url
+    if args.llm_key:
+        upd.setdefault('llm', {})['api_key'] = args.llm_key
+    if args.voice:
+        upd.setdefault('tts', {})['default_voice'] = args.voice
+    if args.output_dir:
+        upd['output_dir'] = os.path.abspath(args.output_dir)
+    if args.cleanup_keep is not None:
+        if not 1 <= args.cleanup_keep <= 200:
+            sys.exit('✗ cleanup-keep 须在 1-200')
+        upd['cleanup'] = {'keep': args.cleanup_keep}
+
+    interactive = not upd
+    if interactive:
+        print('== Vidance 配置向导（回车 = 保留现值；写入 %s）==' % user_config_path())
+        print(f'1) LLM 网关 [{llm.get("base_url", "")}]')
+        v = input('   base_url: ').strip()
+        if v:
+            upd.setdefault('llm', {})['base_url'] = v
+        print(f'2) LLM API key [{_mask(llm.get("api_key"))}]')
+        v = getpass.getpass('   api_key (输入不回显): ').strip()
+        if v:
+            upd.setdefault('llm', {})['api_key'] = v
+        print(f'3) 默认音色 [{cur.get("tts", {}).get("default_voice", "edge-moe")}]'
+              '（edge-xiaoxiao / cosy-default / cosy-<克隆名>…）')
+        v = input('   voice: ').strip()
+        if v:
+            upd.setdefault('tts', {})['default_voice'] = v
+        print(f'4) 输出目录 [{cur.get("output_dir", "output")}]')
+        v = input('   output_dir: ').strip()
+        if v:
+            upd['output_dir'] = os.path.abspath(v)
+        print(f'5) 清理保留任务数 [{(cur.get("cleanup") or {}).get("keep", 10)}]')
+        v = input('   keep: ').strip()
+        if v.isdigit():
+            upd['cleanup'] = {'keep': max(1, min(200, int(v)))}
+
+    if not upd:
+        print('未改动任何配置')
+        return
+    save_config(upd)
+    print('✅ 已写入 %s：' % user_config_path())
+    for k, v in upd.items():
+        if isinstance(v, dict):
+            for k2, v2 in v.items():
+                print(f'   {k}.{k2} = {_mask(v2) if "key" in k2 else v2}')
+        else:
+            print(f'   {k} = {v}')
+    print('提示：重启 API 服务生效（./start_services.sh restart api 或重建容器）')
+
+
 def cmd_concat(args):
     """concat 子命令：多视频拼接"""
     clips = args.videos
@@ -948,6 +1047,8 @@ def build_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
+    parser.add_argument('--version', action='version',
+                        version='Vidance ' + _version_str() + '（v21 交付形态）')
     sub = parser.add_subparsers(dest='command', required=True, metavar='<command>')
 
     # ── 共享参数组 ──
@@ -1047,6 +1148,22 @@ def build_parser():
     p_concat.add_argument('--crossfade-duration', type=float, default=0.5,
                           help='交叉淡化时长（秒，仅 --transition crossfade 时生效）')
     p_concat.set_defaults(func=cmd_concat)
+
+    # ── doctor 子命令（v21 M0：资源探测 + 档位推荐） ──
+    p_doctor = sub.add_parser('doctor',
+                              help='资源探测（v21）：GPU/端口/conda/磁盘/外网 → 推荐部署档')
+    p_doctor.add_argument('--json', action='store_true', help='输出 profile JSON（供脚本用）')
+    p_doctor.set_defaults(func=cmd_doctor)
+
+    # ── init 子命令（v21 M3：配置向导） ──
+    p_init = sub.add_parser('init', help='配置向导（v21）：LLM key/网关、音色、输出目录、清理策略')
+    p_init.add_argument('--llm-url', default=None, help='LLM 网关（如 https://api.llm.ustc.edu.cn/v1）')
+    p_init.add_argument('--llm-key', default=None, help='LLM API key')
+    p_init.add_argument('--voice', default=None, help='默认音色（edge-moe / cosy-default …）')
+    p_init.add_argument('--output-dir', default=None, help='输出根目录')
+    p_init.add_argument('--cleanup-keep', type=int, default=None, help='清理保留任务数（1-200）')
+    p_init.add_argument('--show', action='store_true', help='只看当前配置（key 打码）')
+    p_init.set_defaults(func=cmd_init)
 
     # ── rework 子命令（v19：视频链接二创） ──
     p_rework = sub.add_parser('rework', parents=[output_parent],

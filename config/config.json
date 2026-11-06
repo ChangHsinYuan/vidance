@@ -598,5 +598,8 @@
     "max_reviews": 3,
     "min_step": 4,
     "timeout": 60
+  },
+  "cleanup": {
+    "keep": 10
   }
 }

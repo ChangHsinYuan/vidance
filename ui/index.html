@@ -407,6 +407,18 @@
   <div id="model-modal">
     <div class="modal-box">
       <h3>模型提供商</h3>
+      <div class="section" id="sys-section">
+        <h4>系统（v21）</h4>
+        <div id="sys-info" style="font-size:11px;color:var(--fg-dim);line-height:1.7">加载中…</div>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:6px">
+          <span style="font-size:11px;color:var(--fg-dim)">清理保留</span>
+          <input id="sys-keep" type="number" min="1" max="200" style="width:52px;font-size:11px">
+          <span style="font-size:11px;color:var(--fg-dim)">个任务</span>
+          <button class="btn-secondary btn-sm" onclick="saveKeep()">保存</button>
+          <button class="btn-secondary btn-sm" onclick="runClean()">执行清理</button>
+        </div>
+        <div id="sys-status" style="font-size:11px;color:var(--fg-dim);margin-top:4px"></div>
+      </div>
       <div class="section">
         <h4>任务分配</h4>
         <div id="ta***REMOVED***"></div><div id="switch-status" style="font-size:11px;color:#e5534b;margin:2px 2px 6px"></div>
@@ -736,7 +748,9 @@ function updateTaskCard(t) {
     const v20el = document.getElementById('v20-' + t.task_id);
     if (v20el) v20el.style.display = 'none';
     if (t.status === 'completed') addVideoCard(t);
-    else addBot(`<b>✗ 任务失败</b> ${escapeHtml(t.task_id)}：${escapeHtml(t.error||'')}`);
+    else addBot(`<b>✗ 任务失败</b> ${escapeHtml(t.task_id)}：${escapeHtml(t.error||'')}` +
+      (t.hints && t.hints.length ? '<div style="font-size:11px;color:var(--fg-dim);margin-top:4px">' +
+        t.hints.map(h => '💡 ' + escapeHtml(h)).join('<br>') + '</div>' : ''));
   }
   // v20 生成中审核：running 时轮询粗审 verdict + 预览帧
   if (t.status === 'running') pollV20(t.task_id);
@@ -1574,6 +1588,7 @@ let discoveredModels = [];
 
 async function openModelModal() {
   probeProviders();
+  loadSysSection();
   try {
     const r = await fetch('/api/model-providers');
     const d = await r.json();
@@ -1583,6 +1598,41 @@ async function openModelModal() {
   } catch (e) { modelProviders = []; modelActive = {}; }
   renderModelModal();
   $('#model-modal').classList.add('show');
+}
+
+async function loadSysSection() {
+  const el = document.getElementById('sys-info');
+  try {
+    const r = await fetch('/api/settings');
+    const d = await r.json();
+    el.innerHTML = `版本 <b style="color:var(--fg)">${d.version}</b>` +
+      ` · 磁盘余量 <b style="color:var(--fg)">${d.disk_free_gb}GB</b> · 任务目录 ${d.task_dir_count} 个` +
+      `<br>输出目录 ${d.output_dir}`;
+    document.getElementById('sys-keep').value = d.cleanup_keep;
+  } catch (e) { el.textContent = '读取失败（API 未连通）'; }
+}
+
+async function saveKeep() {
+  const st = document.getElementById('sys-status');
+  const keep = parseInt(document.getElementById('sys-keep').value, 10);
+  try {
+    const r = await fetch('/api/settings', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({cleanup_keep: keep})});
+    const d = await r.json();
+    st.textContent = d.ok ? `✓ 已保存：保留 ${d.cleanup_keep} 个` : (d.detail || '保存失败');
+  } catch (e) { st.textContent = '保存失败：' + e; }
+}
+
+async function runClean() {
+  const st = document.getElementById('sys-status');
+  if (!confirm('按当前保留数清理旧任务输出目录？（运行中任务受保护）')) return;
+  st.textContent = '清理中…';
+  try {
+    const r = await fetch('/api/clean', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const d = await r.json();
+    st.textContent = d.message || JSON.stringify(d);
+    loadSysSection();
+  } catch (e) { st.textContent = '清理失败：' + e; }
 }
 
 function closeModelModal() { $('#model-modal').classList.remove('show'); }
@@ -1988,6 +2038,7 @@ async function openTaskOverlay(id) {
            <h3 style="margin:0"><span class="pill ${t.status}">${t.status}</span> ${escapeHtml((t.concept||id).slice(0,40))}</h3>
            <button class="log-x" onclick="closeTaskOverlay()">✕</button></div>
          <div class="meta" style="margin:6px 0">阶段: ${escapeHtml(t.stage||'')}　进度: ${Math.round((t.progress||0)*100)}%${t.error?'　错误: '+escapeHtml(t.error):''}</div>
+         ${t.hints && t.hints.length ? '<div class="meta" style="color:var(--fg-dim)">' + t.hints.map(h => '💡 ' + escapeHtml(h)).join('<br>') + '</div>' : ''}
          <div class="meta">${escapeHtml(id)}</div>${vid}${tr}
          <h4 style="margin:12px 0 0">详细日志</h4><pre class="ov-log" id="ov-log-pre">${escapeHtml(String(log).slice(-6000))}</pre>`;
       const pre = document.getElementById('ov-log-pre');
