@@ -36,9 +36,32 @@ VIDANCE_TIER=none docker compose -f deploy/docker-compose.yml up -d vidance
 curl http://127.0.0.1:9400/api/health      # → "tier": "none"，capabilities.generators=[svg,fast]
 ```
 
-- **API 镜像** `deploy/Dockerfile`（python:3.11-slim + ffmpeg + Noto CJK + playwright/Chromium，~2GB）：API + svg + fast 爬图开箱即用
+- **API 镜像** `deploy/Dockerfile`（python:3.11-slim + ffmpeg + Noto CJK + playwright/Chromium）：API + svg + fast 爬图开箱即用
 - **产出**：容器 `/app/output` 卷挂宿主 `output/`（统一产出目录不变）
 - **配置**：容器 `/app/config` 卷挂宿主 `config/`（LLM key/tier 定义随卷进容器；改档不用重 build）
+
+## 镜像与离线交付（2026-11-06）
+
+> **五档 ≠ 五镜像**：全档共用一个 `vidance-api:latest`，档位由 `VIDANCE_TIER` 环境变量 + `config/tiers/*.json` 决定（见上）。镜像 tag 只有三个衍生语义：
+
+| tag | 说明 |
+|-----|------|
+| `vidance-api:latest` | 主镜像（必装），`full` 是它的别名 |
+| `vidance-api:rag` | + CPU torch/transformers/faiss（仅 RAG 小说检索增强需要，可选） |
+| `vidance-api:update` | 开发热更新薄镜像（只叠代码），交付可不带 |
+| `vidance-comfyui:latest` | GPU 服务镜像（~10GB），干净机器 `--gpu` profile 时按需 build |
+
+**离线交付包**（`dist/images/`，gzip 校验过的 docker save 产物，`*.tar.gz` 已 gitignore）：
+
+```bash
+# 本机导出（重建镜像后）：
+docker save vidance-api:latest | gzip > dist/images/vidance-api-latest.tar.gz
+
+# 目标机导入 + 一键装：
+docker load < vidance-api-latest.tar.gz
+docker tag vidance-api:latest vidance-api:full
+bash deploy/install.sh        # 镜像已在本地，直接跳到起容器+冒烟
+```
 
 ## 干净机器上的 ComfyUI 容器（可选，构建重 ~10GB）
 
