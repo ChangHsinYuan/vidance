@@ -138,65 +138,65 @@
 
 ## v21 全量架构图：入口四通道 · D/G/P 串行 · V/E 游离 · 交付分档（2026-11-06 补充）
 
-> v12 图的时代总结；下面是 v0-v21 全部收官后的最终形态。新增：I 入口层（四通道等价落同一任务队列）、D4/D5 两条新导演（RAG 拆解/链接理解）、G5/G6（一镜到底/首尾帧驱动）、V0 粗审（边生边审）、V5 字幕检测、P7 画面改写、E 编辑层（第二游离层）、X 交付层（五档部署）。
+> v12 图（上）是时代总结；下面是 v0-v21 全部收官后的最终形态。为在各类 markdown 渲染器下对齐，边框与箭头用纯 ASCII（无歧义宽度字符）。新增：I 入口层（四通道等价落同一任务队列）、D4/D5 两条新导演（RAG 拆解/链接理解）、G5/G6（一镜到底/首尾帧驱动）、V0 粗审（边生边审）、V5 字幕检测、P7 画面改写、E 编辑层（第二游离层）、X 交付层（五档部署）。
 
 ```
 概念 / 热点 / 小说 / 链接 / 已有素材
-   │
-   ▼
-┌─ I 入口层（四通道等价，落 TaskQueue 串行）       ┐
-│ I1 CLI  vidance.py 子命令 / make 组合            │
-│ I2 WebUI :8894/ui（画布·预览帧·/ 补全）          │
-│ I3 HTTP API /api/tool/{name}（v9 标准化）        │
-│ I4 t2c  口语→命令（ask 六维核实增强）            │
-└──┬───────────────────────────────────────────────┘
-   │
-   ▼
-┌─ D 导演层（选一，串行第一站）                    ┐
-│ D1 llm    LLM 编剧分镜（auto/quick）             │  产出契约：
-│ D2 manual 人给 --say/--prompt/--script           │  segments[] =
-│ D3 scout  爬虫+LLM 选题（hot）                   │  {text, visual, motion}
-│ D4 novel  RAG 人物卡→剧本拆解（v17/18）          │  + v18 扩展：场景锚·衣橱·
-│ D5 rework 链接理解 STT+多模态（v19）             │    事件线 world.json
-└──┬───────────────────────────────────────────────┘
-   │
-   ▼
-┌─ G 生成层（选一，串行第二站）                    ┐    ┌─ V 审计层（游离，可插拔）                          ┐
-│ G1 wan  T2V/I2V ≤5s镜+RIFE（吃segments）         │    │ V0 粗审 live_audit（v20）：WS latent2rgb           │
-│ G2 fast 爬图/FLUX+KenBurns（营销号）             │ ◀──│    预览帧边生边审，fail 即 interrupt 换 seed       │
-│ G3 svg  LLM写SVG+无头Chromium逐帧                │ ◀──│ V1 审片 5维 <7 回写 prompt 重试 ≤2                 │
-│ G4 h3   参考图+整段prompt→原生音频单镜           │ ◀──│ V2 角色锚 不过降级 flux / 重重建                   │
-│ G5 oneshot 链式I2V末帧回灌（一镜到底 v18）       │ ◀──│ V3 图相关性 爬图/FLUX 删图重生                     │
-│ G6 flf2v VACE 首尾帧驱动（镜间过渡 v18）         │    │ V5 字幕检测 OCR∪白字启发式（v19）                  │
-│ （G4/G5 原生/回灌带声 → P0/P1 自动跳过）         │    └────────────────────────────────────────────────────┘
-└──┬───────────────────────────────────────────────┘
-   │
-   ▼
-┌─ P 后期层（每项独立开关，串行第三站）            ┐  ┌─ E 编辑层（游离工具链，操作已有媒体）              ┐
-│ P0 配音 Narrator：重试→cosy→静音兜底             │  │ E1 SAM2 分割/抠图/打码/换底/YOLO                   │
-│ P1 字幕 TTS时间戳→SRT烧录                        │  │ E2 生成式 FLUX Fill / VACE /                       │
-│ P2 BGM ducking（incompetech 真实曲库）           │  │    Qwen-Edit 指令式（v16.x）                       │
-│ P3 调色 LUT×6（2026-11 起默认关）                │  │ E3 字幕消除 ProPainter（v19）                      │
-│ P4 STT whisper 重对齐（--stt）                   │  │ E4 FunClip 语义裁剪 / B站声音克隆                  │
-│ P5 拼接 compose/concat/时间线 JSON               │  │ （四通道暴露：CLI/agent/API/UI）                   │
-│ P6 特效×8+xfade+关键帧/掩码/贴纸/split           │  └────────────────────────────────────────────────────┘
-│ P7 rework 画面改写 0-5 档（v19 二创）            │
-└──┬───────────────────────────────────────────────┘
-   │
-   ▼
-    final.mp4 + meta.json（sha256 指纹 → 断点续跑/复用）
-   │
-   ▼
-┌─ X 交付层（v21：同一份代码，五档收放）           ┐
-│ doctor 硬件探测荐档 → install.sh 一键装 → 冒烟   │
-│ 五档 VIDANCE_TIER：none→flux→wan→h3→full         │
-│ Docker compose profile / 离线镜像包              │
-│ init 向导 / 失败自诊断 hints（UI 提示）          │
-└──┬───────────────────────────────────────────────┘
+   |
+   v
++-- I 入口层（四通道等价，落 TaskQueue 串行）      +
+| I1 CLI  vidance.py 子命令 / make 组合           |
+| I2 WebUI :8894/ui（画布/预览帧// 补全）          |
+| I3 HTTP API /api/tool/{name}（v9 标准化）       |
+| I4 t2c  口语->命令（ask 六维核实增强）           |
++--+-----------------------------------------------+
+   |
+   v
++-- D 导演层（选一，串行第一站）                   +
+| D1 llm    LLM 编剧分镜（auto/quick）             |  产出契约：
+| D2 manual 人给 --say/--prompt/--script           |  segments[] =
+| D3 scout  爬虫+LLM 选题（hot）                   |  {text, visual, motion}
+| D4 novel  RAG 人物卡->剧本拆解（v17/18）         |  + v18 扩展：场景锚/衣橱/
+| D5 rework 链接理解 STT+多模态（v19）             |    事件线 world.json
++--+-----------------------------------------------+
+   |
+   v
++-- G 生成层（选一，串行第二站）                   +    +-- V 审计层（游离，可插拔）                           +
+| G1 wan  T2V/I2V <=5s镜+RIFE（吃segments）        |    | V0 粗审 live_audit（v20）：WS latent2rgb             |
+| G2 fast 爬图/FLUX+KenBurns（营销号）             | <--|    预览帧边生边审，fail 即 interrupt 换 seed         |
+| G3 svg  LLM写SVG+无头Chromium逐帧                | <--| V1 审片 5维 <7 回写 prompt 重试 <2                   |
+| G4 h3   参考图+整段prompt->原生音频单镜          | <--| V2 角色锚 不过降级 flux / 重重建                     |
+| G5 oneshot 链式I2V末帧回灌（一镜到底 v18）       | <--| V3 图相关性 爬图/FLUX 删图重生                       |
+| G6 flf2v VACE 首尾帧驱动（镜间过渡 v18）         |    | V5 字幕检测 OCR+白字启发式（v19）                    |
+| （G4/G5 原生/回灌带声 -> P0/P1 自动跳过）        |    +------------------------------------------------------+
++--+-----------------------------------------------+
+   |
+   v
++-- P 后期层（每项独立开关，串行第三站）           +  +-- E 编辑层（游离工具链，操作已有媒体）               +
+| P0 配音 Narrator：重试->cosy->静音兜底           |  | E1 SAM2 分割/抠图/打码/换底/YOLO                     |
+| P1 字幕 TTS时间戳->SRT烧录                       |  | E2 生成式 FLUX Fill / VACE /                         |
+| P2 BGM ducking（incompetech 真实曲库）           |  |    Qwen-Edit 指令式（v16.x）                         |
+| P3 调色 LUTx6（2026-11 起默认关）                |  | E3 字幕消除 ProPainter（v19）                        |
+| P4 STT whisper 重对齐（--stt）                   |  | E4 FunClip 语义裁剪 / B站声音克隆                    |
+| P5 拼接 compose/concat/时间线 JSON               |  | （四通道暴露：CLI/agent/API/UI）                     |
+| P6 特效x8+xfade+关键帧/掩码/贴纸/split           |  +------------------------------------------------------+
+| P7 rework 画面改写 0-5 档（v19 二创）            |
++--+-----------------------------------------------+
+   |
+   v
+    final.mp4 + meta.json（sha256 指纹 -> 断点续跑/复用）
+   |
+   v
++-- X 交付层（v21：同一份代码，五档收放）          +
+| doctor 硬件探测荐档 -> install.sh 一键装 -> 冒烟 |
+| 五档 VIDANCE_TIER：none->flux->wan->h3->full     |
+| Docker compose profile / 离线镜像包              |
+| init 向导 / 失败自诊断 hints（UI 提示）          |
++--+-----------------------------------------------+
 ```
 
-- **串行**：D→G→P 数据流不回环（同 v12）。重试闭环在模块内部——V1 不过回写 prompt 同镜重试 ≤2；V0 粗审 fail 直接 interrupt 丢当前镜换 seed（v20 止损，走 WS 预览帧不占终审通道）。
+- **串行**：D->G->P 数据流不回环（同 v12）。重试闭环在模块内部——V1 不过回写 prompt 同镜重试 <2 次；V0 粗审 fail 直接 interrupt 丢当前镜换 seed（v20 止损，走 WS 预览帧不占终审通道）。
 - **并行**：v12 三处不变（D3 多源爬取、P0 逐段 TTS、G1 的 M2 预取）。v20 新增"粗审藏生成窗口"：粗审与下镜生成并行，同题对比仅 +3.7% 时长；light 模式审片 fail 不重试、真实分末尾回填（pipeline :417-423）。
 - **V/E 双游离层**：V 挂生成出口（V0 粗审/V1 审片/V2 角色/V3 相关性/V5 字幕检测），E 吃任何已有媒体（D/G/P 产物或用户素材；SAM2/生成式重绘/字幕消除/克隆）。两层都不占总线，且都经四通道暴露（CLI 子命令 / agent / /api/tool 异步 job / UI 轮询）。
-- **X 交付层与编排正交（v21）**：同一份代码+镜像，`VIDANCE_TIER` 一个变量收放能力（none→flux→wan→h3→full，定义在 config/tiers/*.json）；doctor 探测荐档 → install.sh 起容器+冒烟 → init 向导写 key → 失败自动诊断 hints。编排层对此无感知——档位只决定工具过滤与模型可达性。
+- **X 交付层与编排正交（v21）**：同一份代码+镜像，`VIDANCE_TIER` 一个变量收放能力（none->flux->wan->h3->full，定义在 config/tiers/*.json）；doctor 探测荐档 -> install.sh 起容器+冒烟 -> init 向导写 key -> 失败自动诊断 hints。编排层对此无感知——档位只决定工具过滤与模型可达性。
 - **断点续跑**：final 前每阶段产物落 task_dir + sha256 指纹（v17 M4），中断后 `--resume` 逐阶段跳过、逐镜复用，指纹不符拦截篡改产物。
