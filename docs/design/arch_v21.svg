@@ -1,99 +1,115 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="953" height="1474" viewBox="0 0 953 1474" font-family="-apple-system,&quot;Segoe UI&quot;,&quot;Noto Sans CJK SC&quot;,&quot;PingFang SC&quot;,&quot;Microsoft YaHei&quot;,sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1017" height="1230" viewBox="0 0 1017 1230" font-family="-apple-system,&quot;Segoe UI&quot;,&quot;Noto Sans CJK SC&quot;,&quot;PingFang SC&quot;,&quot;Microsoft YaHei&quot;,sans-serif">
 <defs>
 <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/></marker>
 </defs>
 <rect width="100%" height="100%" fill="#ffffff"/>
 <g id="I">
-<rect x="40" y="44" width="393" height="170" rx="8" fill="#ffffff" stroke="#98a1b3" stroke-width="1.4" stroke-dasharray="8 5"/>
-<path d="M40,52 a8,8 0 0 1 8,-8 h377 a8,8 0 0 1 8,8 v28 h-393 z" fill="#3f4753"/>
-<text x="62" y="69" font-size="16" font-weight="bold" fill="#ffffff">I 入口层（四通道等价，落 TaskQueue 串行）</text>
-<text x="62" y="106" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">I1 CLI  vidance.py 子命令 / make 组合</text>
-<text x="62" y="134" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">I2 WebUI :8894/ui（画布/预览帧// 补全）</text>
-<text x="62" y="162" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">I3 HTTP API /api/tool/{name}（v9 标准化）</text>
-<text x="62" y="190" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">I4 t2c  口语-&gt;命令（ask 六维核实增强）</text>
+<rect x="40" y="40" width="937" height="104" rx="8" fill="#ffffff" stroke="#98a1b3" stroke-width="1.4" stroke-dasharray="8 5"/>
+<path d="M40,48 a8,8 0 0 1 8,-8 h921 a8,8 0 0 1 8,8 v26 h-937 z" fill="#3f4753"/>
+<text x="62" y="63" font-size="16" font-weight="bold" fill="#ffffff">I 入口层（四通道等价，落 TaskQueue 串行）</text>
+<text x="78" y="102" font-size="14" font-weight="bold" fill="#1f2328">I1 CLI</text>
+<text x="78" y="124" font-size="13" fill="#57606a">vidance.py 子命令 / make 组合</text>
+<line x1="285" y1="82" x2="285" y2="142" stroke="#d8dee6" stroke-width="1"/>
+<text x="301" y="102" font-size="14" font-weight="bold" fill="#1f2328">I2 WebUI :8894/ui</text>
+<text x="301" y="124" font-size="13" fill="#57606a">画布 / 预览帧 / “/” 补全</text>
+<line x1="508" y1="82" x2="508" y2="142" stroke="#d8dee6" stroke-width="1"/>
+<text x="524" y="102" font-size="14" font-weight="bold" fill="#1f2328">I3 HTTP API</text>
+<text x="524" y="124" font-size="13" fill="#57606a">/api/tool/{name} 异步 job</text>
+<line x1="732" y1="82" x2="732" y2="142" stroke="#d8dee6" stroke-width="1"/>
+<text x="748" y="102" font-size="14" font-weight="bold" fill="#1f2328">I4 t2c</text>
+<text x="748" y="124" font-size="13" fill="#57606a">口语-&gt;命令（ask 六维核实）</text>
 </g>
 <g id="D">
-<rect x="40" y="278" width="358" height="198" rx="8" fill="#ffffff" stroke="#98a1b3" stroke-width="1.4" stroke-dasharray="8 5"/>
-<path d="M40,286 a8,8 0 0 1 8,-8 h342 a8,8 0 0 1 8,8 v28 h-358 z" fill="#3f4753"/>
-<text x="62" y="303" font-size="16" font-weight="bold" fill="#ffffff">D 导演层（选一，串行第一站）</text>
-<text x="62" y="340" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">D1 llm    LLM 编剧分镜（auto/quick）</text>
-<text x="62" y="368" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">D2 manual 人给 --say/--prompt/--script</text>
-<text x="62" y="396" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">D3 scout  爬虫+LLM 选题（hot）</text>
-<text x="62" y="424" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">D4 novel  RAG 人物卡-&gt;剧本拆解（v17/18）</text>
-<text x="62" y="452" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">D5 rework 链接理解 STT+多模态（v19）</text>
+<rect x="62" y="210" width="358" height="184" rx="8" fill="#ffffff" stroke="#98a1b3" stroke-width="1.4" stroke-dasharray="8 5"/>
+<path d="M62,218 a8,8 0 0 1 8,-8 h342 a8,8 0 0 1 8,8 v26 h-358 z" fill="#3f4753"/>
+<text x="84" y="233" font-size="16" font-weight="bold" fill="#ffffff">D 导演层（选一，串行第一站）</text>
+<text x="84" y="268" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">D1 llm    LLM 编剧分镜（auto/quick）</text>
+<text x="84" y="294" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">D2 manual 人给 --say/--prompt/--script</text>
+<text x="84" y="320" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">D3 scout  爬虫+LLM 选题（hot）</text>
+<text x="84" y="346" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">D4 novel  RAG 人物卡-&gt;剧本拆解（v17/18）</text>
+<text x="84" y="372" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">D5 rework 链接理解 STT+多模态（v19）</text>
 </g>
 <g id="G">
-<rect x="40" y="540" width="377" height="254" rx="8" fill="#ffffff" stroke="#98a1b3" stroke-width="1.4" stroke-dasharray="8 5"/>
-<path d="M40,548 a8,8 0 0 1 8,-8 h361 a8,8 0 0 1 8,8 v28 h-377 z" fill="#3f4753"/>
-<text x="62" y="565" font-size="16" font-weight="bold" fill="#ffffff">G 生成层（选一，串行第二站）</text>
-<text x="62" y="602" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">G1 wan  T2V/I2V &lt;=5s镜+RIFE（吃segments）</text>
-<text x="62" y="630" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">G2 fast 爬图/FLUX+KenBurns（营销号）</text>
-<text x="62" y="658" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">G3 svg  LLM写SVG+无头Chromium逐帧</text>
-<text x="62" y="686" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">G4 h3   参考图+整段prompt-&gt;原生音频单镜</text>
-<text x="62" y="714" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">G5 oneshot 链式I2V末帧回灌（一镜到底 v18）</text>
-<text x="62" y="742" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">G6 flf2v VACE 首尾帧驱动（镜间过渡 v18）</text>
-<text x="62" y="770" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">（G4/G5 原生/回灌带声 -&gt; P0/P1 自动跳过）</text>
+<rect x="62" y="438" width="377" height="236" rx="8" fill="#ffffff" stroke="#98a1b3" stroke-width="1.4" stroke-dasharray="8 5"/>
+<path d="M62,446 a8,8 0 0 1 8,-8 h361 a8,8 0 0 1 8,8 v26 h-377 z" fill="#3f4753"/>
+<text x="84" y="461" font-size="16" font-weight="bold" fill="#ffffff">G 生成层（选一，串行第二站）</text>
+<text x="84" y="496" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">G1 wan  T2V/I2V &lt;=5s镜+RIFE（吃segments）</text>
+<text x="84" y="522" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">G2 fast 爬图/FLUX+KenBurns（营销号）</text>
+<text x="84" y="548" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">G3 svg  LLM写SVG+无头Chromium逐帧</text>
+<text x="84" y="574" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">G4 h3   参考图+整段prompt-&gt;原生音频单镜</text>
+<text x="84" y="600" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">G5 oneshot 链式I2V末帧回灌（一镜到底 v18）</text>
+<text x="84" y="626" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">G6 flf2v VACE 首尾帧驱动（镜间过渡 v18）</text>
+<text x="84" y="652" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">（G4/G5 原生/回灌带声 -&gt; P0/P1 自动跳过）</text>
 </g>
 <g id="V">
-<rect x="527" y="554" width="386" height="226" rx="8" fill="#ffffff" stroke="#98a1b3" stroke-width="1.4" stroke-dasharray="8 5"/>
-<path d="M527,562 a8,8 0 0 1 8,-8 h370 a8,8 0 0 1 8,8 v28 h-386 z" fill="#3f4753"/>
-<text x="549" y="579" font-size="16" font-weight="bold" fill="#ffffff">V 审计层（游离，可插拔）</text>
-<text x="549" y="616" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">V0 粗审 live_audit（v20）：WS latent2rgb</text>
-<text x="549" y="644" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">   预览帧边生边审，fail 即 interrupt 换 seed</text>
-<text x="549" y="672" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">V1 审片 5维 &lt;7 回写 prompt 重试 &lt;2</text>
-<text x="549" y="700" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">V2 角色锚 不过降级 flux / 重重建</text>
-<text x="549" y="728" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">V3 图相关性 爬图/FLUX 删图重生</text>
-<text x="549" y="756" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">V5 字幕检测 OCR+白字启发式（v19）</text>
+<rect x="569" y="451" width="386" height="210" rx="8" fill="#ffffff" stroke="#98a1b3" stroke-width="1.4" stroke-dasharray="8 5"/>
+<path d="M569,459 a8,8 0 0 1 8,-8 h370 a8,8 0 0 1 8,8 v26 h-386 z" fill="#3f4753"/>
+<text x="591" y="474" font-size="16" font-weight="bold" fill="#ffffff">V 审计层（游离，可插拔）</text>
+<text x="591" y="509" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">V0 粗审 live_audit（v20）：WS latent2rgb</text>
+<text x="591" y="535" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">   预览帧边生边审，fail 即 interrupt 换 seed</text>
+<text x="591" y="561" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">V1 审片 5维 &lt;7 回写 prompt 重试 &lt;2</text>
+<text x="591" y="587" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">V2 角色锚 不过降级 flux / 重重建</text>
+<text x="591" y="613" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">V3 图相关性 爬图/FLUX 删图重生</text>
+<text x="591" y="639" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">V5 字幕检测 OCR+白字启发式（v19）</text>
 </g>
 <g id="P">
-<rect x="40" y="858" width="346" height="282" rx="8" fill="#ffffff" stroke="#98a1b3" stroke-width="1.4" stroke-dasharray="8 5"/>
-<path d="M40,866 a8,8 0 0 1 8,-8 h330 a8,8 0 0 1 8,8 v28 h-346 z" fill="#3f4753"/>
-<text x="62" y="883" font-size="16" font-weight="bold" fill="#ffffff">P 后期层（每项独立开关，串行第三站）</text>
-<text x="62" y="920" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">P0 配音 Narrator：重试-&gt;cosy-&gt;静音兜底</text>
-<text x="62" y="948" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">P1 字幕 TTS时间戳-&gt;SRT烧录</text>
-<text x="62" y="976" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">P2 BGM ducking（incompetech 真实曲库）</text>
-<text x="62" y="1004" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">P3 调色 LUTx6（2026-11 起默认关）</text>
-<text x="62" y="1032" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">P4 STT whisper 重对齐（--stt）</text>
-<text x="62" y="1060" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">P5 拼接 compose/concat/时间线 JSON</text>
-<text x="62" y="1088" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">P6 特效x8+xfade+关键帧/掩码/贴纸/split</text>
-<text x="62" y="1116" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">P7 rework 画面改写 0-5 档（v19 二创）</text>
+<rect x="62" y="718" width="346" height="262" rx="8" fill="#ffffff" stroke="#98a1b3" stroke-width="1.4" stroke-dasharray="8 5"/>
+<path d="M62,726 a8,8 0 0 1 8,-8 h330 a8,8 0 0 1 8,8 v26 h-346 z" fill="#3f4753"/>
+<text x="84" y="741" font-size="16" font-weight="bold" fill="#ffffff">P 后期层（每项独立开关，串行第三站）</text>
+<text x="84" y="776" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">P0 配音 Narrator：重试-&gt;cosy-&gt;静音兜底</text>
+<text x="84" y="802" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">P1 字幕 TTS时间戳-&gt;SRT烧录</text>
+<text x="84" y="828" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">P2 BGM ducking（incompetech 真实曲库）</text>
+<text x="84" y="854" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">P3 调色 LUTx6（2026-11 起默认关）</text>
+<text x="84" y="880" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">P4 STT whisper 重对齐（--stt）</text>
+<text x="84" y="906" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">P5 拼接 compose/concat/时间线 JSON</text>
+<text x="84" y="932" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">P6 特效x8+xfade+关键帧/掩码/贴纸/split</text>
+<text x="84" y="958" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">P7 rework 画面改写 0-5 档（v19 二创）</text>
 </g>
 <g id="E">
-<rect x="496" y="858" width="335" height="226" rx="8" fill="#ffffff" stroke="#98a1b3" stroke-width="1.4" stroke-dasharray="8 5"/>
-<path d="M496,866 a8,8 0 0 1 8,-8 h319 a8,8 0 0 1 8,8 v28 h-335 z" fill="#3f4753"/>
-<text x="518" y="883" font-size="16" font-weight="bold" fill="#ffffff">E 编辑层（游离工具链，操作已有媒体）</text>
-<text x="518" y="920" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">E1 SAM2 分割/抠图/打码/换底/YOLO</text>
-<text x="518" y="948" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">E2 生成式 FLUX Fill / VACE /</text>
-<text x="518" y="976" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">   Qwen-Edit 指令式（v16.x）</text>
-<text x="518" y="1004" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">E3 字幕消除 ProPainter（v19）</text>
-<text x="518" y="1032" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">E4 FunClip 语义裁剪 / B站声音克隆</text>
-<text x="518" y="1060" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">（四通道暴露：CLI/agent/API/UI）</text>
+<rect x="538" y="718" width="335" height="210" rx="8" fill="#ffffff" stroke="#98a1b3" stroke-width="1.4" stroke-dasharray="8 5"/>
+<path d="M538,726 a8,8 0 0 1 8,-8 h319 a8,8 0 0 1 8,8 v26 h-335 z" fill="#3f4753"/>
+<text x="560" y="741" font-size="16" font-weight="bold" fill="#ffffff">E 编辑层（游离工具链，操作已有媒体）</text>
+<text x="560" y="776" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">E1 SAM2 分割/抠图/打码/换底/YOLO</text>
+<text x="560" y="802" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">E2 生成式 FLUX Fill / VACE /</text>
+<text x="560" y="828" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">   Qwen-Edit 指令式（v16.x）</text>
+<text x="560" y="854" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">E3 字幕消除 ProPainter（v19）</text>
+<text x="560" y="880" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">E4 FunClip 语义裁剪 / B站声音克隆</text>
+<text x="560" y="906" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">（四通道暴露：CLI/agent/API/UI）</text>
 </g>
 <g id="X">
-<rect x="40" y="1268" width="416" height="170" rx="8" fill="#ffffff" stroke="#98a1b3" stroke-width="1.4" stroke-dasharray="8 5"/>
-<path d="M40,1276 a8,8 0 0 1 8,-8 h400 a8,8 0 0 1 8,8 v28 h-416 z" fill="#3f4753"/>
-<text x="62" y="1293" font-size="16" font-weight="bold" fill="#ffffff">X 交付层（v21：同一份代码，五档收放）</text>
-<text x="62" y="1330" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">doctor 硬件探测荐档 -&gt; install.sh 一键装 -&gt; 冒烟</text>
-<text x="62" y="1358" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">五档 VIDANCE_TIER：none-&gt;flux-&gt;wan-&gt;h3-&gt;full</text>
-<text x="62" y="1386" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">Docker compose profile / 离线镜像包</text>
-<text x="62" y="1414" font-size="14" fill="#1f2328" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">init 向导 / 失败自诊断 hints（UI 提示）</text>
+<rect x="40" y="1090" width="937" height="104" rx="8" fill="#ffffff" stroke="#98a1b3" stroke-width="1.4" stroke-dasharray="8 5"/>
+<path d="M40,1098 a8,8 0 0 1 8,-8 h921 a8,8 0 0 1 8,8 v26 h-937 z" fill="#3f4753"/>
+<text x="62" y="1113" font-size="16" font-weight="bold" fill="#ffffff">X 交付层（v21：同一份代码，五档收放）</text>
+<text x="78" y="1152" font-size="14" font-weight="bold" fill="#1f2328">doctor</text>
+<text x="78" y="1174" font-size="13" fill="#57606a">硬件探测荐档</text>
+<line x1="285" y1="1132" x2="285" y2="1192" stroke="#d8dee6" stroke-width="1"/>
+<text x="301" y="1152" font-size="14" font-weight="bold" fill="#1f2328">install.sh + init</text>
+<text x="301" y="1174" font-size="13" fill="#57606a">起容器冒烟 / 向导写 key</text>
+<line x1="508" y1="1132" x2="508" y2="1192" stroke="#d8dee6" stroke-width="1"/>
+<text x="524" y="1152" font-size="14" font-weight="bold" fill="#1f2328">五档 VIDANCE_TIER</text>
+<text x="524" y="1174" font-size="13" fill="#57606a">none-&gt;flux-&gt;wan-&gt;h3-&gt;full</text>
+<line x1="732" y1="1132" x2="732" y2="1192" stroke="#d8dee6" stroke-width="1"/>
+<text x="748" y="1152" font-size="14" font-weight="bold" fill="#1f2328">Docker compose</text>
+<text x="748" y="1174" font-size="13" fill="#57606a">profile / 离线镜像包</text>
 </g>
-<text x="40" y="28" font-size="14" fill="#57606a">概念 / 热点 / 小说 / 链接 / 已有素材</text>
-<text x="434" y="318" font-size="14" fill="#57606a">产出契约：</text>
-<text x="434" y="340" font-size="14" fill="#57606a">segments[] =</text>
-<text x="434" y="362" font-size="14" fill="#57606a" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">{text, visual, motion}</text>
-<text x="434" y="384" font-size="14" fill="#57606a">+ v18 扩展：场景锚/衣橱/</text>
-<text x="434" y="406" font-size="14" fill="#57606a">  事件线 world.json</text>
-<line x1="519" y1="657" x2="425" y2="657" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
-<line x1="519" y1="685" x2="425" y2="685" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
-<line x1="519" y1="713" x2="425" y2="713" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
-<line x1="519" y1="741" x2="425" y2="741" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
-<line x1="394" y1="971" x2="488" y2="971" stroke="#6b7280" stroke-width="1.3" stroke-dasharray="7 5" marker-start="url(#arr)" marker-end="url(#arr)"/>
-<text x="441" y="961" font-size="12.5" fill="#6b7280" text-anchor="middle">吃任何已有媒体/回流</text>
-<text x="236" y="1212" font-size="14" fill="#1f2328" text-anchor="middle">final.mp4 + meta.json（sha256 指纹 -> 断点续跑/复用）</text>
-<line x1="236" y1="217" x2="236" y2="273" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
-<line x1="219" y1="479" x2="219" y2="535" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
-<line x1="229" y1="797" x2="229" y2="853" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
-<line x1="236" y1="1143" x2="236" y2="1192" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
-<line x1="236" y1="1220" x2="236" y2="1263" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
+<rect x="40" y="188" width="937" height="858" rx="10" fill="none" stroke="#98a1b3" stroke-width="1.6" stroke-dasharray="10 6"/>
+<rect x="58" y="176" width="415" height="24" fill="#ffffff"/>
+<text x="68" y="193" font-size="14" font-weight="bold" fill="#3f4753">编排主体：D -&gt; G -&gt; P 串行流水线（重试闭环在模块内部）</text>
+<text x="456" y="250" font-size="14" fill="#57606a">产出契约：</text>
+<text x="456" y="272" font-size="14" fill="#57606a">segments[] =</text>
+<text x="456" y="294" font-size="14" fill="#57606a" font-family="&quot;SFMono-Regular&quot;,Consolas,&quot;Liberation Mono&quot;,monospace">{text, visual, motion}</text>
+<text x="456" y="316" font-size="14" fill="#57606a">+ v18 扩展：场景锚/衣橱/</text>
+<text x="456" y="338" font-size="14" fill="#57606a">  事件线 world.json</text>
+<line x1="561" y1="547" x2="447" y2="547" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
+<line x1="561" y1="573" x2="447" y2="573" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
+<line x1="561" y1="599" x2="447" y2="599" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
+<line x1="561" y1="625" x2="447" y2="625" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
+<line x1="416" y1="823" x2="530" y2="823" stroke="#6b7280" stroke-width="1.3" stroke-dasharray="7 5" marker-start="url(#arr)" marker-end="url(#arr)"/>
+<text x="473" y="813" font-size="12.5" fill="#6b7280" text-anchor="middle">吃任何已有媒体/回流</text>
+<text x="508" y="1010" font-size="14" fill="#1f2328" text-anchor="middle">final.mp4 + meta.json（sha256 指纹 -> 断点续跑/复用）</text>
+<line x1="508" y1="147" x2="508" y2="183" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
+<line x1="241" y1="397" x2="241" y2="433" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
+<line x1="251" y1="677" x2="251" y2="713" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
+<line x1="508" y1="983" x2="508" y2="990" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
+<line x1="508" y1="1018" x2="508" y2="1085" stroke="#6b7280" stroke-width="1.3" marker-end="url(#arr)"/>
 </svg>
