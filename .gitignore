@@ -17,6 +17,12 @@ bgm/*.mp3
 # Assets videos (keep images, ignore demo mp4s)
 assets/*.mp4
 
+# 答辩 PPT（160MB 级，仅本地；媒体提取后单独入库）
+assets/*.pptx
+
+# PPT 提取素材暂存区（56 个文件仅本地，精选后拷到 docs/assets/ 入库）
+assets/ppt_media/
+
 # Input materials (user-uploaded test videos, keep dirs, ignore videos)
 input/**/*.mp4
 

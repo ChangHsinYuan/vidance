@@ -156,6 +156,8 @@ vidance/
 ├── deploy/                    # v21（原 v18）部署档（VIDANCE_TIER=none|flux|wan|h3|full；Dockerfile + Dockerfile.comfyui + docker-compose.yml profiles 五档 + README；API 缺省挂 9400）
 ├── dist/images/               # 离线交付镜像包（docker save 产物 latest/rag/update.tar.gz，*.tar.gz 已 gitignore；五档共用 latest 一个镜像）
 ├── ui/                        # v7 前端（index.html 自包含，零 npm，:8894/ui 访问）
+├── assets/                    # 项目图片（v0-v9 演进截图）；答辩 PPT + ppt_media/ 提取素材已 gitignore（仅本地暂存，精选后入 docs/）
+├── docs/assets/               # README 展示素材（hero.gif + demo 缩略图 + UI 截图）
 ├── voices/                    # 自定义 CosyVoice 克隆音色素材目录
 ├── bgm/                       # v2 自定义 BGM 素材目录（放 {mood}.wav 自动使用）
 ├── .opencode/
