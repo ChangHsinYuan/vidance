@@ -49,10 +49,10 @@
 | [![wan](./docs/assets/thumb-demo-wan.jpg)](./docs/demo/demo-wan.mp4) | [![svg](./docs/assets/thumb-demo-svg.jpg)](./docs/demo/demo-svg.mp4) | [![blender](./docs/assets/thumb-demo-blender3d.jpg)](./docs/demo/demo-blender3d.mp4) |
 | `quick "三只猫在草地奔跑"` | `svg --concept "小鸭子骑自行车"` | `blender3d "3D 几何演示"` |
 
-| LLM 生成 PPT | SAM2 编辑六宫格 |
-|:---:|:---:|
-| [![ppt](./docs/assets/thumb-demo-ppt.jpg)](./docs/demo/demo-ppt.mp4) | [![edit](./docs/assets/thumb-demo-edit-grid.jpg)](./docs/demo/demo-edit-grid.mp4) |
-| `ppt "主题" --video` | `edit cutout 图.jpg` |
+| LLM 生成 PPT | SAM2 物体掩码 | 视频编辑 |
+|:---:|:---:|:---:|
+| [![ppt](./docs/assets/thumb-demo-ppt.jpg)](./docs/demo/demo-ppt.mp4) | [![sam](./docs/assets/thumb-demo-sam-mask.jpg)](./docs/demo/demo-sam-mask.mp4) | [![edit](./docs/assets/thumb-demo-edit.jpg)](./docs/demo/demo-edit.mp4) |
+| `ppt "主题" --video` | `edit video --op color` | `edit video --op mosaic` |
 
 <div align="center">
 
