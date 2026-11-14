@@ -49,10 +49,20 @@
 | [![wan](./docs/assets/thumb-demo-wan.jpg)](./docs/demo/demo-wan.mp4) | [![svg](./docs/assets/thumb-demo-svg.jpg)](./docs/demo/demo-svg.mp4) | [![blender](./docs/assets/thumb-demo-blender3d.jpg)](./docs/demo/demo-blender3d.mp4) |
 | `quick "三只猫在草地奔跑"` | `svg --concept "小鸭子骑自行车"` | `blender3d "3D 几何演示"` |
 
-| LLM 生成 PPT | SAM2 编辑六宫格 | 资产库画布 |
-|:---:|:---:|:---:|
-| [![ppt](./docs/assets/thumb-demo-ppt.jpg)](./docs/demo/demo-ppt.mp4) | [![edit](./docs/assets/thumb-demo-edit-grid.jpg)](./docs/demo/demo-edit-grid.mp4) | [![assets](./docs/assets/thumb-demo-assets-ui.jpg)](./docs/demo/demo-assets-ui.mp4) |
-| `ppt "主题" --video` | `edit cutout 图.jpg` | WebUI 资产库 |
+| LLM 生成 PPT | SAM2 编辑六宫格 |
+|:---:|:---:|
+| [![ppt](./docs/assets/thumb-demo-ppt.jpg)](./docs/demo/demo-ppt.mp4) | [![edit](./docs/assets/thumb-demo-edit-grid.jpg)](./docs/demo/demo-edit-grid.mp4) |
+| `ppt "主题" --video` | `edit cutout 图.jpg` |
+
+<div align="center">
+
+### 🖼️ 产出全景
+
+[![showcase](./docs/assets/thumb-demo-showcase.jpg)](./docs/demo/demo-showcase.mp4)
+
+**5×5 视频墙：一次看全 Vidance 的全部产出形态**（点击播放，无声 5s 循环）
+
+</div>
 
 ## 🏗️ 系统架构
 
