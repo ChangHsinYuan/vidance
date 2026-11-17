@@ -12,6 +12,9 @@
 ![tests](https://img.shields.io/badge/tests-17_suites_~400_assertions-brightgreen)
 ![tier](https://img.shields.io/badge/VIDANCE_TIER-none_·_flux_·_wan_·_h3_·_full-8250df)
 
+<a href="./docs/assets/poster.jpg"><img src="./docs/assets/poster.jpg" width="350" alt="Vidance 宣传海报"></a>
+<a href="./docs/assets/poster-alt.jpg"><img src="./docs/assets/poster-alt.jpg" width="350" alt="Vidance 宣传海报（变体）"></a>
+
 ![hero](./docs/assets/hero.gif)
 
 [快速开始](#-快速开始) · [效果演示](#-效果演示) · [系统架构](#️-系统架构) · [五档部署](#-五档能力矩阵) · [文档](#-文档索引)
@@ -53,6 +56,16 @@
 |:---:|:---:|:---:|
 | [![ppt](./docs/assets/thumb-demo-ppt.jpg)](./docs/demo/demo-ppt.mp4) | [![sam](./docs/assets/thumb-demo-sam-mask.jpg)](./docs/demo/demo-sam-mask.mp4) | [![edit](./docs/assets/thumb-demo-edit.jpg)](./docs/demo/demo-edit.mp4) |
 | `ppt "主题" --video` | `edit video --op color` | `edit video --op mosaic` |
+
+<div align="center">
+
+### 🎥 全流程实录
+
+**Agent 端到端跑完一次完整生成的屏幕实录**：从提交概念到出片全程记录，等待段已剪除并在右上角标注跳过时长（12.5 分钟 → 6 分钟）
+
+[![fullflow](./docs/assets/thumb-demo-fullflow.jpg)](./docs/demo/demo-fullflow.mp4)
+
+</div>
 
 <div align="center">
 
