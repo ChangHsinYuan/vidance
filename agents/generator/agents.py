@@ -57,6 +57,22 @@ def blender3d(p):
                        trace=[{'step': 'blenderline', 'output': video}])
 
 
+@register(name='generator.poster', layer='generator', needs_gpu=True,
+          desc='概念 → LLM 海报规划 → FLUX 底板 + SAM 抠图 → PIL 合成排版 → poster.jpg（PosterLine 全链）',
+          inputs='{concept, title?, tagline?, plan_path?, out_path?, seeds?, command?, urls?, qr_url?, no_terminal?}')
+def poster(p):
+    from agents.generator.tools.poster_pipeline import PosterLine
+    kwargs = {k: p[k] for k in ('title', 'tagline', 'plan_path', 'out_path', 'seeds',
+                                'command', 'urls', 'qr_url', 'no_terminal', 'model')
+              if k in p}
+    meta = PosterLine().run(p['concept'], **kwargs)
+    out = meta.get('output')
+    return TaskResult(ok=bool(out) and __import__('os').path.exists(out),
+                       artifacts={'poster': out, 'plan_json': meta.get('plan'),
+                                  'meta': meta},
+                       trace=[{'step': 'posterline', 'output': out}])
+
+
 @register(name='generator.rework', layer='generator', needs_gpu=False,
           desc='视频链接二创（v19）：下载→理解→改写解说→重配音→画面改写→成片',
           inputs='{url, style?, duration?, voice?, visual_rewrite?, lut?, bgm?, out_path?}')

@@ -741,6 +741,76 @@ def cmd_blender3d(args):
     print(meta.get('output') or '')
 
 
+def cmd_poster(args):
+    """v22（poster 线）宣传海报：概念→LLM 规划→FLUX 底板→SAM 抠图→PIL 合成→jpg
+
+    一键：poster "紫色雨夜霓虹月亮下的红蓝猫" [--title VIDANCE --tagline 标语]
+    渲染：poster --plan plan.json [--bg bg.png --creatures c1.png,c2.png] -o out.jpg
+    """
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from agents.generator.tools import poster_pipeline as pp
+
+    if args.plan:
+        with open(args.plan, 'r', encoding='utf-8') as f:
+            import json as _json
+            plan = _json.load(f)
+        concept = args.concept or plan.get('tagline', '')
+        if args.bg:
+            # 纯渲染模式：现成底板/生灵，跳过 FLUX
+            from PIL import Image
+            bg_img = Image.open(args.bg)
+            plates = {f'c{i}': p for i, p in enumerate((args.creatures or '').split(',')) if p}
+            workdir = os.path.dirname(os.path.abspath(args.output or 'output/poster_render'))
+            os.makedirs(workdir, exist_ok=True)
+            imgs, _how, _n = pp.cutout_creatures(plates, workdir)
+            creatures = []
+            plan_c = plan.get('creatures', [])
+            for i in range(max(len(plates), len(plan_c))):
+                zone = plan_c[i].get('zone', 'front-right') if i < len(plan_c) else 'front-right'
+                h = plan_c[i].get('height') if i < len(plan_c) else None
+                key = (plan_c[i].get('name') if i < len(plan_c) else None) or f'c{i}'
+                if key in imgs or f'c{i}' in imgs:
+                    creatures.append({'img': imgs.get(key) or imgs[f'c{i}'],
+                                      'zone': zone, 'height': h})
+            scale = 1200.0 / args.width
+            cmd = None if args.no_terminal else (
+                args.command or f'python core/vidance.py auto "{concept[:18]}"')
+            poster = pp.compose_poster(bg_img, creatures, plan,
+                                       canvas=(1200, int(args.height * scale)),
+                                       command=cmd, urls=args.url or (),
+                                       qr_url=args.qr_url, rain=not args.no_rain)
+            out = args.output or 'output/poster_render/poster.jpg'
+            os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+            poster.save(out, quality=90)
+            print(f'✅ {out}（{poster.width}×{poster.height}）')
+            return
+        meta = pp.PosterLine().run(concept, title=args.title, tagline=args.tagline,
+                                   plan_path=args.plan, out_path=args.output,
+                                   width=args.width, height=args.height,
+                                   seeds=args.seeds, model=args.model,
+                                   command=args.command, no_terminal=args.no_terminal,
+                                   urls=args.url, qr_url=args.qr_url,
+                                   rain=not args.no_rain)
+        print(meta.get('output') or '')
+        return
+    if not args.concept:
+        print('usage: poster "主题" [--title T --tagline 标语] | poster --plan plan.json -o out.jpg')
+        return
+    skill = _load_skill(args, 'poster')
+    style_hint = None
+    if skill:
+        from utils.skills import SkillManager as _SM
+        style_hint = _SM.style_for(skill)
+    line = pp.PosterLine()
+    meta = line.run(args.concept, title=args.title, tagline=args.tagline,
+                    out_path=args.output, width=args.width, height=args.height,
+                    seeds=args.seeds, model=args.model, style_hint=style_hint,
+                    command=args.command, no_terminal=args.no_terminal,
+                    urls=args.url, qr_url=args.qr_url, rain=not args.no_rain)
+    print(meta.get('output') or '')
+
+
 def cmd_edit(args):
     """v16（原 v19）SAM2 编辑：分割/抠图/换底/打码/inpaint（图）/视频传播打码换底"""
     import sys, os
@@ -1370,6 +1440,28 @@ def build_parser():
     p_b3d.add_argument('--skill', default=None,
                        help='风格技能（3D 场景文风+参数包，如 showcase/artist）')
     p_b3d.set_defaults(func=cmd_blender3d)
+
+    # ── poster 子命令（v22 poster 线：LLM 海报规划 + FLUX 底板 + SAM 抠图 + PIL 合成）──
+    p_poster = sub.add_parser('poster',
+        help='v22 poster 线：概念→LLM 规划海报→FLUX 底板+SAM 抠图→PIL 合成→jpg')
+    p_poster.add_argument('concept', nargs='?', default=None, help='主题（一键模式）')
+    p_poster.add_argument('--plan', default=None, help='plan.json 路径（渲染模式）')
+    p_poster.add_argument('--bg', default=None, help='现成底板（配合 --plan 跳过 FLUX）')
+    p_poster.add_argument('--creatures', default=None, help='现成生灵图（逗号分隔，配合 --bg）')
+    p_poster.add_argument('--title', default=None, help='覆盖主标题（≤12 字符）')
+    p_poster.add_argument('--tagline', default=None, help='覆盖中文标语（≤14 字）')
+    p_poster.add_argument('-o', '--output', default=None, help='jpg 输出路径（缺省 output/poster*/poster.jpg）')
+    p_poster.add_argument('--width', type=int, default=1024, help='底板宽（2:3 竖版）')
+    p_poster.add_argument('--height', type=int, default=1536, help='底板高')
+    p_poster.add_argument('--seeds', type=int, nargs='*', default=None, help='底板 seed 序列（多 seed 重试）')
+    p_poster.add_argument('--command', default=None, help='终端卡命令文本（缺省 auto 示例）')
+    p_poster.add_argument('--url', action='append', default=None, help='页脚 URL（可重复，最多 2 个）')
+    p_poster.add_argument('--qr-url', default=None, help='右下角二维码链接')
+    p_poster.add_argument('--no-terminal', action='store_true', help='不画终端卡片')
+    p_poster.add_argument('--no-rain', action='store_true', help='不画雨丝')
+    p_poster.add_argument('--model', default=None, help='LLM 模型')
+    p_poster.add_argument('--skill', default=None, help='风格技能（海报文风+参数包）')
+    p_poster.set_defaults(func=cmd_poster)
 
     # ── edit 子命令（v16（原 v19）：SAM2 分割/抠图/换底/打码/inpaint + 视频传播）──
     p_edit = sub.add_parser('edit',

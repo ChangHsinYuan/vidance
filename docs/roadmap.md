@@ -553,6 +553,20 @@ concept → [LLM 编剧→分镜] → [Wan T2V 每镜] → [TTS 配音] → [多
 
 ---
 
+### v22 — 宣传海报生成（poster 线，✅ 已完成 2026-11-17：M1-M4 全绿）
+
+**目标**：把开源宣传海报（README 头图，人工迭代 v1-v8）沉淀为正式功能——概念一句话，自动出一张 2:3 竖版宣传海报（LLM 规划 + FLUX 底板 + SAM 抠图 + PIL 排版合成）。
+
+**里程碑**：
+- **M1 海报规划** ✅：`agents/generator/tools/poster_llm.py`（PLAN_SYS：概念→JSON `{title, subtitle, tagline, bg_prompt, creatures[{name, prompt, zone, height}]}`，LLM 只出结构化 JSON 照抄 v13 blender 架构）；`_norm_plan` 规范化（title≤12/tagline≤14 字钳制、zone 五分区白名单 back-center/mid-left/mid-right/front-left/front-right、height 0.15-0.45、分区冲突去重、生灵 ≤3 只）；LLM 失败兜底 default_plan（纯风景+排版）
+- **M2/M3 管线** ✅：`agents/generator/tools/poster_pipeline.py`（效果函数全部移植自宣传海报 v8 实测参数：refine_alpha 亮度键控/ghost_fade 全息渐隐/标题色散±5px+紫辉光/紫色 wash 防贴纸感/底部 480px 渐变蒙版/雨丝 140 条/暗角+颗粒）。`generate_plates()` FLUX 底板（2:3 1024×1536，多 seed 重试）+ 生灵立绘（纯黑底 1024²）；`cutout_creatures()` Grounded-SAM（YOLO 框提示取最大框，类别从生灵名猜测），失败单只降级亮度键控（notes 记录）；`compose_poster()` 数据驱动合成（分区锚点表 ZONE_LAYOUT，全部常量按画布比例缩放）；FLUX 整体不可用 → `gradient_bg()` 紫夜渐变降级（无 GPU 依赖）。`PosterLine` 一键 → `output/poster_{ts}/`（poster.jpg q90 + plan.json + plates/ + cutouts/ + meta.json）
+- **M3 四通道接线** ✅：CLI `vidance poster "主题" [--title/--tagline/--command/--url×2/--qr-url/--no-terminal/--no-rain/--seeds/-o]`（渲染模式 `--plan plan.json [--bg --creatures]` 跳过 FLUX 迭代重排）+ agent `generator.poster`（33 个）+ API `POST /api/tool/poster`（异步 job，复用 h3shot 轮询通道，回执 image_url）+ utils/poster_{llm,pipeline}.py 薄壳
+- **M4 测试与 E2E** ✅：tests/test_poster.py **31/31**（规范化/分区数学/锚点不出缘/合成画布/效果函数/降级底板，无 GPU）；GPU E2E 首跑 116.7s 出片（LLM 规划 3 生灵 → FLUX 4 板 → SAM 1/3+亮度键控 2/3 → 合成 1200×1800），qwen 盲检 **8/10**（终端卡命令/双 URL/QR 逐字 OCR 全对，中文无豆腐块）
+
+**已知取舍**：底部信息区（终端卡+双 URL+QR）堆叠略拥挤（v8 人工版同款特征，自动排版暂不逐元素调优）；绝对评分有波动（6.5↔8.5），对照评审更可靠。
+
+---
+
 ## 5. GPU 与端口分配
 
 | 服务 | 端口 | GPU | 环境 | 启动方式 |

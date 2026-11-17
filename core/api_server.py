@@ -936,6 +936,50 @@ def _run_blenderjob(job_id: str, concept, n: int, say: list, flags: dict):
         _agent_log(job_id, '✗ 失败: %s' % str(e)[:300])
 
 
+def _run_posterjob(job_id: str, concept: str, flags: dict):
+    """宣传海报（poster 线，异步 job，复用 h3shot 轮询通道；回执 output/image_url）。"""
+    def _scb(s):
+        with _h3_jobs_lock:
+            if job_id in _h3_jobs:
+                _h3_jobs[job_id]['stage'] = s
+        _agent_log(job_id, '▶ ' + s)
+
+    def _on_chunk(delta):
+        with _h3_jobs_lock:
+            if job_id in _h3_jobs:
+                _h3_jobs[job_id]['llm_text'] = ((_h3_jobs[job_id].get('llm_text') or '')
+                                                + delta)[-600:]
+
+    try:
+        from agents.generator.tools.poster_pipeline import PosterLine
+        urls = flags.get('url') or []
+        meta = PosterLine().run(
+            concept,
+            title=flags.get('title') or None,
+            tagline=flags.get('tagline') or None,
+            model=flags.get('model') or None,
+            command=flags.get('command') or None,
+            urls=urls if isinstance(urls, list) else [urls],
+            qr_url=flags.get('qr-url') or flags.get('qr_url') or None,
+            no_terminal=bool(flags.get('no-terminal') or flags.get('no_terminal')),
+            stage_cb=_scb, on_chunk=_on_chunk)
+        out = meta.get('output')
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'completed', 'output': out,
+                'image_url': (_file_url(out)) if out else '',
+                'completed_at': datetime.now().isoformat(),
+            })
+        _agent_log(job_id, '■ 完成 %s' % (out or ''))
+    except Exception as e:
+        with _h3_jobs_lock:
+            _h3_jobs[job_id].update({
+                'status': 'failed', 'error': str(e),
+                'completed_at': datetime.now().isoformat(),
+            })
+        _agent_log(job_id, '✗ 失败: %s' % str(e)[:300])
+
+
 def _run_editimagejob(job_id: str, inp: str, cmd: str, fl: dict):
     """图编辑统一异步（agent post.edit）：CV 秒级 op / flux 生成式 / instruct 全走 job。
 
@@ -1800,6 +1844,16 @@ TOOLS = [
           {'key': '--say', 'type': 'text', 'desc': '手动旁白（副标题+旁白）'},
           {'key': '-n', 'type': 'number', 'desc': '物体数提示（约 n*4 个）'},
       ]},
+     {'name': 'poster', 'help': 'v22 宣传海报：概念→LLM 规划→FLUX 底板+SAM 抠图→PIL 合成→jpg',
+      'params': [
+          {'key': 'concept', 'type': 'text', 'required': True, 'desc': '主题（中文）'},
+          {'key': '--title', 'type': 'text', 'desc': '覆盖主标题（≤12 字符）'},
+          {'key': '--tagline', 'type': 'text', 'desc': '覆盖中文标语（≤14 字）'},
+          {'key': '--command', 'type': 'text', 'desc': '终端卡命令文本（缺省 auto 示例）'},
+          {'key': '--url', 'type': 'text', 'desc': '页脚 URL（可重复 2 个）'},
+          {'key': '--qr-url', 'type': 'text', 'desc': '右下角二维码链接'},
+          {'key': '--no-terminal', 'type': 'bool', 'desc': '不画终端卡片'},
+      ]},
      {'name': 'edit', 'help': 'v16 SAM2 编辑：分割/抠图/换底/打码/inpaint（图同步）/视频传播（异步）/YOLO 自动/框提示/FLUX Fill 生成式重绘',
       'params': [
           {'key': 'input', 'type': 'text', 'required': True, 'desc': '图/视频路径'},
@@ -2489,6 +2543,25 @@ def tool_dispatch(name: str, req: ToolRequest):
                                int(fl.get('n') or 1), say, fl),
                          daemon=True).start()
         return {'message': '3D 任务已提交（异步，LLM 规划中，可看日志面板跟踪）',
+                'job_id': job_id, 'poll': f'/api/h3shot/{job_id}', 'h3_job_id': job_id}
+
+    # ── poster（v22 宣传海报：LLM 规划 + FLUX + SAM + 合成，异步 job，复用 h3shot 轮询通道）──
+    if name == 'poster':
+        rr = _parse_repeated(req.args or '', {'url'})
+        fl, pos2 = rr['flags'], rr['pos']
+        concept = fl.get('concept') or (' '.join(pos2) if pos2 else None)
+        if not concept:
+            raise HTTPException(status_code=400,
+                                detail='用法: /poster 主题 [--title 标题 --tagline 标语 --url 链接]')
+        job_id = f'poster_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        with _h3_jobs_lock:
+            _h3_jobs[job_id] = {'job_id': job_id, 'concept': concept[:40],
+                                'status': 'running',
+                                'created_at': datetime.now().isoformat()}
+        threading.Thread(target=_run_posterjob,
+                         args=(job_id, concept, fl),
+                         daemon=True).start()
+        return {'message': '海报任务已提交（异步：LLM 规划→FLUX 底板→SAM 抠图→合成，约 3-6 分钟）',
                 'job_id': job_id, 'poll': f'/api/h3shot/{job_id}', 'h3_job_id': job_id}
 
     # ── edit（v16 SAM2 编辑：图同步 / 视频异步 job，复用 h3shot 轮询通道）──

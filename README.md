@@ -34,7 +34,7 @@
 | 📦 **五档部署** | 同一份代码，`VIDANCE_TIER` 一个环境变量收放能力——无 GPU 机器也能跑 SVG 动画和爬图营销号链路 |
 | ✂️ **编辑全家桶** | SAM2 分割/抠图/打码/换底 + YOLO 自动检测 + FLUX Fill 重绘 + VACE 参考图生视频 + 指令式编辑（"把猫换成狗"） |
 | 🔁 **视频链接二创** | 丢一个 B 站/YouTube 链接 → 下载理解 → LLM 改写解说词（防复述）→ 重配音 → 画面改写，还能消除原片烧录字幕 |
-| 🧩 **多形态输出** | 有声短片 / 营销号图文快剪 / SVG 动画 / LLM 生成 PPT（mp4+PDF+PNG）/ Blender 3D / 小说一键改编成片 |
+| 🧩 **多形态输出** | 有声短片 / 营销号图文快剪 / SVG 动画 / LLM 生成 PPT（mp4+PDF+PNG）/ Blender 3D / 宣传海报（LLM 规划+FLUX+SAM 自动合成）/ 小说一键改编成片 |
 | 🤖 **多智能体编排** | 导演/生成/后期/审片四层 28 个 Agent，chain 编排 + 黑板共享 + 全轨迹可视化 |
 | 🗣️ **自然语言操控** | t2c 微调模型把中文口语直接翻译成 Vidance 命令，WebUI 里说话就能出片 |
 
@@ -152,6 +152,7 @@ python core/vidance.py auto "穿越隧道的光" --oneshot --duration 30
 | 链接二创 | `rework` | 视频 URL → 改写解说 → 重配音 → 画面改写 0-5 档 + 烧录字幕消除 |
 | 视频编辑 | `edit` / `vace` | SAM2 分割/追踪 + FLUX Fill + VACE + 指令式编辑 |
 | 多形态 | `svg` / `ppt` / `blender3d` | 纯 CPU 三线：SVG 动画 / LLM PPT（mp4+PDF+PNG）/ Blender 3D |
+| 宣传海报 | `poster` | 概念→LLM 规划→FLUX 底板+SAM 抠图→PIL 排版合成（标题色散/辉光/雨夜氛围/终端卡/QR） |
 | 小说改编 | novel2video | RAG 人物卡 + 剧本拆解 + 场景锚 + 衣橱系统 + 首尾帧驱动渲染 |
 | 时间线 | `compose` / `concat` | 关键帧/贴纸轨/转场特效库（30+ xfade）/ RIFE 光流过渡 |
 | 统一编排 | `make` / `agent` | director×generator 排列组合 + 28 Agent chain + `/api/agents` |
