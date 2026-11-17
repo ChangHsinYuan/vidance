@@ -1118,7 +1118,7 @@ def build_parser():
         epilog=__doc__,
     )
     parser.add_argument('--version', action='version',
-                        version='Vidance ' + _version_str() + '（v21 交付形态）')
+                        version='Vidance ' + _version_str() + '（v22 宣传海报）')
     sub = parser.add_subparsers(dest='command', required=True, metavar='<command>')
 
     # ── 共享参数组 ──

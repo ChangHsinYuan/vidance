@@ -52,6 +52,7 @@
 | `svg` (v13) | 概念或 SVG 文件 | 无 GPU（纯 CPU） | LLM 生成动效 SVG | TTS/字幕（S5） | 秒级出片，见 usage-v-svg.md |
 | `ppt` (v15) | 概念或 deck.html | 无 GPU（纯 CPU） | LLM 规划页面/图表 | TTS 旁白/字幕/LUT/BGM | 幻灯片短片+PDF/PNG 交付 |
 | `blender3d` (v13) | 概念或 scene.json | bpy EEVEE（宿主 GPU/容器 CPU） | LLM 规划 3D 场景 | TTS 旁白/字幕 | 3D 质感短片（模板 title3d/shapes/bars3d） |
+| `poster` (v22) | 一句概念 | FLUX 生图 + SAM2 抠图（GPU 档；FLUX 缺席自动降级渐变底板） | LLM 规划海报 JSON（标题/标语/生灵分区） | PIL 排版合成（色散/辉光/雨夜氛围） | 2:3 竖版宣传海报 jpg（终端卡/URL/QR 可选） |
 | `edit` (v16) | 图/视频路径 | SAM2+YOLO+FLUX Fill/VACE/Qwen-Edit（GPU 档） | SAM2 分割+inpaint/传播/彩色多物体/YOLO 自动 + 生成式重绘/换底/参考图生视频/指令式编辑 | — | 抠图/换底/打码/去水印/视频双向追踪/框提示 + 生成式编辑（v16.x），详见 [v16-design.md](./v16-design.md) |
 | `vace` (v16.x) | 参考图 + prompt | Wan2.1 VACE（wan 8189） | 参考图→主体一致视频 | — | 角色参考图生成 5s 视频（480×832@16fps） |
 | `rework` (v19) | 视频链接 | yt-dlp+STT+多模态+LLM（无新模型） | 下载→理解→改写解说→重配音 | 画面改写 0-5 档/LUT/BGM/字幕 | 视频链接二创（M1 承诺 B站），见 usage-v19.md |

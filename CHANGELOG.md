@@ -2,6 +2,15 @@
 
 语义化版本（semver）：`主.次.修订`——主版本=能力代际（v 系列里程碑集），次版本=单个 v 里程碑，修订=修复与补全。当前版本见根目录 `VERSION`，运行 `python core/vidance.py --version` 查询。
 
+## 1.1.0 (2026-11-17)
+
+v22 宣传海报生成（poster 线）：
+
+- **poster 子命令**：一句概念 → LLM 规划海报 JSON（标题/英文副标/中文标语/底板提示词/生灵分区）→ FLUX 底板（2:3，多 seed 重试）+ 生灵立绘 → Grounded-SAM 抠图（YOLO 框提示，失败自动降级亮度键控）→ PIL 参数化合成 → `output/poster*/poster.jpg`；FLUX 整体缺席时降级紫夜渐变底板继续出片
+- **排版体系**（移植自 README 宣传海报 v8 实测参数）：标题色散+辉光、生灵五分区锚点（back-center 全息/mid 渐隐/front 前景）、紫色 wash 防贴纸感、底部渐变蒙版、雨丝、暗角+颗粒；终端卡命令/双 URL/QR 可选
+- **四通道**：CLI `poster`（一键 + `--plan` 渲染模式）+ agent `generator.poster` + `POST /api/tool/poster`（异步 job）+ utils 薄壳
+- **测试**：tests/test_poster.py 31 项（无 GPU）+ GPU E2E 116.7s 出片盲检 8/10
+
 ## 1.0.0 (2026-11-05)
 
 首个语义化版本标签，对应 v21 交付形态关版。**能力代际 v0→v21 全量收录**（括号内为历史编号重排，详见 docs/roadmap.md）：
