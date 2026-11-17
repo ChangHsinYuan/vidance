@@ -37,6 +37,7 @@ curl http://127.0.0.1:9400/api/health      # → "tier": "none"，capabilities.g
 ```
 
 - **API 镜像** `deploy/Dockerfile`（python:3.11-slim + ffmpeg + Noto CJK + playwright/Chromium）：API + svg + fast 爬图开箱即用
+- **云端拉取**：打 tag（如 `v1.1.0`）后 Release workflow 自动构建并推送 `ghcr.io/changhsinyuan/vidance-api:{tag,latest}`；不想本地构建时 `export VIDANCE_API_IMAGE=ghcr.io/changhsinyuan/vidance-api:latest` 再 compose up 即可（compose 已支持该变量覆盖）
 - **产出**：容器 `/app/output` 卷挂宿主 `output/`（统一产出目录不变）
 - **配置**：容器 `/app/config` 卷挂宿主 `config/`（LLM key/tier 定义随卷进容器；改档不用重 build）
 

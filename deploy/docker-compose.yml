@@ -10,7 +10,8 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    image: vidance-api:latest
+    # 云端用户设 VIDANCE_API_IMAGE=ghcr.io/<owner>/vidance-api:latest 可免本地构建（镜像由 Release workflow 发布）
+    image: ${VIDANCE_API_IMAGE:-vidance-api:latest}
     container_name: vidance
     network_mode: host
     environment:
@@ -104,7 +105,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    image: vidance-api:latest
+    image: ${VIDANCE_API_IMAGE:-vidance-api:latest}
     network_mode: host
     command: ["python", "utils/tts_server.py"]
     volumes:

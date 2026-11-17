@@ -8,10 +8,12 @@ English | [简体中文](./README.md)
 
 *LLM scriptwriting → video generation → generate-and-review → TTS dubbing → editing & VFX → final cut*
 
+[![CI](https://github.com/ChangHsinYuan/vidance/actions/workflows/ci.yml/badge.svg)](https://github.com/ChangHsinYuan/vidance/actions/workflows/ci.yml)
 ![version](https://img.shields.io/badge/version-1.1.0-3f4753)
 ![license](https://img.shields.io/badge/license-Apache--2.0-1a7f37)
 ![python](https://img.shields.io/badge/python-3.10%2B-0969da)
 ![tests](https://img.shields.io/badge/tests-18_suites_~400_assertions-brightgreen)
+![docker](https://img.shields.io/badge/image-ghcr.io-2496ed)
 ![tier](https://img.shields.io/badge/VIDANCE_TIER-none_·_flux_·_wan_·_h3_·_full-8250df)
 
 <a href="./docs/assets/poster.jpg"><img src="./docs/assets/poster.jpg" width="350" alt="Vidance promo poster"></a>
@@ -90,6 +92,26 @@ English | [简体中文](./README.md)
 > Four entry channels (CLI / WebUI / API / natural language) feed one task queue; the D→G→P serial pipeline runs with V (audit) and E (edit) as detached side layers; the X delivery layer scales by tier. See [docs/design/hierarchy.md](./docs/design/hierarchy.md) for the detailed design.
 
 ## 🚀 Quick Start
+
+**Route A: Cloud API (no GPU, first film in ~5 minutes)**
+
+```bash
+# 1) Run the published image directly (cloud LLM API + edge-tts online dubbing, pure CPU)
+docker run -d --name vidance -p 9400:8894 \
+  -e VIDANCE_TIER=none -e VIDANCE_PORT=8894 \
+  -v $PWD/config:/app/config -v $PWD/output:/app/output \
+  ghcr.io/changhsinyuan/vidance-api:latest
+
+# 2) Config wizard to write your LLM key (press Enter to keep defaults)
+docker exec -it vidance python core/vidance.py init
+
+# 3) First film (image crawl + Ken Burns + TTS, no models needed)
+docker exec vidance python core/vidance.py fast "an orange cat in a late-night convenience store" -n 3
+```
+
+Open `http://<ip>:9400/ui` in a browser for the WebUI; finished films land in the mounted `output/` dir.
+
+**Route B: Clone the repo (includes GPU tiers)**
 
 ```bash
 git clone <repo-url> && cd vidance
@@ -174,6 +196,7 @@ Full command library: [docs/en/usage/usage.md](./docs/en/usage/usage.md)
 ## 🧪 Quality
 
 - 18 test suites, ~400 assertions, all green (run directly via `python tests/test_<name>.py`)
+- **CI gate**: every push/PR runs the full suite in a clean environment (py3.10/py3.12, no GPU required)
 - Key constraints automated: random seeds, per-shot ≤5s, duration alignment, Windows-compatible encoding (h264 + yuv420p explicit at every stage)
 - Full metadata on disk (meta.json: script/prompts/seeds/review scores/timestamps); checkpoint resume with sha256 fingerprinting to catch tampered artifacts
 
@@ -185,6 +208,7 @@ Full command library: [docs/en/usage/usage.md](./docs/en/usage/usage.md)
 | [docs/en/roadmap.md](./docs/en/roadmap.md) | Full version history (v0→v22, all closed) |
 | [CHANGELOG_EN.md](./CHANGELOG_EN.md) | Version changelog |
 | [docs/en/deploy/README.md](./docs/en/deploy/README.md) | Deployment in depth (five tiers/Docker/offline images/GPU services) |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | Contributing guide (setup/running tests/PR conventions) |
 | [docs/design/](./docs/design/) | Per-version design docs (incl. architecture diagram source arch_v21.svg) |
 | [docs/en/AGENTS.md](./docs/en/AGENTS.md) | Agent development conventions (internal) |
 

@@ -4,6 +4,16 @@
 
 Semantic versioning (semver): `MAJOR.MINOR.PATCH` — MAJOR = capability generation (a set of v-series milestones), MINOR = a single v milestone, PATCH = fixes and touch-ups. The current version lives in the root `VERSION`; query it with `python core/vidance.py --version`.
 
+## Unreleased
+
+Open-source engineering infrastructure (no runtime behavior changes):
+
+- **CI gate**: `.github/workflows/ci.yml` — every push/PR runs all 18 test suites in a clean environment (ubuntu + py3.10/py3.12 matrix, pure CPU; the minimal dependency set was verified in a clean venv; model-dependent tests rely on their built-in skip guards)
+- **Release channel**: `.github/workflows/release.yml` — pushing a tag (e.g. `v1.1.0`) auto-builds the API image and pushes it to GHCR (`ghcr.io/<owner>/vidance-api:{tag,latest}`, secret-free via GITHUB_TOKEN) + creates a GitHub Release with auto-generated notes
+- **Cloud quick start**: both READMEs gain a "cloud API route" (docker run the published image, no GPU, no clone, first film in ~5 minutes); the compose `vidance`/`tts` services accept a `VIDANCE_API_IMAGE` variable to override the image (default behavior unchanged)
+- **Contributor facilities**: `CONTRIBUTING.md` (bilingual) + Bug/feature-request issue forms + a PR template
+- **Docs internationalization**: 11 facade docs fully translated under docs/en/ (README/CHANGELOG/roadmap/AGENTS/usage/deploy/t2c/SKILL/instructions) with bilingual README switch links; all EN relative links verified resolvable
+
 ## 1.1.0 (2026-11-17)
 
 v22 promo poster generation (the poster line):

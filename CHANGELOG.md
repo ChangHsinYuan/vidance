@@ -2,6 +2,16 @@
 
 语义化版本（semver）：`主.次.修订`——主版本=能力代际（v 系列里程碑集），次版本=单个 v 里程碑，修订=修复与补全。当前版本见根目录 `VERSION`，运行 `python core/vidance.py --version` 查询。
 
+## Unreleased
+
+开源工程基建（不影响运行时行为）：
+
+- **CI 门禁**：`.github/workflows/ci.yml`——push/PR 在干净环境跑全部 18 套单测（ubuntu + py3.10/py3.12 矩阵，纯 CPU，最小依赖集经干净 venv 验证；模型相关测试走内建跳过守卫）
+- **发布通道**：`.github/workflows/release.yml`——push tag（如 `v1.1.0`）自动构建 API 镜像推 GHCR（`ghcr.io/<owner>/vidance-api:{tag,latest}`，GITHUB_TOKEN 免密）+ 创建 GitHub Release（自动生成 notes）
+- **云端快速开始**：README 双语新增"云端 API 路线"（docker run 发布镜像，无 GPU 无克隆 5 分钟出片）；compose `vidance`/`tts` 服务支持 `VIDANCE_API_IMAGE` 变量覆盖镜像（缺省行为不变）
+- **贡献者设施**：`CONTRIBUTING.md`（双语）+ Bug/功能建议 Issue 表单 + PR 模板
+- **文档英文化**：docs/en/ 门面层 11 件全译（README/CHANGELOG/roadmap/AGENTS/usage/deploy/t2c/SKILL/instructions），README 双语切换行；EN 相对链接全部校验可解析
+
 ## 1.1.0 (2026-11-17)
 
 v22 宣传海报生成（poster 线）：

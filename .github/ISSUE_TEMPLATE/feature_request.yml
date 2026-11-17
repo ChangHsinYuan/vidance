@@ -1,0 +1,39 @@
+name: 功能建议 / Feature request
+description: 提议新功能或改进 / Suggest a new feature or improvement
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢建议！提交前请先搜索已有 Issue。
+        Thanks for the suggestion! Please search existing issues first.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决什么问题 / What problem does this solve?
+      description: 当前做不到/做不好的场景
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望的方案 / Proposed solution
+      description: 期望的使用方式（命令/API 示例更佳）
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 涉及模块 / Area
+      options:
+        - 生成流水线 / pipeline (auto/fast/svg/ppt/poster…)
+        - 编辑处理 / editing (edit/compose/rework)
+        - 部署运维 / deployment (doctor/init/tiers/docker)
+        - API / WebUI
+        - 文档 / docs
+        - 其他 / other
+    validations:
+      required: true

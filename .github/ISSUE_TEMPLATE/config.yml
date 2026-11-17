@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用文档 / Documentation
+    url: https://github.com/ChangHsinYuan/vidance#readme
+    about: 快速开始、按档位部署、命令用法 / quick start, deployment tiers, CLI usage

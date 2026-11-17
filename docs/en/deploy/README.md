@@ -39,6 +39,7 @@ curl http://127.0.0.1:9400/api/health      # → "tier": "none", capabilities.ge
 ```
 
 - **API image** `deploy/Dockerfile` (python:3.11-slim + ffmpeg + Noto CJK + playwright/Chromium): API + svg + fast image-crawl works out of the box
+- **Cloud pull**: after pushing a tag (e.g. `v1.1.0`) the Release workflow builds and pushes `ghcr.io/changhsinyuan/vidance-api:{tag,latest}`; to skip a local build, `export VIDANCE_API_IMAGE=ghcr.io/changhsinyuan/vidance-api:latest` before compose up (compose supports this override variable)
 - **Output**: container `/app/output` volume-mounts the host `output/` (the unified output dir is unchanged)
 - **Config**: container `/app/config` volume-mounts the host `config/` (LLM key/tier definitions ride the volume into the container; changing tiers requires no rebuild)
 

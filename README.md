@@ -8,10 +8,12 @@
 
 *LLM 编剧 → 视频生成 → 边生边审 → TTS 配音 → 剪辑特效 → 成片*
 
+[![CI](https://github.com/ChangHsinYuan/vidance/actions/workflows/ci.yml/badge.svg)](https://github.com/ChangHsinYuan/vidance/actions/workflows/ci.yml)
 ![version](https://img.shields.io/badge/version-1.1.0-3f4753)
 ![license](https://img.shields.io/badge/license-Apache--2.0-1a7f37)
 ![python](https://img.shields.io/badge/python-3.10%2B-0969da)
 ![tests](https://img.shields.io/badge/tests-18_suites_~400_assertions-brightgreen)
+![docker](https://img.shields.io/badge/image-ghcr.io-2496ed)
 ![tier](https://img.shields.io/badge/VIDANCE_TIER-none_·_flux_·_wan_·_h3_·_full-8250df)
 
 <a href="./docs/assets/poster.jpg"><img src="./docs/assets/poster.jpg" width="350" alt="Vidance 宣传海报"></a>
@@ -90,6 +92,26 @@
 > 四通道入口（CLI/WebUI/API/自然语言）落同一任务队列；D→G→P 串行流水线，V 审计与 E 编辑双游离层；X 交付层按五档收放。详细设计见 [docs/design/hierarchy.md](./docs/design/hierarchy.md)。
 
 ## 🚀 快速开始
+
+**路线 A：云端 API（无 GPU、5 分钟出片）**
+
+```bash
+# 1) 直接用发布的镜像（LLM 走云端 API + edge-tts 在线配音，纯 CPU）
+docker run -d --name vidance -p 9400:8894 \
+  -e VIDANCE_TIER=none -e VIDANCE_PORT=8894 \
+  -v $PWD/config:/app/config -v $PWD/output:/app/output \
+  ghcr.io/changhsinyuan/vidance-api:latest
+
+# 2) 配置向导写入 LLM key（回车保留缺省）
+docker exec -it vidance python core/vidance.py init
+
+# 3) 出第一条片（爬图 + Ken Burns + TTS，无需任何模型）
+docker exec vidance python core/vidance.py fast "深夜便利店的一只橘猫" -n 3
+```
+
+浏览器打开 `http://<ip>:9400/ui` 即是 WebUI；成片在挂载的 `output/` 里。
+
+**路线 B：克隆仓库（含 GPU 档位）**
 
 ```bash
 git clone <repo-url> && cd vidance
@@ -173,7 +195,8 @@ python core/vidance.py auto "穿越隧道的光" --oneshot --duration 30
 
 ## 🧪 质量
 
-- 17 套测试 ~400 项断言全绿（`python tests/test_<name>.py` 直跑）
+- 18 套测试 ~400 项断言全绿（`python tests/test_<name>.py` 直跑）
+- **CI 门禁**：push/PR 自动在干净环境跑全部单测（py3.10/py3.12 两档，无 GPU 依赖）
 - 关键约束自动化：随机 seed、单镜 ≤5s、时长对齐、Windows 兼容编码（h264 + yuv420p 全环节显式）
 - 全程元数据落盘（meta.json：脚本/prompt/seed/审片分/时间戳），断点续跑带 sha256 指纹防篡改
 
@@ -185,6 +208,7 @@ python core/vidance.py auto "穿越隧道的光" --oneshot --duration 30
 | [docs/roadmap.md](./docs/roadmap.md) | 完整版本路线（v0→v22 全部收官） |
 | [CHANGELOG.md](./CHANGELOG.md) | 版本变更日志 |
 | [deploy/README.md](./deploy/README.md) | 部署详解（五档/Docker/离线镜像/GPU 服务） |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | 贡献指南（环境搭建/跑测试/PR 约定） |
 | [docs/design/](./docs/design/) | 各版本设计文档（含架构图源文件 arch_v21.svg） |
 | [AGENTS.md](./AGENTS.md) | Agent 开发约定（内部） |
 

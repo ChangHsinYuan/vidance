@@ -1,0 +1,50 @@
+name: Bug 报告 / Bug report
+description: 报告 Vidance 运行问题 / Report a problem with Vidance
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！提交前请先搜索已有 Issue。
+        Thanks for reporting! Please search existing issues first.
+
+  - type: dropdown
+    id: tier
+    attributes:
+      label: 部署档位 / Deployment tier
+      description: VIDANCE_TIER（none=纯 CPU 云端 API）
+      options:
+        - none
+        - flux
+        - wan
+        - h3
+        - full
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么 / What happened?
+      description: 执行的命令、预期行为 vs 实际行为，附报错日志 / traceback
+      placeholder: |
+        $ python core/vidance.py auto "概念" ...
+        ⚠ ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: version
+    attributes:
+      label: 版本与环境 / Version & environment
+      description: 'python core/vidance.py --version 与 python core/vidance.py doctor 输出；OS / GPU（如有）'
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤 / Reproduction steps
+      description: 能稳定复现的最小步骤；如非必现请注明概率
+    validations:
+      required: false
