@@ -1,15 +1,17 @@
 <div align="center">
 
+简体中文 | [English](./README_EN.md)
+
 # 🎬 Vidance
 
 **中文一句话 → 有声短片，一条命令**
 
 *LLM 编剧 → 视频生成 → 边生边审 → TTS 配音 → 剪辑特效 → 成片*
 
-![version](https://img.shields.io/badge/version-1.0.0-3f4753)
+![version](https://img.shields.io/badge/version-1.1.0-3f4753)
 ![license](https://img.shields.io/badge/license-Apache--2.0-1a7f37)
 ![python](https://img.shields.io/badge/python-3.10%2B-0969da)
-![tests](https://img.shields.io/badge/tests-17_suites_~400_assertions-brightgreen)
+![tests](https://img.shields.io/badge/tests-18_suites_~400_assertions-brightgreen)
 ![tier](https://img.shields.io/badge/VIDANCE_TIER-none_·_flux_·_wan_·_h3_·_full-8250df)
 
 <a href="./docs/assets/poster.jpg"><img src="./docs/assets/poster.jpg" width="350" alt="Vidance 宣传海报"></a>
@@ -142,7 +144,7 @@ python core/vidance.py auto "穿越隧道的光" --oneshot --duration 30
 ## 🗺️ 功能全景
 
 <details>
-<summary>展开 9 条产品线 →</summary>
+<summary>展开 10 条产品线 →</summary>
 
 | 线 | 入口 | 说明 |
 |----|------|------|
@@ -180,7 +182,7 @@ python core/vidance.py auto "穿越隧道的光" --oneshot --duration 30
 | 文档 | 内容 |
 |------|------|
 | [docs/usage/usage.md](./docs/usage/usage.md) | 主使用手册（按档位快速上手 + 全命令） |
-| [docs/roadmap.md](./docs/roadmap.md) | 完整版本路线（v0→v21 全部收官） |
+| [docs/roadmap.md](./docs/roadmap.md) | 完整版本路线（v0→v22 全部收官） |
 | [CHANGELOG.md](./CHANGELOG.md) | 版本变更日志 |
 | [deploy/README.md](./deploy/README.md) | 部署详解（五档/Docker/离线镜像/GPU 服务） |
 | [docs/design/](./docs/design/) | 各版本设计文档（含架构图源文件 arch_v21.svg） |
