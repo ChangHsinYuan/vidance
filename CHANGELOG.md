@@ -11,6 +11,7 @@
 - **云端快速开始**：README 双语新增"云端 API 路线"（docker run 发布镜像，无 GPU 无克隆 5 分钟出片）；compose `vidance`/`tts` 服务支持 `VIDANCE_API_IMAGE` 变量覆盖镜像（缺省行为不变）
 - **贡献者设施**：`CONTRIBUTING.md`（双语）+ Bug/功能建议 Issue 表单 + PR 模板
 - **文档英文化**：docs/en/ 门面层 11 件全译（README/CHANGELOG/roadmap/AGENTS/usage/deploy/t2c/SKILL/instructions），README 双语切换行；EN 相对链接全部校验可解析
+- **CI 首跑修复**：`core/doctor.py` 磁盘检查在 `output/` 缺失时回退最近存在祖先（原 OSError 致 CI 挂）；`test_rework` 测试产物目录自动创建（CI runner 无 /tmp/opencode）；`test_rag_novel` 编码段加本地模型守卫（对齐 test_embed_index 约定，CI 无 bge 目录即跳过）；ci.yml 去掉 torch 安装（守卫后不再需要）并改为失败测试末尾 traceback 以 ::error 注解回传（匿名可读，免登录查日志）
 
 ## 1.1.0 (2026-11-17)
 

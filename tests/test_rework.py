@@ -10,6 +10,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+os.makedirs('/tmp/opencode', exist_ok=True)  # CI runner 无此目录，测试产物统一落这
 
 from utils.rework import (_digest_source, _sim_max, _STYLES, _write_srt,
                           download_video, extract_frames, _FRAME_EVERY)

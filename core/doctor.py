@@ -62,10 +62,13 @@ def check_gpus():
 
 
 def check_disk(path=None):
-    path = path or os.path.join(os.path.dirname(__file__), '..', 'output')
+    path = os.path.abspath(path or os.path.join(os.path.dirname(__file__), '..', 'output'))
+    probe = path
+    while not os.path.exists(probe) and probe != os.path.dirname(probe):
+        probe = os.path.dirname(probe)  # CI 干净 checkout 无 output/，回退最近存在祖先
     try:
-        usage = shutil.disk_usage(path)
-        return {'path': os.path.abspath(path),
+        usage = shutil.disk_usage(probe)
+        return {'path': path,
                 'free_gb': round(usage.free / 1e9, 1),
                 'total_gb': round(usage.total / 1e9, 1)}
     except OSError as e:

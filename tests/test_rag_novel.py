@@ -6,6 +6,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.rag import RagIndex, split_novel_chapters
+import utils.rag as rag_mod
 
 PASS = []
 
@@ -134,13 +135,19 @@ def main():
     ok('sampling passthrough', RagIndex._pick_chapters_for_cards(many[:5]) is not None
        and len(RagIndex._pick_chapters_for_cards(many[:5])) == 5)
 
+    # ── CI 守卫：编码段（2-4）需本地 bge 模型目录（对齐 test_embed_index 跳过约定） ──
+    if not os.path.isdir(rag_mod._MODEL_DIR):
+        fails = [n for n, c in PASS if not c]
+        print(f'\n{len(PASS) - len(fails)}/{len(PASS)} passed')
+        print(f'⏭ 跳过编码相关段 2-4（无本地模型目录 {rag_mod._MODEL_DIR}，CI 环境）')
+        sys.exit(1 if fails else 0)
+
     # ── 2. add_novel 全链（mock LLM 人物卡） ──
     tmpd = tempfile.mkdtemp(prefix='novel_test_')
     p = os.path.join(tmpd, 'lighthouse.txt')
     with open(p, 'w', encoding='utf-8') as f:
         f.write(NOVEL)
 
-    import utils.rag as rag_mod
     orig = rag_mod.RagIndex._extract_cards
     rag_mod.RagIndex._extract_cards = lambda self, t, chs, k: _MockLLM() and []
     # 先测 no-cards 路径（mock 掉 LLM 抽卡，验证索引本身）
