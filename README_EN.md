@@ -9,11 +9,11 @@ English | [简体中文](./README.md)
 *LLM scriptwriting → video generation → generate-and-review → TTS dubbing → editing & VFX → final cut*
 
 [![CI](https://github.com/ChangHsinYuan/vidance/actions/workflows/ci.yml/badge.svg)](https://github.com/ChangHsinYuan/vidance/actions/workflows/ci.yml)
-![version](https://img.shields.io/badge/version-1.1.0-3f4753)
+[![version](https://img.shields.io/badge/version-1.1.0-3f4753)](https://github.com/ChangHsinYuan/vidance/releases/tag/v1.1.0)
 ![license](https://img.shields.io/badge/license-Apache--2.0-1a7f37)
 ![python](https://img.shields.io/badge/python-3.10%2B-0969da)
 ![tests](https://img.shields.io/badge/tests-18_suites_~400_assertions-brightgreen)
-![docker](https://img.shields.io/badge/image-ghcr.io-2496ed)
+[![docker](https://img.shields.io/badge/image-ghcr.io-2496ed)](https://github.com/ChangHsinYuan/vidance/pkgs/container/vidance-api)
 ![tier](https://img.shields.io/badge/VIDANCE_TIER-none_·_flux_·_wan_·_h3_·_full-8250df)
 
 <a href="./docs/assets/poster.jpg"><img src="./docs/assets/poster.jpg" width="350" alt="Vidance promo poster"></a>
